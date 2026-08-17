@@ -52,6 +52,7 @@ interface CCSwitchExportDialogProps {
   onClose: () => void
   account: DisplaySiteData
   token: ApiToken
+  initialModel?: string
   analyticsContext?: ProductAnalyticsActionContext
 }
 
@@ -108,7 +109,8 @@ const getCCSwitchLimitationNotice = (t: TFunction, app: CCSwitchApp) => {
  * @param props.token API token exported through CCSwitch.
  */
 export function CCSwitchExportDialog(props: CCSwitchExportDialogProps) {
-  const { isOpen, onClose, account, token, analyticsContext } = props
+  const { isOpen, onClose, account, token, initialModel, analyticsContext } =
+    props
   const { t } = useTranslation(["ui", "common"])
   const [app, setApp] = useState<CCSwitchApp>(DEFAULT_APP)
   const [model, setModel] = useState("")
@@ -127,7 +129,7 @@ export function CCSwitchExportDialog(props: CCSwitchExportDialogProps) {
   useEffect(() => {
     if (isOpen) {
       setApp(DEFAULT_APP)
-      setModel("")
+      setModel(initialModel ?? "")
       setNotes(token.note ?? "")
       setProviderName(account.name)
       setHomepage(account.baseUrl)
@@ -136,7 +138,15 @@ export function CCSwitchExportDialog(props: CCSwitchExportDialogProps) {
       setUpstreamModelOptions([])
       setIsLoadingModels(false)
     }
-  }, [account.baseUrl, account.id, account.name, isOpen, token.id, token.note])
+  }, [
+    account.baseUrl,
+    account.id,
+    account.name,
+    initialModel,
+    isOpen,
+    token.id,
+    token.note,
+  ])
 
   useEffect(() => {
     if (!isOpen) return

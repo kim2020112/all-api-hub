@@ -35,6 +35,8 @@ export function getMenuItemLabel(
       return t("ui:navigation.siteAnnouncements")
     case MENU_ITEM_IDS.MODELS:
       return t("ui:navigation.models")
+    case MENU_ITEM_IDS.MODEL_HUB:
+      return t("ui:navigation.modelHub")
     case MENU_ITEM_IDS.KEYS:
       return t("ui:navigation.keys")
     case MENU_ITEM_IDS.API_CREDENTIAL_PROFILES:

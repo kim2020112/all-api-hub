@@ -57,6 +57,7 @@ const ManagedSiteModelSync = createLazyMenuComponent(
   () => import("./pages/ManagedSiteModelSync"),
 )
 const ModelList = createLazyMenuComponent(() => import("./pages/ModelList"))
+const ModelHub = createLazyMenuComponent(() => import("./pages/ModelHub"))
 const UsageAnalytics = createLazyMenuComponent(
   () => import("./pages/UsageAnalytics"),
 )
@@ -99,6 +100,12 @@ const BASE_MENU_ITEMS: MenuItem[] = [
     id: MENU_ITEM_IDS.MODELS,
     icon: OPTIONS_MENU_ITEM_ICONS[MENU_ITEM_IDS.MODELS],
     component: ModelList,
+    category: OPTIONS_MENU_CATEGORY_IDS.API,
+  },
+  {
+    id: MENU_ITEM_IDS.MODEL_HUB,
+    icon: OPTIONS_MENU_ITEM_ICONS[MENU_ITEM_IDS.MODEL_HUB],
+    component: ModelHub,
     category: OPTIONS_MENU_CATEGORY_IDS.API,
   },
   {

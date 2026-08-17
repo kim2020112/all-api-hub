@@ -43,6 +43,8 @@ function mapOptionsMenuItemToAnalyticsPageId(
       return PRODUCT_ANALYTICS_PAGE_IDS.OptionsManagedSiteChannels
     case MENU_ITEM_IDS.MODELS:
       return PRODUCT_ANALYTICS_PAGE_IDS.OptionsModelList
+    case MENU_ITEM_IDS.MODEL_HUB:
+      return PRODUCT_ANALYTICS_PAGE_IDS.OptionsModelList
     case MENU_ITEM_IDS.USAGE_ANALYTICS:
       return PRODUCT_ANALYTICS_PAGE_IDS.OptionsUsageAnalytics
     case MENU_ITEM_IDS.BALANCE_HISTORY:

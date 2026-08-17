@@ -16,6 +16,7 @@ export const MENU_ITEM_IDS = {
   BALANCE_HISTORY: "balanceHistory",
   SITE_ANNOUNCEMENTS: "siteAnnouncements",
   MODELS: "models",
+  MODEL_HUB: "modelHub",
   KEYS: "keys",
   API_CREDENTIAL_PROFILES: "apiCredentialProfiles",
   MANAGED_SITE_CHANNELS: "managedSiteChannels",

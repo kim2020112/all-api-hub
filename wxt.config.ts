@@ -48,6 +48,13 @@ export default defineConfig({
   srcDir: "src",
   publicDir: "src/public",
   outDirTemplate: getOutDirTemplate(),
+  dev: {
+    server: {
+      port: 3000,
+      origin: "http://localhost:3000",
+      strictPort: true,
+    },
+  },
   modules: ["@wxt-dev/auto-icons", "@wxt-dev/module-react"],
   manifest: (env) => {
     const projectPath = getProjectRootPath()
@@ -97,7 +104,7 @@ export default defineConfig({
   vite: (env) => {
     console.log("当前构建模式:", env.mode)
     return {
-      plugins: [reactDevToolsAuto()],
+      plugins: [reactDevToolsAuto({ autoStart: false })],
       content_security_policy: {
         extension_pages: {
           "script-src": ["'self'", "http://localhost:8097"],

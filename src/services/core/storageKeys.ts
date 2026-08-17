@@ -39,6 +39,7 @@ export const STORAGE_LOCKS = {
    * verification result history.
    */
   API_VERIFICATION_HISTORY: "all-api-hub:api-verification-history",
+  MODEL_HUB: "all-api-hub:model-hub",
   /**
    * Exclusive lock used for read-modify-write sequences touching Web AI API
    * Check input-assist history.
@@ -128,6 +129,13 @@ export const API_VERIFICATION_HISTORY_STORAGE_KEYS = {
   VERIFICATION_RESULT_HISTORY: "api_verification_result_history",
 } as const
 
+export const MODEL_HUB_STORAGE_KEYS = {
+  MANUAL_OVERRIDES: "model_hub_manual_overrides",
+  PREFERENCES: "model_hub_preferences",
+  GROUP_CONFIGS: "model_hub_group_configs",
+  TEST_RESULTS: "model_hub_test_results",
+} as const
+
 export const WEB_AI_API_CHECK_STORAGE_KEYS = {
   BASE_URL_HISTORY: "webAiApiCheck_baseUrlHistory_v1",
 } as const
@@ -186,6 +194,7 @@ export const STORAGE_KEYS = {
   ...API_CREDENTIAL_PROFILES_STORAGE_KEYS,
   ...CHANNEL_CONFIG_STORAGE_KEYS,
   ...API_VERIFICATION_HISTORY_STORAGE_KEYS,
+  ...MODEL_HUB_STORAGE_KEYS,
   ...WEB_AI_API_CHECK_STORAGE_KEYS,
   ...LDOH_SITE_LOOKUP_STORAGE_KEYS,
   ...ACCOUNT_KEY_AUTO_PROVISIONING_STORAGE_KEYS,
