@@ -1,5 +1,4 @@
-import { ArrowPathIcon } from "@heroicons/react/24/outline"
-import { Cpu, KeyRound } from "lucide-react"
+import { Cpu, KeyRound, RefreshCw, TrendingDown } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -28,6 +27,10 @@ import {
   resolveModelManagementSource,
   type ModelManagementItemSource,
 } from "~/features/ModelList/modelManagementSources"
+import {
+  canEnableModelPriceComparison,
+  enableModelPriceComparison,
+} from "~/features/ModelList/priceComparisonActivation"
 import {
   canCreateAccountApiTokens,
   canListAccountRuntimeKeys,
@@ -114,6 +117,10 @@ export default function ModelList(props: {
     setSelectedProvider,
     sortMode,
     setSortMode,
+    priceComparisonPresetId,
+    setPriceComparisonPresetId,
+    priceComparisonWeights,
+    setPriceComparisonWeights,
     selectedBillingMode,
     setSelectedBillingMode,
     selectedModelCapabilities,
@@ -214,6 +221,39 @@ export default function ModelList(props: {
 
   const isAllAccountsScope =
     selectedSource?.kind === MODEL_MANAGEMENT_SOURCE_KINDS.ALL_ACCOUNTS
+  const canStartUnselectedPriceComparison =
+    !selectedSource && accounts.length > 0
+  const shouldShowPriceComparisonAction =
+    canStartUnselectedPriceComparison ||
+    canEnableModelPriceComparison({
+      selectedSource,
+      sourceCapabilities,
+      isAllAccountsSource: isAllAccountsScope,
+      sortMode,
+      selectedBillingMode,
+      selectedGroups,
+      showRealPrice,
+    })
+  const handleEnablePriceComparison = useCallback(() => {
+    enableModelPriceComparison({
+      isAllAccountsSource: isAllAccountsScope,
+      setSelectedSourceValue: handleSelectedSourceValueChange,
+      setSortMode,
+      setSelectedBillingMode,
+      setSelectedGroups,
+      setShowRealPrice,
+      searchTerm,
+      surfaceId: PRODUCT_ANALYTICS_SURFACE_IDS.OptionsModelListPage,
+    })
+  }, [
+    handleSelectedSourceValueChange,
+    isAllAccountsScope,
+    searchTerm,
+    setSelectedBillingMode,
+    setSelectedGroups,
+    setShowRealPrice,
+    setSortMode,
+  ])
   const modelDisplayGroupSelectionScope = isAllAccountsScope
     ? MODEL_LIST_GROUP_SELECTION_SCOPES.ALL_ACCOUNTS
     : MODEL_LIST_GROUP_SELECTION_SCOPES.SINGLE_SOURCE
@@ -237,6 +277,9 @@ export default function ModelList(props: {
     selectedSource?.kind === MODEL_MANAGEMENT_SOURCE_KINDS.ALL_ACCOUNTS
       ? pricingContexts && pricingContexts.length > 0
       : !!pricingData
+  const shouldShowRefreshAction = Boolean(selectedSource && hasModelData)
+  const shouldShowHeaderActions =
+    shouldShowRefreshAction || shouldShowPriceComparisonAction
   const isRuntimeKeyOnlyFallbackCatalog =
     isFallbackCatalogActive &&
     !!currentAccount &&
@@ -487,6 +530,10 @@ export default function ModelList(props: {
       showRealPrice={showRealPrice}
       showRatioColumn={showRatioColumn}
       showEndpointTypes={showEndpointTypes}
+      showPriceComparisonGroups={
+        isAllAccountsScope &&
+        sortMode === MODEL_LIST_SORT_MODES.MODEL_CHEAPEST_FIRST
+      }
       handleGroupClick={handleGroupClick}
       groupSelectionScope={modelDisplayGroupSelectionScope}
       isGroupSelectionInteractive={isModelGroupSelectionInteractive}
@@ -531,23 +578,43 @@ export default function ModelList(props: {
         }
         description={t("description")}
         actions={
-          selectedSource && hasModelData ? (
+          shouldShowHeaderActions ? (
             <ProductAnalyticsScope
               entrypoint={PRODUCT_ANALYTICS_ENTRYPOINTS.Options}
               featureId={PRODUCT_ANALYTICS_FEATURE_IDS.ModelList}
               surfaceId={PRODUCT_ANALYTICS_SURFACE_IDS.OptionsModelListPage}
             >
-              <Button
-                onClick={loadPricingData}
-                variant="secondary"
-                leftIcon={<ArrowPathIcon className="h-4 w-4" />}
-                loading={isLoading}
-                analyticsAction={
-                  PRODUCT_ANALYTICS_ACTION_IDS.RefreshModelPricingData
-                }
-              >
-                {isLoading ? t("common:status.refreshing") : t("refreshData")}
-              </Button>
+              {shouldShowRefreshAction && (
+                <Button
+                  onClick={loadPricingData}
+                  variant="secondary"
+                  leftIcon={<RefreshCw className="h-4 w-4" />}
+                  loading={isLoading}
+                  analyticsAction={
+                    PRODUCT_ANALYTICS_ACTION_IDS.RefreshModelPricingData
+                  }
+                >
+                  {isLoading ? t("common:status.refreshing") : t("refreshData")}
+                </Button>
+              )}
+              {shouldShowPriceComparisonAction && (
+                <Tooltip
+                  content={t("comparison.tooltip")}
+                  wrapperClassName="contents"
+                >
+                  <Button
+                    type="button"
+                    variant="default"
+                    data-testid={
+                      MODEL_LIST_TEST_IDS.headerPriceComparisonButton
+                    }
+                    leftIcon={<TrendingDown className="h-4 w-4" />}
+                    onClick={handleEnablePriceComparison}
+                  >
+                    {t("comparison.cta")}
+                  </Button>
+                </Tooltip>
+              )}
             </ProductAnalyticsScope>
           ) : undefined
         }
@@ -733,6 +800,10 @@ export default function ModelList(props: {
             setSearchTerm={setSearchTerm}
             sortMode={sortMode}
             setSortMode={setSortMode}
+            priceComparisonPresetId={priceComparisonPresetId}
+            setPriceComparisonPresetId={setPriceComparisonPresetId}
+            priceComparisonWeights={priceComparisonWeights}
+            setPriceComparisonWeights={setPriceComparisonWeights}
             selectedBillingMode={selectedBillingMode}
             setSelectedBillingMode={setSelectedBillingMode}
             supportsModelCapabilityFilter={supportsModelCapabilityFilter}

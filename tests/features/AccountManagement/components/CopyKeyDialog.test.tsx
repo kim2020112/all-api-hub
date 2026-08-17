@@ -13,7 +13,10 @@ import type { KeyResourceCardPresentation } from "~/features/KeyManagement/prese
 import { TOKEN_PROVISIONING_TEST_IDS } from "~/features/TokenProvisioning/testIds"
 import { generateDefaultTokenRequest } from "~/services/accounts/accountKeyAutoProvisioning/ensureDefaultToken"
 import * as accountOperations from "~/services/accounts/accountOperations"
-import { buildDisplayAccountTokenRuntimeKey } from "~/services/accounts/accountRuntimeKeys"
+import {
+  buildDisplayAccountTokenRuntimeKey,
+  buildServiceCredentialRuntimeKey,
+} from "~/services/accounts/accountRuntimeKeys"
 import { TOKEN_QUICK_CREATE_RESOLUTION_KINDS } from "~/services/accounts/tokenQuickCreateResolution"
 import { INVENTORY_SECRET_AVAILABILITIES } from "~/services/apiAdapters/contracts/keyManagement"
 import {
@@ -49,6 +52,7 @@ const {
   fetchUserGroupsMock,
   resolveApiTokenKeyMock,
   openInCherryStudioMock,
+  kelivoExportDialogMock,
   openWithAccountMock,
   startProductAnalyticsActionMock,
   completeProductAnalyticsActionMock,
@@ -76,6 +80,7 @@ const {
   fetchUserGroupsMock: vi.fn(),
   resolveApiTokenKeyMock: vi.fn(),
   openInCherryStudioMock: vi.fn(),
+  kelivoExportDialogMock: vi.fn(),
   openWithAccountMock: vi.fn(),
   startProductAnalyticsActionMock: vi.fn(),
   completeProductAnalyticsActionMock: vi.fn(),
@@ -295,6 +300,21 @@ vi.mock("~/components/CursorPlusExportDialog", () => ({
   },
 }))
 
+vi.mock("~/components/KelivoExportDialog", () => ({
+  KelivoExportDialog: (props: unknown) => {
+    kelivoExportDialogMock(props)
+    const { isOpen, onClose } = props as {
+      isOpen: boolean
+      onClose: () => void
+    }
+    return isOpen ? (
+      <button type="button" onClick={onClose}>
+        close Kelivo export
+      </button>
+    ) : null
+  },
+}))
+
 vi.mock(
   "~/features/ApiCredentialProfiles/components/KiloCodeProfileExportDialog",
   () => ({
@@ -460,6 +480,31 @@ async function renderExpandedServiceCredentialDialog() {
   return user
 }
 
+async function selectExportAction(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  const directAction = screen.queryByRole("button", { name })
+  if (directAction) {
+    await user.click(directAction)
+    return
+  }
+
+  const openItem = screen.queryByRole("menuitem", { name })
+  if (openItem) {
+    await user.click(openItem)
+    return
+  }
+
+  const trigger = screen.getByRole("button", {
+    name: "common:actions.export",
+  })
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    await user.click(trigger)
+  }
+  await user.click(screen.getByRole("menuitem", { name }))
+}
+
 describe("CopyKeyDialog", () => {
   beforeEach(() => {
     fetchAccountTokensMock.mockReset()
@@ -481,6 +526,7 @@ describe("CopyKeyDialog", () => {
     openKeysPageMock.mockReset()
     resolveApiTokenKeyMock.mockReset()
     openInCherryStudioMock.mockReset()
+    kelivoExportDialogMock.mockReset()
     openWithAccountMock.mockReset()
     startProductAnalyticsActionMock.mockReset()
     completeProductAnalyticsActionMock.mockReset()
@@ -612,7 +658,8 @@ describe("CopyKeyDialog", () => {
     ).toBeVisible()
   })
 
-  it("keeps copy and export action policies independent", () => {
+  it("keeps copy and export action policies independent", async () => {
+    const user = userEvent.setup()
     const runtimeKey = buildDisplayAccountTokenRuntimeKey(ACCOUNT, TOKEN)
     const { rerender } = render(
       <RuntimeKeyActionControls
@@ -628,7 +675,7 @@ describe("CopyKeyDialog", () => {
       screen.getByRole("button", { name: "ui:dialog.copyKey.copy" }),
     ).toBeVisible()
     expect(
-      screen.queryByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
+      screen.queryByRole("button", { name: "common:actions.export" }),
     ).not.toBeInTheDocument()
 
     rerender(
@@ -645,7 +692,15 @@ describe("CopyKeyDialog", () => {
       screen.queryByRole("button", { name: "ui:dialog.copyKey.copy" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
+      screen.getByRole("button", { name: "common:actions.export" }),
+    ).toBeVisible()
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.export" }),
+    )
+    expect(
+      screen.getByRole("menuitem", {
+        name: "keyManagement:actions.copyKelivoImportCode",
+      }),
     ).toBeVisible()
   })
 
@@ -663,15 +718,7 @@ describe("CopyKeyDialog", () => {
       />,
     )
 
-    const cursorPlusButton = screen.getByTestId(
-      ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportToCursorPlusButton,
-    )
-    expect(cursorPlusButton.nextElementSibling).toBe(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
-    await user.click(cursorPlusButton)
+    await selectExportAction(user, "keyManagement:actions.exportToCursorPlus")
 
     expect(cursorPlusExportDialogMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -685,6 +732,92 @@ describe("CopyKeyDialog", () => {
     )
     expect(
       screen.queryByRole("button", { name: "close Cursor++ export" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("redacts credential values from runtime-key Kelivo export errors", async () => {
+    const runtimeKey = buildDisplayAccountTokenRuntimeKey(ACCOUNT, TOKEN)
+    resolveApiTokenKeyMock.mockRejectedValueOnce(
+      new Error("Provider rejected sk-test because the account is suspended"),
+    )
+    const user = userEvent.setup()
+
+    render(
+      <RuntimeKeyActionControls
+        runtimeKey={runtimeKey}
+        actionPolicy={{ copySecret: false, exportSecret: true }}
+        copiedRuntimeKeyId={null}
+        onCopyKey={() => {}}
+        account={ACCOUNT}
+      />,
+    )
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "messages:errors.operation.failed",
+      )
+    })
+    expect(JSON.stringify(toastErrorMock.mock.calls)).not.toContain("sk-test")
+  })
+
+  it("falls back to the local unknown error for a blank runtime-key Kelivo failure", async () => {
+    const runtimeKey = buildDisplayAccountTokenRuntimeKey(ACCOUNT, TOKEN)
+    resolveApiTokenKeyMock.mockRejectedValueOnce(new Error(""))
+    const user = userEvent.setup()
+
+    render(
+      <RuntimeKeyActionControls
+        runtimeKey={runtimeKey}
+        actionPolicy={{ copySecret: false, exportSecret: true }}
+        copiedRuntimeKeyId={null}
+        onCopyKey={() => {}}
+        account={ACCOUNT}
+      />,
+    )
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "messages:errors.operation.failed",
+      )
+    })
+  })
+
+  it("uses service-credential analytics for its Kelivo export dialog", async () => {
+    const runtimeKey = buildServiceCredentialRuntimeKey(
+      SHAREDCHAT_ACCOUNT,
+      SHAREDCHAT_SERVICE_CREDENTIAL,
+    )
+    const user = userEvent.setup()
+
+    render(
+      <RuntimeKeyActionControls
+        runtimeKey={runtimeKey}
+        actionPolicy={{ copySecret: false, exportSecret: true }}
+        copiedRuntimeKeyId={null}
+        onCopyKey={() => {}}
+        account={SHAREDCHAT_ACCOUNT}
+      />,
+    )
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    expect(kelivoExportDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        analyticsContext: expect.objectContaining({
+          actionId:
+            PRODUCT_ANALYTICS_ACTION_IDS.CopyServiceCredentialKelivoImportCode,
+        }),
+      }),
+    )
+    await user.click(
+      screen.getByRole("button", { name: "close Kelivo export" }),
+    )
+    expect(
+      screen.queryByRole("button", { name: "close Kelivo export" }),
     ).not.toBeInTheDocument()
   })
 
@@ -812,17 +945,7 @@ describe("CopyKeyDialog", () => {
       screen.queryByRole("button", { name: "ui:dialog.copyKey.copy" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", {
-        name: "ui:dialog.copyKey.exportToCCSwitch",
-      }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
+      screen.queryByRole("button", { name: "common:actions.export" }),
     ).not.toBeInTheDocument()
   })
 
@@ -882,7 +1005,7 @@ describe("CopyKeyDialog", () => {
       screen.queryByRole("button", { name: "ui:dialog.copyKey.copy" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
+      screen.queryByRole("button", { name: "common:actions.export" }),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole("button", {
@@ -1502,11 +1625,7 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      await screen.findByRole("button", {
-        name: "ui:dialog.copyKey.useInCherry",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.useInCherry")
 
     await waitFor(() => {
       expect(startProductAnalyticsActionMock).toHaveBeenCalledWith({
@@ -1526,6 +1645,36 @@ describe("CopyKeyDialog", () => {
     })
   })
 
+  it("opens an editable Kelivo export dialog for an account token", async () => {
+    fetchAccountTokensMock.mockResolvedValueOnce([TOKEN])
+    resolveApiTokenKeyMock.mockResolvedValueOnce("sk-full-secret")
+    const user = userEvent.setup()
+
+    render(<CopyKeyDialog isOpen={true} onClose={() => {}} account={ACCOUNT} />)
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "keyManagement:actions.detailsFor",
+      }),
+    )
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(kelivoExportDialogMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isOpen: true,
+          initialValue: {
+            apiType: API_TYPES.OPENAI_COMPATIBLE,
+            name: "Example - default",
+            baseUrl: "https://example.com",
+            apiKey: "sk-full-secret",
+          },
+        }),
+      )
+    })
+    expect(startProductAnalyticsActionMock).not.toHaveBeenCalled()
+  })
+
   it("reports Cherry Studio export failures without leaving the action pending", async () => {
     fetchAccountTokensMock.mockResolvedValueOnce([TOKEN])
     openInCherryStudioMock.mockImplementationOnce(() => {
@@ -1540,9 +1689,7 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      screen.getByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
-    )
+    await selectExportAction(user, "keyManagement:actions.useInCherry")
 
     await waitFor(() => {
       expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
@@ -1573,11 +1720,7 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      await screen.findByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(startProductAnalyticsActionMock).toHaveBeenCalledWith({
@@ -1614,11 +1757,7 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
@@ -1651,11 +1790,7 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(
@@ -1681,15 +1816,10 @@ describe("CopyKeyDialog", () => {
         name: "keyManagement:actions.detailsFor",
       }),
     )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToCliProxy",
-      }),
-    )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToClaudeCodeRouter",
-      }),
+    await selectExportAction(user, "keyManagement:actions.importToCliProxy")
+    await selectExportAction(
+      user,
+      "keyManagement:actions.importToClaudeCodeRouter",
     )
 
     expect(toastErrorMock).toHaveBeenCalledWith(
@@ -1833,11 +1963,7 @@ describe("CopyKeyDialog", () => {
       }),
     )
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "ui:dialog.copyKey.exportToCCSwitch",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.exportToCCSwitch")
     await waitFor(() => {
       expect(ccSwitchDialogMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1847,11 +1973,7 @@ describe("CopyKeyDialog", () => {
       )
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.exportToKiloCode",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.exportToKiloCode")
     await waitFor(() => {
       expect(kiloCodeExportDialogMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1867,11 +1989,7 @@ describe("CopyKeyDialog", () => {
       kiloCodeExportDialogMock.mock.calls[0]?.[0].onClose()
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToCliProxy",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToCliProxy")
     await waitFor(() => {
       expect(cliProxyDialogMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1884,10 +2002,9 @@ describe("CopyKeyDialog", () => {
       cliProxyDialogMock.mock.calls[0]?.[0].onClose()
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToClaudeCodeRouter",
-      }),
+    await selectExportAction(
+      user,
+      "keyManagement:actions.importToClaudeCodeRouter",
     )
     await waitFor(() => {
       expect(claudeCodeRouterDialogMock).toHaveBeenCalledWith(
@@ -1911,12 +2028,7 @@ describe("CopyKeyDialog", () => {
       screen.getByRole("button", { name: "ui:dialog.copyKey.copy" }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.exportToKiloCode",
-      }),
+      screen.getByRole("button", { name: "common:actions.export" }),
     ).toBeInTheDocument()
     expect(screen.getByText("sk-servi****************cret")).toBeInTheDocument()
     expect(
@@ -1943,9 +2055,7 @@ describe("CopyKeyDialog", () => {
     )
     const user = await renderExpandedServiceCredentialDialog()
 
-    await user.click(
-      screen.getByRole("button", { name: "ui:dialog.copyKey.useInCherry" }),
-    )
+    await selectExportAction(user, "keyManagement:actions.useInCherry")
 
     await waitFor(() => {
       expect(openInCherryStudioMock).toHaveBeenCalledWith(
@@ -1960,11 +2070,7 @@ describe("CopyKeyDialog", () => {
       )
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "ui:dialog.copyKey.exportToCCSwitch",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.exportToCCSwitch")
     await waitFor(() => {
       expect(ccSwitchDialogMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1978,11 +2084,7 @@ describe("CopyKeyDialog", () => {
       )
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToCliProxy",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToCliProxy")
     await waitFor(() => {
       expect(cliProxyDialogMock).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -2000,10 +2102,9 @@ describe("CopyKeyDialog", () => {
       cliProxyDialogMock.mock.calls[0]?.[0].onClose()
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToClaudeCodeRouter",
-      }),
+    await selectExportAction(
+      user,
+      "keyManagement:actions.importToClaudeCodeRouter",
     )
     await waitFor(() => {
       expect(claudeCodeRouterDialogMock).toHaveBeenCalledWith(
@@ -2023,11 +2124,7 @@ describe("CopyKeyDialog", () => {
       claudeCodeRouterDialogMock.mock.calls[0]?.[0].onClose()
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
     await waitFor(() => {
       expect(openWithCredentialsMock).toHaveBeenCalledWith(
         {
@@ -2048,11 +2145,7 @@ describe("CopyKeyDialog", () => {
   it("opens Kilo Code profile export for service credentials", async () => {
     const user = await renderExpandedServiceCredentialDialog()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.exportToKiloCode",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.exportToKiloCode")
 
     await waitFor(() => {
       expect(kiloCodeProfileExportDialogMock).toHaveBeenCalledWith(

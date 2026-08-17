@@ -9,6 +9,7 @@ All API Hub is deeply adapted to the following open-source/self-hosted AI distri
 | System Type | Core Management Object | Features |
 |----------|------------|------|
 | **New API / DoneHub / Veloera** | Channel | Classic channel management, supporting 55+ upstream types, with group, priority, and weight systems. |
+| **Sub2API** | Account | Unified access and shared management for Claude, OpenAI, Gemini, Antigravity, and other subscriptions. |
 | **AxonHub** | Channel | High-performance AI gateway, supporting 15+ channel types, with a simple interface and efficient configuration. |
 | **Claude Code Hub** | Provider | Focused on multi-vendor access and elastic scheduling, with clear provider management logic and adaptation to multiple response protocols. |
 | **Octopus** | Channel | Lightweight aggregation service for individuals, supporting 6 mainstream channel types. |
@@ -33,7 +34,7 @@ Open the extension settings page, go to **"Basic Settings"** in the left menu, a
 | Option | Description |
 |------|------|
 | **Base URL** | Your self-hosted system's backend address (usually the web access address). |
-| **Authentication Credentials** | **New API Series**: Requires `Admin Token` and User ID.<br>**AxonHub**: Admin email and password.<br>**Claude Code Hub**: Admin email and password.<br>**Octopus**: Username and password. |
+| **Authentication Credentials** | **New API Series**: Requires `Admin Token` and User ID.<br>**Sub2API**: Admin API Key (only for deployments without `step-up` enabled).<br>**AxonHub**: Admin email and password.<br>**Claude Code Hub**: Admin email and password.<br>**Octopus**: Username and password. |
 
 ### 3. Verify Connection
 Click **"Verify Configuration"**. After successful verification, the management entrance for the corresponding system will be automatically unlocked.

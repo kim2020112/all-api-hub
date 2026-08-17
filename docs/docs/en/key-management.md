@@ -40,13 +40,19 @@ Each token card displays its current "Health Status":
 - **Verify CLI Compatibility**: Test if the token works correctly in specific CLI environments.
 
 ### 4. Export to Other Tools
-Click the **`Export`** button next to a token to sync it to:
-- CherryStudio
-- CC Switch
-- Kilo Code
-- CLIProxyAPI
-- Claude Code Router
-- Your configured Self-hosted Managed Sites
+The token actions area prioritizes the icon for the currently configured self-hosted site. Select it to create or update a channel. Other targets are available from the adjacent **`Export`** menu:
+
+- **Chat clients**: Cherry Studio, Kelivo
+- **Coding agents**: CC Switch, Kilo Code / Roo Code, Cursor++
+- **Gateways and routing tools**: CLIProxyAPI, Claude Code Router
+
+#### Export to Kilo Code / Roo Code
+
+When you select Kilo Code 7.x, each account key is exported as a clearly named `provider` containing every model ID discovered and normalized from the corresponding endpoint, plus any model IDs manually entered and retained for that provider. Inclusion in the export does not guarantee that every model works in every workflow. Select the default `model` and default `provider` separately; this does not reduce the models exported for other providers.
+
+Each `provider` can use OpenAI Compatible, OpenAI Responses, or Anthropic Messages, with OpenAI Compatible as the default. The protocol determines only the AI SDK provider package used by Kilo Code; it does not refetch, clear, or trim the model list already loaded by All API Hub.
+
+The legacy Roo Code / Kilo Code 5.x format selects one model per configuration, and its copied content must be merged into `providerProfiles.apiConfigs`. For file downloads, manual merging, file-size limits, and the API-key display behavior after import, see [Supported Export Tools and Integration Targets](./supported-export-tools.md).
 
 ## Integration with Credentials
 

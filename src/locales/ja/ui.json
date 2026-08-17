@@ -198,7 +198,6 @@
       "defaultGroup": "既定グループ",
       "disabled": "無効",
       "enabled": "有効",
-      "exportToCCSwitch": "CC Switch にエクスポート",
       "getFailed": "取得に失敗しました",
       "keyCopied": "キーをクリップボードにコピーしました",
       "loadFailed": "キー一覧の読み込みに失敗しました: {{error}}",
@@ -208,8 +207,7 @@
       "noKeysDescription": "既定キーをすばやく作成するか、詳細設定付きのカスタムキーを作成してください。",
       "retry": "再試行",
       "title": "キー一覧",
-      "totalKeys_other": "合計 {{count}} キー",
-      "useInCherry": "Cherry Studio で使う"
+      "totalKeys_other": "合計 {{count}} キー"
     },
     "cursorPlus": {
       "actions": {
@@ -334,6 +332,33 @@
       "popupLimitation": "この機能は Firefox ブラウザのポップアップでは正常に利用できません。アカウント追加にはサイドバーモードを使用してください",
       "sidebarInstruction": "ブラウザツールバーの拡張機能アイコンをクリックし、「サイドバー」オプションを選んでサイドバーモードを開いてください",
       "warningTitle": "機能制限のお知らせ"
+    },
+    "kelivo": {
+      "actions": {
+        "copy": "モバイル用インポートコードをコピー"
+      },
+      "baseUrlDescription": "このアドレスがそのままインポートコードに含まれます。",
+      "description": "プロバイダー項目を確認し、Kelivo モバイル版でスキャンするかインポートコードをコピーします。",
+      "desktopNotice": {
+        "description": "Kelivo デスクトップ版には現在プロバイダーのインポート機能がありません。上の項目を使って手動で追加してください。",
+        "title": "Kelivo デスクトップ版は手動設定が必要です"
+      },
+      "googleBaseUrlDescription": "Kelivo の Google プロバイダーでは、Google 公式 API アドレスが使用されます。",
+      "googleNotice": {
+        "description": "Kelivo の Google プロバイダーではカスタム Base URL を使用できません。他のプロトコルに戻すと、以前入力した Base URL が復元されます。",
+        "title": "Google は固定の API アドレスを使用します"
+      },
+      "mobileQrCode": {
+        "description": "Kelivo モバイル版でプロバイダーのインポートを開き、この QR コードをスキャンします。",
+        "title": "Kelivo モバイル版でスキャン"
+      },
+      "mobileQrCodeLabel": "Kelivo モバイル版プロバイダーインポート用 QR コード",
+      "protocolDescription": "Kelivo のインポートコードには OpenAI Responses の設定を含められません。OpenAI Compatible としてインポートし、必要に応じて Kelivo で Responses を有効にしてください。",
+      "securityNotice": {
+        "description": "QR コードとコピーしたインポートコードには API キーが含まれます。チャット、Issue、ログ、リポジトリで共有しないでください。",
+        "title": "モバイル用インポートには API キーが含まれます"
+      },
+      "title": "Kelivo モバイル版にエクスポート"
     },
     "kiloCode": {
       "actions": {

@@ -200,7 +200,6 @@
       "defaultGroup": "Default Group",
       "disabled": "Disabled",
       "enabled": "Enabled",
-      "exportToCCSwitch": "Export to CC Switch",
       "getFailed": "Failed to get",
       "keyCopied": "Key copied to clipboard",
       "loadFailed": "Failed to load key list: {{error}}",
@@ -211,8 +210,7 @@
       "retry": "Retry",
       "title": "Key List",
       "totalKeys_one": "Total {{count}} key",
-      "totalKeys_other": "Total {{count}} keys",
-      "useInCherry": "Use in Cherry Studio"
+      "totalKeys_other": "Total {{count}} keys"
     },
     "cursorPlus": {
       "actions": {
@@ -340,6 +338,33 @@
       "popupLimitation": "This feature cannot be used normally in the popup of Firefox browser. Please use the sidebar mode to add accounts",
       "sidebarInstruction": "Click on the extension icon in the browser toolbar, then select the 'Sidebar' option to open the sidebar mode",
       "warningTitle": "Feature Limitation Reminder"
+    },
+    "kelivo": {
+      "actions": {
+        "copy": "Copy mobile import code"
+      },
+      "baseUrlDescription": "This exact address will be included in the import code.",
+      "description": "Review the provider fields, then scan with Kelivo mobile or copy its import code.",
+      "desktopNotice": {
+        "description": "Kelivo desktop currently has no provider import. Use the fields above to add the provider manually.",
+        "title": "Kelivo desktop requires manual setup"
+      },
+      "googleBaseUrlDescription": "Kelivo uses Google's official API address for Google providers.",
+      "googleNotice": {
+        "description": "Kelivo does not accept a custom Base URL for Google providers. Your non-Google Base URL is kept if you switch back.",
+        "title": "Google uses a fixed API address"
+      },
+      "mobileQrCode": {
+        "description": "Open provider import in Kelivo mobile and scan this QR code.",
+        "title": "Scan with Kelivo mobile"
+      },
+      "mobileQrCodeLabel": "Kelivo mobile provider import QR code",
+      "protocolDescription": "Kelivo import codes cannot include the OpenAI Responses setting. Import as OpenAI Compatible, then enable Responses in Kelivo if needed.",
+      "securityNotice": {
+        "description": "The QR code and copied import code contain your API key. Do not share them in chats, issues, logs, or repositories.",
+        "title": "The mobile import contains your API key"
+      },
+      "title": "Export to Kelivo mobile"
     },
     "kiloCode": {
       "actions": {

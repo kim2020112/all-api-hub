@@ -84,7 +84,7 @@ But once you have multiple accounts, management quickly becomes painful:
 - **Task Result Alerts**: After automated check-ins, WebDAV auto-sync, or model sync completes, receive the result through your browser or a configured notification method so failures and exceptions can be handled promptly.
 
 ### 🛠️ Self-Hosted AI Gateway Management
-- **Manage Popular AI Gateways in One Place**: Manage channels for New API, AxonHub, Claude Code Hub, Octopus, Veloera, and DoneHub directly in the extension without opening each admin panel.
+- **Manage Popular AI Gateways in One Place**: Manage New API, Sub2API, AxonHub, Claude Code Hub, Octopus, Veloera, and DoneHub directly in the extension without opening each admin panel.
 - **Quickly Create Gateway Channels**: Turn saved site accounts or credentials from the API Credential Library into self-hosted AI gateway channels, then call models through the gateway and switch between channels as needed.
 - **Model Sync & Redirects**: Sync channel model lists manually or automatically on a schedule as upstream models change, and define custom redirects so clients can use the model names they prefer.
 
@@ -146,7 +146,7 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
   </a>
   <p>
     FennoAI is a stable and efficient API relay provider focused on Codex relay services. It supports the OpenAI and Anthropic protocols, integrates flexibly with popular coding tools such as Codex, Claude Code, and OpenCode, and reliably handles enterprise demand at the scale of 100 billion tokens per day. It also supports business-to-business settlement and invoicing for entities in China and overseas.
-    FennoAI offers an exclusive benefit for All API Hub users: subscribe through <a href="https://api.fenno.ai/s/DCGC">the dedicated link</a> for just $1.99 to receive $50 in Coding Plan credits. Its referral program offers up to 20% commission on friends' purchases, with higher rewards as you invite more people.
+    FennoAI offers an exclusive benefit for All API Hub users: subscribe through <a href="https://api.fenno.ai/s/DCGC">the dedicated link</a> for just $1.99 to receive $50 in Coding Plan credits. Its referral program offers up to 20% commission on friends' purchases, with higher rewards as you invite more people (<a href="https://all-api-hub.qixing1217.top/en/service-guides/fenno.html">setup guide</a>).
   </p>
 </div>
 
@@ -183,7 +183,7 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
     <img src="resources/partners/xuanshu-api.png" alt="XuanShu API" width="180" align="left" hspace="10" vspace="4">
   </a>
   <p>
-    XuanShu API is a next-generation AI model routing gateway for enterprises, technical teams, and individual developers, providing one-stop API access to leading global models including Claude, GPT, and Grok with enterprise-grade reliability. Top-ups are 20% off, model pricing starts at 20% of standard rates, registration includes US$5 in credit, and business invoices are available. Register through <a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">this exclusive link</a> for an additional US$5 credit.
+    XuanShu API is a next-generation AI model routing gateway for enterprises, technical teams, and individual developers, providing one-stop API access to leading global models including Claude, GPT, and Grok with enterprise-grade reliability. Model pricing ranges from 10% to 60% of standard rates. Register through <a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">this link</a> to receive extra top-up bonuses, with more for your first top-up. Business customers can pay by corporate bank transfer and request invoices (<a href="https://all-api-hub.qixing1217.top/en/service-guides/xuanshuapi.html">setup guide</a>).
   </p>
 </div>
 
@@ -196,7 +196,7 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
   <p>
     Atlas Cloud is a full-modal AI inference platform that gives developers one API for video generation, image
     generation, and LLM access across 300+ curated models. Check out Atlas Cloud's new coding plan promotion for more budget-friendly API access:
-    <a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">this link</a>.
+    <a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">this link</a> (<a href="https://all-api-hub.qixing1217.top/en/service-guides/atlascloud.html">setup guide</a>).
   </p>
 </div>
 
@@ -222,7 +222,7 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
   </a>
   <p>
     Suixiang AI Relay is a reliable and efficient API relay service provider for Claude, Codex, Gemini, and more. It focuses on privacy, transparency, fast support, no data resale, and no model dilution. New accounts can receive ¥0.5 in daily check-in test credits, with 1:1 top-ups, pay-as-you-go billing, redundant routes, cross-region disaster recovery, automatic failover, uninterrupted long-lived SSE streams, and 99.9% availability. Learn more through
-    <a href="https://sui-xiang.com/">this link</a>.
+    <a href="https://sui-xiang.com/">this link</a> (<a href="https://all-api-hub.qixing1217.top/en/service-guides/suixiang.html">setup guide</a>).
   </p>
 </div>
 
@@ -233,7 +233,7 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
     <img src="resources/partners/infistar.png" alt="Infistar" width="180" align="left" hspace="10" vspace="4">
   </a>
   <p>
-    Worried about diluted models, degraded intelligence, or opaque pricing? Every model offered by Infistar.ai is verified through real API calls. Its supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to keep latency low and performance stable during peak demand. It supports leading models from China and around the world, including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, and reranking. Pricing and usage are transparent and easy to check, with models available from 10% of official prices. All API Hub users can register and try the service through the <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">exclusive link</a>.
+    Worried about diluted models, degraded intelligence, or opaque pricing? Every model offered by Infistar.ai is verified through real API calls. Its supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to keep latency low and performance stable during peak demand. It supports leading models from China and around the world, including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, and reranking. Pricing and usage are transparent and easy to check, with models available from 10% of official prices. All API Hub users can register and try the service through the <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">exclusive link</a> (<a href="https://all-api-hub.qixing1217.top/en/service-guides/infistar.html">setup guide</a>).
   </p>
 </div>
 
@@ -270,8 +270,8 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
 ### 🧩 Strong Compatibility
 No matter which architecture you use, there is a good chance we support it:
 - **Account-site compatible architectures**: [new-api](https://github.com/QuantumNous/new-api), [one-api](https://github.com/songquanpeng/one-api), [Sub2API](https://github.com/Wei-Shaw/sub2api), [one-hub](https://github.com/MartialBE/one-hub), [Veloera](https://github.com/Veloera/Veloera), [done-hub](https://github.com/deanxv/done-hub), and more
-- **Specialized account platforms and compatible implementations**: [AnyRouter](https://anyrouter.top), [AIHubMix](https://aihubmix.com/?aff=W3DN), Super-API, v-api, Neo-API, and more
-- **Self-hosted admin backends**: [new-api](https://github.com/QuantumNous/new-api), [AxonHub](https://github.com/looplj/axonhub), [Claude Code Hub](https://github.com/ding113/claude-code-hub), [Octopus](https://github.com/bestruirui/octopus), [Veloera](https://github.com/Veloera/Veloera), [done-hub](https://github.com/deanxv/done-hub), and more, for channel management, migration, and partial model sync
+- **Specialized account platforms and compatible implementations**: [OpenRouter](https://openrouter.ai), [AnyRouter](https://anyrouter.top), [AIHubMix](https://aihubmix.com/?aff=W3DN), Super-API, v-api, Neo-API, and more
+- **Self-hosted admin backends**: [new-api](https://github.com/QuantumNous/new-api), [Sub2API](https://github.com/Wei-Shaw/sub2api), [AxonHub](https://github.com/looplj/axonhub), [Claude Code Hub](https://github.com/ding113/claude-code-hub), [Octopus](https://github.com/bestruirui/octopus), [Veloera](https://github.com/Veloera/Veloera), [done-hub](https://github.com/deanxv/done-hub), and more, for gateway management, migration, and partial model sync
 - **Full list**: 👉 [Supported Sites](https://all-api-hub.qixing1217.top/en/supported-sites.html)
 
 <a id="ui-preview"></a>
@@ -344,6 +344,20 @@ Commercial licenses apply only to code and assets for which the All API Hub main
 - **Language**: [TypeScript](https://www.typescriptlang.org) keeps the entire codebase type-safe
 - **Styling**: [Tailwind CSS](https://tailwindcss.com) supplies utility-first theming primitives
 - **Components**: [Radix UI](https://www.radix-ui.com/) provides accessible primitives for our design system
+
+<a id="community-ecosystem"></a>
+## 🔗 Ecosystem Projects
+
+Community extensions and integrations around All API Hub:
+
+| Project | Description | Features |
+|---------|-------------|----------|
+| [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | AI API proxy service | Import and update provider configurations from All API Hub through its Management API. |
+| [Metapi](https://github.com/cita-777/metapi) | Self-hosted meta-aggregation gateway | Combine multiple relay accounts behind one API entry; originally inspired by All API Hub. |
+| [Fl API Hub](https://github.com/RebornQ/fl_api_hub) | Cross-platform native management client | Manage accounts, balances, and keys with quick check-in support; inspired by All API Hub. |
+| [APIManager](https://github.com/zhalice2011/api-manager) | Local AI API aggregation proxy | Sync accounts from All API Hub and provide unified proxying, routing, and usage dashboards. |
+
+> If you have developed a project based on, integrated with, or inspired by All API Hub, please open a PR to add it to this list.
 
 <a id="acknowledgements"></a>
 ## 🙏 Acknowledgements

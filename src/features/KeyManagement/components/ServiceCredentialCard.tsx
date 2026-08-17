@@ -1,10 +1,11 @@
 import {
-  ArrowPathIcon,
-  CommandLineIcon,
-  KeyIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline"
-import { Copy, Library } from "lucide-react"
+  Copy,
+  KeyRound,
+  Library,
+  RefreshCw,
+  Terminal,
+  Wrench,
+} from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -14,13 +15,12 @@ import { CliProxyExportDialog } from "~/components/CliProxyExportDialog"
 import { CursorPlusExportDialog } from "~/components/CursorPlusExportDialog"
 import { useChannelDialog } from "~/components/dialogs/ChannelDialog"
 import { VerifyCliSupportDialog } from "~/components/dialogs/VerifyCliSupportDialog"
-import { CCSwitchIcon } from "~/components/icons/CCSwitchIcon"
-import { CherryIcon } from "~/components/icons/CherryIcon"
-import { ClaudeCodeRouterIcon } from "~/components/icons/ClaudeCodeRouterIcon"
-import { CliProxyIcon } from "~/components/icons/CliProxyIcon"
-import { CursorPlusIcon } from "~/components/icons/CursorPlusIcon"
-import { KiloCodeIcon } from "~/components/icons/KiloCodeIcon"
-import { ManagedSiteIcon } from "~/components/icons/ManagedSiteIcon"
+import {
+  EXPORT_ACTION_TARGETS,
+  ExportActionsMenu,
+} from "~/components/ExportActionsMenu"
+import { KelivoExportDialog } from "~/components/KelivoExportDialog"
+import { ManagedSiteImportButton } from "~/components/ManagedSiteImportButton"
 import {
   Badge,
   Button,
@@ -128,6 +128,8 @@ export function ServiceCredentialCard({
     useState<ApiCredentialProfile | null>(null)
   const [kiloCodeProfile, setKiloCodeProfile] =
     useState<ApiCredentialProfile | null>(null)
+  const [kelivoProfile, setKelivoProfile] =
+    useState<ApiCredentialProfile | null>(null)
   const [isCursorPlusDialogOpen, setIsCursorPlusDialogOpen] = useState(false)
   const [cliProxyProfile, setCliProxyProfile] =
     useState<ApiCredentialProfile | null>(null)
@@ -225,7 +227,12 @@ export function ServiceCredentialCard({
       tracker.complete(PRODUCT_ANALYTICS_RESULTS.Failure, {
         errorCategory: PRODUCT_ANALYTICS_ERROR_CATEGORIES.Unknown,
       })
-      throw error
+      showResultToast({
+        success: false,
+        message: t("messages:errors.operation.failed", {
+          error: getErrorMessage(error, t("messages:errors.unknown")),
+        }),
+      })
     }
   }
 
@@ -335,6 +342,18 @@ export function ServiceCredentialCard({
           profile={kiloCodeProfile}
         />
       ) : null}
+      {kelivoProfile ? (
+        <KelivoExportDialog
+          isOpen={true}
+          onClose={() => setKelivoProfile(null)}
+          initialValue={kelivoProfile}
+          analyticsContext={{
+            ...apiCredentialProfileExportContext,
+            actionId:
+              PRODUCT_ANALYTICS_ACTION_IDS.CopyServiceCredentialKelivoImportCode,
+          }}
+        />
+      ) : null}
       {isCursorPlusDialogOpen ? (
         <CursorPlusExportDialog
           isOpen={true}
@@ -398,7 +417,7 @@ export function ServiceCredentialCard({
                   onSelectionChange={onSelectionChange}
                   disabledReason={selectionDisabledReason}
                 />
-                <KeyIcon className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                <KeyRound className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
                 <Heading6 className="truncate text-sm sm:text-base">
                   {credential.label}
                 </Heading6>
@@ -439,7 +458,7 @@ export function ServiceCredentialCard({
                   variant="ghost"
                   onClick={() => setVerifyingProfile(transientProfile)}
                 >
-                  <WrenchScrewdriverIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <Wrench className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 </IconButton>
                 <IconButton
                   aria-label={t("actions.verifyCliSupport")}
@@ -447,69 +466,46 @@ export function ServiceCredentialCard({
                   variant="ghost"
                   onClick={() => setCliVerifyingProfile(transientProfile)}
                 >
-                  <CommandLineIcon className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <Terminal className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                 </IconButton>
-                <IconButton
-                  aria-label={t("actions.useInCherry")}
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleUseInCherry}
-                >
-                  <CherryIcon />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.exportToCCSwitch")}
-                  size="sm"
-                  variant="ghost"
-                  data-testid={
-                    KEY_MANAGEMENT_TEST_IDS.serviceCredentialExportToCCSwitchButton
+                <ManagedSiteImportButton
+                  managedSiteType={managedSiteType}
+                  managedSiteLabel={managedSiteLabel}
+                  onImport={handleImportToManagedSite}
+                  testId={
+                    KEY_MANAGEMENT_TEST_IDS.serviceCredentialImportToManagedSiteButton
                   }
-                  onClick={() => setCCSwitchProfile(transientProfile)}
-                >
-                  <CCSwitchIcon />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.exportToKiloCode")}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setKiloCodeProfile(transientProfile)}
-                >
-                  <KiloCodeIcon className="dark:text-dark-text-tertiary text-gray-500" />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.importToCliProxy")}
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleOpenCliProxyDialog}
-                >
-                  <CliProxyIcon size="sm" />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.importToClaudeCodeRouter")}
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleOpenClaudeCodeRouter}
-                >
-                  <ClaudeCodeRouterIcon size="sm" />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.exportToCursorPlus")}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setIsCursorPlusDialogOpen(true)}
-                >
-                  <CursorPlusIcon className="dark:text-dark-text-tertiary text-gray-500" />
-                </IconButton>
-                <IconButton
-                  aria-label={t("actions.importToManagedSite", {
-                    site: managedSiteLabel,
-                  })}
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => void handleImportToManagedSite()}
-                >
-                  <ManagedSiteIcon siteType={managedSiteType} size="sm" />
-                </IconButton>
+                />
+                <ExportActionsMenu
+                  triggerTestId={
+                    KEY_MANAGEMENT_TEST_IDS.serviceCredentialExportMenuButton
+                  }
+                  actions={{
+                    [EXPORT_ACTION_TARGETS.CherryStudio]: {
+                      onSelect: handleUseInCherry,
+                    },
+                    [EXPORT_ACTION_TARGETS.Kelivo]: {
+                      onSelect: () => setKelivoProfile(transientProfile),
+                    },
+                    [EXPORT_ACTION_TARGETS.CCSwitch]: {
+                      testId:
+                        KEY_MANAGEMENT_TEST_IDS.serviceCredentialExportToCCSwitchButton,
+                      onSelect: () => setCCSwitchProfile(transientProfile),
+                    },
+                    [EXPORT_ACTION_TARGETS.CursorPlus]: {
+                      onSelect: () => setIsCursorPlusDialogOpen(true),
+                    },
+                    [EXPORT_ACTION_TARGETS.KiloCode]: {
+                      onSelect: () => setKiloCodeProfile(transientProfile),
+                    },
+                    [EXPORT_ACTION_TARGETS.CliProxy]: {
+                      onSelect: handleOpenCliProxyDialog,
+                    },
+                    [EXPORT_ACTION_TARGETS.ClaudeCodeRouter]: {
+                      onSelect: handleOpenClaudeCodeRouter,
+                    },
+                  }}
+                />
                 {onRotate ? (
                   <Button
                     type="button"
@@ -517,7 +513,7 @@ export function ServiceCredentialCard({
                     variant="outline"
                     loading={isRotating}
                     onClick={() => void onRotate(account)}
-                    leftIcon={<ArrowPathIcon className="h-4 w-4" />}
+                    leftIcon={<RefreshCw className="h-4 w-4" />}
                   >
                     {isRotating
                       ? t("serviceCredential.rotating")
@@ -538,7 +534,7 @@ export function ServiceCredentialCard({
                     data-testid={KEY_MANAGEMENT_TEST_IDS.managedSiteStatusBadge}
                   >
                     {isManagedSiteStatusChecking ? (
-                      <ArrowPathIcon className="h-3 w-3 animate-spin" />
+                      <RefreshCw className="h-3 w-3 animate-spin" />
                     ) : null}
                     {getManagedSiteStatusLabel(t, {
                       isChecking: isManagedSiteStatusChecking,

@@ -52,6 +52,7 @@ export default defineUserConfig({
             collapsible: true,
             children: [
               '/get-started',
+              '/options-overview',
               '/permissions',
               '/extension-update-install',
               '/safari-install',
@@ -64,6 +65,11 @@ export default defineUserConfig({
             children: [
               '/account-management',
               '/service-guides',
+              '/service-guides/fenno',
+              '/service-guides/xuanshuapi',
+              '/service-guides/atlascloud',
+              '/service-guides/suixiang',
+              '/service-guides/infistar',
               '/api-credential-profiles',
               '/key-management',
               '/bookmark-management',
@@ -144,6 +150,7 @@ export default defineUserConfig({
             collapsible: true,
             children: [
               '/en/get-started',
+              '/en/options-overview',
               '/en/permissions',
               '/en/extension-update-install',
               '/en/safari-install',
@@ -156,6 +163,11 @@ export default defineUserConfig({
             children: [
               '/en/account-management',
               '/en/service-guides',
+              '/en/service-guides/fenno',
+              '/en/service-guides/xuanshuapi',
+              '/en/service-guides/atlascloud',
+              '/en/service-guides/suixiang',
+              '/en/service-guides/infistar',
               '/en/api-credential-profiles',
               '/en/key-management',
               '/en/bookmark-management',
@@ -236,6 +248,7 @@ export default defineUserConfig({
             collapsible: true,
             children: [
               '/ja/get-started',
+              '/ja/options-overview',
               '/ja/permissions',
               '/ja/extension-update-install',
               '/ja/safari-install',
@@ -248,6 +261,11 @@ export default defineUserConfig({
             children: [
               '/ja/account-management',
               '/ja/service-guides',
+              '/ja/service-guides/fenno',
+              '/ja/service-guides/xuanshuapi',
+              '/ja/service-guides/atlascloud',
+              '/ja/service-guides/suixiang',
+              '/ja/service-guides/infistar',
               '/ja/api-credential-profiles',
               '/ja/key-management',
               '/ja/bookmark-management',

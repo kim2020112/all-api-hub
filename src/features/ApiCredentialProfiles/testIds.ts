@@ -18,8 +18,14 @@ export const API_CREDENTIAL_PROFILES_TEST_IDS = {
   endpointBaseUrl: "api-credential-profile-endpoint-base-url",
   endpointCredentialCount: "api-credential-profile-endpoint-credential-count",
   exportMenuButton: "api-credential-profile-export-menu-button",
+  copyKelivoImportCodeMenuItem:
+    "api-credential-profile-copy-kelivo-import-code-menu-item",
   exportToCCSwitchMenuItem:
     "api-credential-profile-export-to-cc-switch-menu-item",
+  exportToCursorPlusMenuItem:
+    "api-credential-profile-export-to-cursor-plus-menu-item",
+  importToManagedSiteButton:
+    "api-credential-profile-import-to-managed-site-button",
   exportToKiloCodeMenuItem:
     "api-credential-profile-export-to-kilo-code-menu-item",
   exportToCliProxyMenuItem:

@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import React from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -56,6 +56,9 @@ vi.mock("react-i18next", async (importOriginal) => {
 })
 
 vi.mock("~/components/ui", () => ({
+  Badge: ({ children }: { children: React.ReactNode }) => (
+    <span>{children}</span>
+  ),
   EmptyState: ({ title }: { title: string }) => (
     <div data-testid={TEST_IDS.emptyState}>{title}</div>
   ),
@@ -203,6 +206,9 @@ type CalculatedModelOverrides = {
   source?: CalculatedModelItem["source"]
   effectiveGroup?: string
   resolvedVendor?: CalculatedModelItem["resolvedVendor"]
+  comparableModelIdentity?: CalculatedModelItem["comparableModelIdentity"]
+  isLowestPrice?: boolean
+  isPriceComparable?: boolean
 }
 
 function requireHistoryTarget(
@@ -274,6 +280,12 @@ const createCalculatedModel = (
     activeGroupContext,
     effectiveGroup: overrides.effectiveGroup,
     resolvedVendor: overrides.resolvedVendor ?? { state: "unknown" },
+    comparableModelIdentity: overrides.comparableModelIdentity ?? {
+      key: `exact:${model.model_name}`,
+      displayName: model.model_name,
+    },
+    isLowestPrice: overrides.isLowestPrice,
+    isPriceComparable: overrides.isPriceComparable,
   }
 }
 
@@ -428,6 +440,131 @@ describe("ModelDisplay", () => {
     expect(lastItem).toHaveClass("pb-3")
   })
 
+  it("shows separate comparison regions for each exact model and billing mode", () => {
+    const secondAccountSource = createAccountSource({
+      ...ACCOUNT_FIXTURE,
+      id: "account-2",
+      name: "Account Two",
+    })
+
+    render(
+      <ModelDisplay
+        models={[
+          createCalculatedModel({
+            model: { model_name: "shared-model" },
+            isLowestPrice: true,
+            isPriceComparable: true,
+          }),
+          createCalculatedModel({
+            model: { model_name: "shared-model" },
+            source: secondAccountSource,
+            isPriceComparable: false,
+          }),
+          createCalculatedModel({
+            model: {
+              model_name: "shared-model",
+              quota_type: 1,
+              model_price: 0.2,
+            },
+            isLowestPrice: true,
+            isPriceComparable: true,
+          }),
+          createCalculatedModel({
+            model: { model_name: "other-model" },
+            isLowestPrice: true,
+            isPriceComparable: true,
+          }),
+        ]}
+        verificationSummariesByKey={{}}
+        showRealPrice={true}
+        showRatioColumn={true}
+        showEndpointTypes={true}
+        showPriceComparisonGroups={true}
+        handleGroupClick={vi.fn()}
+      />,
+    )
+
+    const comparisonRegions = screen.getAllByRole("region")
+    expect(comparisonRegions).toHaveLength(3)
+    expect(screen.getAllByTestId(TEST_IDS.virtuosoItem)).toHaveLength(3)
+
+    const tokenGroup = screen.getByRole("region", {
+      name: "shared-model ui:billing.tokenBased",
+    })
+    const perCallGroup = screen.getByRole("region", {
+      name: "shared-model ui:billing.perCall",
+    })
+    const comparableOffers = within(tokenGroup).getByRole("list", {
+      name: "modelList:priceComparison.results.comparable",
+    })
+    const notComparedOffers = within(tokenGroup).getByRole("list", {
+      name: "modelList:priceComparison.results.notCompared",
+    })
+    expect(within(comparableOffers).getAllByRole("listitem")).toHaveLength(1)
+    expect(within(notComparedOffers).getAllByRole("listitem")).toHaveLength(1)
+    expect(within(tokenGroup).getByRole("note")).toHaveTextContent(
+      "modelList:priceComparison.results.notComparedHint",
+    )
+    expect(
+      within(perCallGroup).getAllByTestId(TEST_IDS.modelItem),
+    ).toHaveLength(1)
+    expect(
+      within(tokenGroup).getByText(
+        "modelList:priceComparison.results.notComparedHint",
+      ),
+    ).toBeVisible()
+    expect(
+      within(perCallGroup).queryByRole("list", {
+        name: "modelList:priceComparison.results.notCompared",
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("renders normalized model aliases in one comparison region", () => {
+    const secondAccountSource = createAccountSource({
+      ...ACCOUNT_FIXTURE,
+      id: "account-2",
+      name: "Account Two",
+    })
+    const comparableModelIdentity = {
+      key: "normalized:4-5-claude-sonnet",
+      displayName: "claude-4.5-sonnet",
+    }
+
+    render(
+      <ModelDisplay
+        models={[
+          createCalculatedModel({
+            model: { model_name: "claude-4.5-sonnet" },
+            comparableModelIdentity,
+            isLowestPrice: true,
+            isPriceComparable: true,
+          }),
+          createCalculatedModel({
+            model: { model_name: "gateway/claude_sonnet_4_5:free" },
+            source: secondAccountSource,
+            comparableModelIdentity,
+            isPriceComparable: true,
+          }),
+        ]}
+        verificationSummariesByKey={{}}
+        showRealPrice={true}
+        showRatioColumn={true}
+        showEndpointTypes={true}
+        showPriceComparisonGroups={true}
+        handleGroupClick={vi.fn()}
+      />,
+    )
+
+    const comparisonRegion = screen.getByRole("region", {
+      name: "claude-4.5-sonnet ui:billing.tokenBased",
+    })
+    expect(screen.getAllByRole("region")).toHaveLength(1)
+    expect(
+      within(comparisonRegion).getAllByTestId(TEST_IDS.modelItem),
+    ).toHaveLength(2)
+  })
+
   it("derives account exchange rates, group mode, and account verification summaries for rendered model cards", async () => {
     const user = userEvent.setup()
     const onVerifyModel = vi.fn()
@@ -523,6 +660,32 @@ describe("ModelDisplay", () => {
       ["default", "vip"],
     )
     expect(handleGroupClick).not.toHaveBeenCalled()
+  })
+
+  it("omits verification history when a comparison offer has no valid history target", () => {
+    const sourceWithoutHistoryTarget = createAccountSource({
+      ...ACCOUNT_FIXTURE,
+      id: " ",
+    })
+
+    render(
+      <ModelDisplay
+        models={[
+          createCalculatedModel({
+            source: sourceWithoutHistoryTarget,
+            isPriceComparable: true,
+          }),
+        ]}
+        verificationSummariesByKey={{}}
+        showRealPrice={true}
+        showRatioColumn={true}
+        showEndpointTypes={true}
+        showPriceComparisonGroups={true}
+        handleGroupClick={vi.fn()}
+      />,
+    )
+
+    expect(modelItemSpy.mock.calls.at(-1)?.[0].verificationSummary).toBeNull()
   })
 
   it("uses profile verification summaries without inventing group selection for profile-backed items", () => {

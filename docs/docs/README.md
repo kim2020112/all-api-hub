@@ -41,7 +41,7 @@ features:
   - title: "🚀 网页录入与一键导出"
     details: "从网页快速识别 Base URL 或 API Key，并一键导出至常用 AI 客户端。"
   - title: "🛠️ 主流 AI 网关支持"
-    details: "统一管理 New API、AxonHub、Claude Code Hub、Octopus、Veloera、DoneHub；可用已保存的站点账号或 API 凭据库中的凭据快速创建渠道，统一调用模型、灵活切换渠道，也支持模型同步与重定向。"
+    details: "统一管理 New API、Sub2API、AxonHub、Claude Code Hub、Octopus、Veloera、DoneHub；可用已保存的站点账号或 API 凭据快速添加站点配置，也支持模型同步与重定向。"
   - title: "🔐 本地优先与自动同步"
     details: "数据默认保存在浏览器本地；开启加密 WebDAV 自动同步后，可在多台设备间安全同步，换电脑也能接着使用。"
 
@@ -75,8 +75,8 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
 
 不论你用的是哪种架构，我们基本都支持：
 - **账号站点兼容架构**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub 等。
-- **特色账号平台与兼容实现**：AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
-- **自建管理后台**：New API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于渠道管理、迁移和部分模型同步。
+- **特色账号平台与兼容实现**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
+- **自建管理后台**：New API, Sub2API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于后台管理、迁移和部分模型同步。
 
 > 如果你在 macOS 上使用 Safari，请先查看 [Safari 安装指南](./safari-install.md)。
 > 如果你使用 QQ/360/Brave/Vivaldi/Opera 等浏览器，请查看 [其他浏览器安装指南](./other-browser-install.md)。
@@ -124,7 +124,7 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    FennoAI 是一家稳定、高效的 API 中转服务商，目前主要提供 Codex 中转服务，兼容 OpenAI 及 Anthropic 协议，可灵活接入 Codex、Claude Code、OpenCode 等主流编程工具，可稳定支撑千亿 Token/日的企业级调用需求，支持国内及海外主体公对公结算、开票。FennoAI 为 All API Hub 用户提供专属福利：通过<a href="https://api.fenno.ai/s/DCGC">专属链接</a>购买订阅，仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度。同时支持邀请奖励，邀请好友购买最高可获得 20% 返佣，邀请越多，奖励越高。
+    FennoAI 是一家稳定、高效的 API 中转服务商，目前主要提供 Codex 中转服务，兼容 OpenAI 及 Anthropic 协议，可灵活接入 Codex、Claude Code、OpenCode 等主流编程工具，可稳定支撑千亿 Token/日的企业级调用需求，支持国内及海外主体公对公结算、开票。FennoAI 为 All API Hub 用户提供专属福利：通过<a href="https://api.fenno.ai/s/DCGC">专属链接</a>购买订阅，仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度。同时支持邀请奖励，邀请好友购买最高可获得 20% 返佣，邀请越多，奖励越高（<a href="./service-guides/fenno.md">使用教程</a>）。
   </p>
 </div>
 
@@ -164,7 +164,7 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    玄枢API是面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供企业级稳定性的全球顶级模型（Claude, GPT, Grok等）一站式API 接入。充值享八折，模型2折起，注册送5美金，企业支持开票，通过<a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">此链接</a>注册额外获赠5美金额度。
+    玄枢API是面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供企业级稳定性的全球顶级模型（Claude, GPT, Grok等）一站式API 接入。模型一折到六折，通过<a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">此链接</a>注册，充值额外加赠，首充送更多！企业支持对公转账和开票（<a href="./service-guides/xuanshuapi.md">使用教程</a>）。
   </p>
 </div>
 
@@ -178,20 +178,7 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
   </div>
   <p class="readme-sponsor-copy">
     Atlas Cloud 是全模态 AI 推理平台，开发者只需接入一个 AI API，即可统一访问视频生成、图像生成和 LLM
-    API，覆盖 300+ 精选模型。Atlas Cloud 新推出 Coding Plan 优惠，适合需要更高性价比 API 访问的开发者，欢迎通过<a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">此链接</a>了解。
-  </p>
-</div>
-
-<hr class="readme-sponsor-divider">
-
-<div class="readme-sponsor">
-  <div class="readme-sponsor-logo">
-    <a href="https://sui-xiang.com/">
-      <img src="../../resources/partners/suixiang.jpg" alt="随想AI中转站">
-    </a>
-  </div>
-  <p class="readme-sponsor-copy">
-    随想AI中转站 是一家可靠高效的 API 中继服务提供商，提供 Claude、Codex、Gemini 等的中继服务。注重隐私的中转站无数据倒卖无模型掺水，隐私，透明，极速售后。新账户注册每日签到就送 0.5 元测试额度，充值额度 1:1，无需订阅，按量付费。多线路冗余、跨区域容灾、自动故障切换，长链路 SSE 不中断。99.9% 可用性，关键调用从不掉队。欢迎通过<a href="https://sui-xiang.com/">此链接</a>了解和使用。
+    API，覆盖 300+ 精选模型。Atlas Cloud 新推出 Coding Plan 优惠，适合需要更高性价比 API 访问的开发者，欢迎通过<a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">此链接</a>了解（<a href="./service-guides/atlascloud.md">使用教程</a>）。
   </p>
 </div>
 
@@ -213,12 +200,25 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
 
 <div class="readme-sponsor">
   <div class="readme-sponsor-logo">
+    <a href="https://sui-xiang.com/">
+      <img src="../../resources/partners/suixiang.jpg" alt="随想AI中转站">
+    </a>
+  </div>
+  <p class="readme-sponsor-copy">
+    随想AI中转站 是一家可靠高效的 API 中继服务提供商，提供 Claude、Codex、Gemini 等的中继服务。注重隐私的中转站无数据倒卖无模型掺水，隐私，透明，极速售后。新账户注册每日签到就送 0.5 元测试额度，充值额度 1:1，无需订阅，按量付费。多线路冗余、跨区域容灾、自动故障切换，长链路 SSE 不中断。99.9% 可用性，关键调用从不掉队。欢迎通过<a href="https://sui-xiang.com/">此链接</a>了解和使用（<a href="./service-guides/suixiang.md">使用教程</a>）。
+  </p>
+</div>
+
+<hr class="readme-sponsor-divider">
+
+<div class="readme-sponsor">
+  <div class="readme-sponsor-logo">
     <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">
       <img src="../../resources/partners/infistar.png" alt="Infistar.ai">
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    担心模型掺水、降智或价格不透明？Infistar.ai 在售模型均经过真实调用验真，供给来自官方 API 与官方号池，超 10000 条供应链路进行负载均衡，保证时延和峰时稳定性。覆盖 ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax 等国内外主流模型，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明清晰可查，模型低至官方价的 10%。All API Hub 用户可通过<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">专属入口</a>注册体验。
+    担心模型掺水、降智或价格不透明？Infistar.ai 在售模型均经过真实调用验真，供给来自官方 API 与官方号池，超 10000 条供应链路进行负载均衡，保证时延和峰时稳定性。覆盖 ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax 等国内外主流模型，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明清晰可查，模型低至官方价的 10%。All API Hub 用户可通过<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">专属入口</a>注册体验（<a href="./service-guides/infistar.md">使用教程</a>）。
   </p>
 </div>
 

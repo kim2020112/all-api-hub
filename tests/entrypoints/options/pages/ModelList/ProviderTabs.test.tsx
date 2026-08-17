@@ -37,16 +37,6 @@ vi.mock("~/services/productAnalytics/actions", () => ({
     trackProductAnalyticsActionCompletedMock(...args),
 }))
 
-vi.mock("@heroicons/react/24/outline", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@heroicons/react/24/outline")>()
-  const CpuChipIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg role="img" data-publisher-icon="generic" {...props} />
-  )
-
-  return { ...actual, CpuChipIcon }
-})
-
 vi.mock("lucide-react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("lucide-react")>()
   const createIcon = (name: string) =>
@@ -57,6 +47,9 @@ vi.mock("lucide-react", async (importOriginal) => {
   return {
     ...actual,
     CircleHelp: createIcon("unknown-vendor"),
+    Cpu: (props: React.SVGProps<SVGSVGElement>) => (
+      <svg role="img" data-publisher-icon="generic" {...props} />
+    ),
     LayoutGrid: createIcon("all-vendors"),
   }
 })
@@ -64,12 +57,6 @@ vi.mock("lucide-react", async (importOriginal) => {
 vi.mock("@lobehub/icons/es/Google/components/Color", () => ({
   default: (props: React.SVGProps<SVGSVGElement>) => (
     <svg role="img" data-publisher-icon="Google-color" {...props} />
-  ),
-}))
-
-vi.mock("@lobehub/icons/es/Google/components/Mono", () => ({
-  default: (props: React.SVGProps<SVGSVGElement>) => (
-    <svg role="img" data-publisher-icon="Google-mono" {...props} />
   ),
 }))
 

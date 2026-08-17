@@ -44,14 +44,14 @@
 如果你正在寻找稳定、高效且兼容性良好的 AI 中转服务，可以尝试我们的合作伙伴：
 
 - [七牛云AI](https://s.qiniu.com/qE3eai)：企业级大模型 MaaS 平台，一站式调用全球 150+ 主流模型，企业用户可免费领 1200 万 Token。
-- [FennoAI](https://api.fenno.ai/s/DCGC)：稳定、高效的 Codex 中转服务商，兼容 OpenAI 及 Anthropic 协议，可接入主流编程工具并支撑千亿 Token/日的企业级调用；All API Hub 用户仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度，邀请好友购买最高可获得 20% 返佣。
+- [FennoAI](https://api.fenno.ai/s/DCGC)：稳定、高效的 Codex 中转服务商，兼容 OpenAI 及 Anthropic 协议，可接入主流编程工具并支撑千亿 Token/日的企业级调用；All API Hub 用户仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度，邀请好友购买最高可获得 20% 返佣。[使用教程](./service-guides/fenno.md)
 - [PackyCode](https://www.packyapi.com/register?aff=all-api-hub)：注册并充值时填写 `all-api-hub` 优惠码可享 9 折。[使用教程](./sponsor-guides/packycode.md)
 - [星辰AI](https://ai.centos.hk)：充值比例 1:1，可开发票；Claude 低至 4 折。[使用教程](./sponsor-guides/xingchen.md)
-- [玄枢API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供 Claude、GPT、Grok 等全球顶级模型一站式 API 接入；充值享八折，模型 2 折起，注册送 5 美金，通过专属链接注册额外获赠 5 美金额度，企业支持开票。
-- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：一个 AI API 访问 300+ 精选视频、图像和 LLM 模型，新 Coding Plan 提供更高性价比的 API 访问。
+- [玄枢API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供企业级稳定性的全球顶级模型（Claude, GPT, Grok等）一站式 API 接入。模型一折到六折，通过此链接注册，充值额外加赠，首充送更多！企业支持对公转账和开票。[使用教程](./service-guides/xuanshuapi.md)
+- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：一个 AI API 访问 300+ 精选视频、图像和 LLM 模型，新 Coding Plan 提供更高性价比的 API 访问。[使用教程](./service-guides/atlascloud.md)
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：提供 Claude Code / Codex / Gemini CLI 官方高稳定中转服务，通过此链接注册可享首充 8 折，企业客户最高可享 7.5 折。
-- [随想AI中转站](https://sui-xiang.com/)：提供 Claude、Codex、Gemini 等 API 中继服务，按量付费，支持每日签到测试额度、多线路冗余和自动故障切换。
-- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：在售模型均经真实调用验真，通过超 10000 条官方 API 与官方号池供应链路负载均衡，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明，模型低至官方价的 10%。
+- [随想AI中转站](https://sui-xiang.com/)：提供 Claude、Codex、Gemini 等 API 中继服务，按量付费，支持每日签到测试额度、多线路冗余和自动故障切换。[使用教程](./service-guides/suixiang.md)
+- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：在售模型均经真实调用验真，通过超 10000 条官方 API 与官方号池供应链路负载均衡，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明，模型低至官方价的 10%。[使用教程](./service-guides/infistar.md)
 - [火山引擎方舟 Coding-Plan](https://dis.chatdesks.cn/chatdesk/hsyqallapihub.html)：Lite 套餐 9.9 元/月起，并有邀请返利及首单优惠。
 :::
 
@@ -68,8 +68,8 @@
 
 不论你用的是哪种架构，我们基本都支持：
 - **账号站点兼容架构**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub 等。
-- **特色账号平台与兼容实现**：AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
-- **自建管理后台**：New API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于渠道管理、迁移和部分模型同步。
+- **特色账号平台与兼容实现**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
+- **自建管理后台**：New API, Sub2API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于后台管理、迁移和部分模型同步。
 
 ::: tip 兼容性提示
 如果是基于账号站点兼容架构搭建的中转站，通常可以作为账号添加；AxonHub、Octopus、Claude Code Hub 等则主要作为自建管理后台使用。完整的兼容列表请查看 [支持的站点与系统类型](./supported-sites.md)。
@@ -81,8 +81,8 @@
 添加账号后，你可以一键将这些配置“推”给其它 AI 工具，再也不用手动复制粘贴。
 
 1. 进入 **`密钥管理`** 页面。
-2. 找到你想导出的 Key，在菜单中选择 **`导出到 CherryStudio`**、**`导出到 CC Switch`** 等。
-3. 你的 AI 客户端会自动唤起并完成配置。
+2. 找到你想导出的 Key：导入自建托管站点时，直接点击操作区中当前托管站点的图标；导出到其他工具时，点击 **`导出`**，再从“聊天客户端”“编程 Agents”或“网关与路由工具”分组中选择目标。
+3. 按弹窗提示完成应用唤起、复制、下载或导入。
 
 > 完整列表请查看 [支持的导出工具与集成目标](./supported-export-tools.md)。
 
@@ -91,6 +91,7 @@
 ## 5. 核心功能深入指南
 
 ### 📊 资产看板与统计
+- **[设置页总览（主仪表盘）](./options-overview.md)**：一屏查看账号状态、凭据库、今日用量与待办事项。
 - **[资产总览与实时刷新](./auto-refresh.md)**：集中查看多站余额、用量与健康状态。
 - **[余额历史记录](./balance-history.md)**：直观呈现资产变动趋势。
 - **[用量统计分析](./usage-analytics.md)**：多维度分析消耗、模型分布与延迟。

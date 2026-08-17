@@ -1,20 +1,18 @@
-import { CheckIcon } from "@heroicons/react/24/outline"
-import { Copy } from "lucide-react"
-import { useMemo, useState, type MouseEvent } from "react"
+import { Check, Copy } from "lucide-react"
+import { useEffect, useMemo, useState, type MouseEvent } from "react"
 import { useTranslation } from "react-i18next"
 
 import { ClaudeCodeRouterImportDialog } from "~/components/ClaudeCodeRouterImportDialog"
 import { CliProxyExportDialog } from "~/components/CliProxyExportDialog"
 import { CursorPlusExportDialog } from "~/components/CursorPlusExportDialog"
 import { useChannelDialog } from "~/components/dialogs/ChannelDialog"
-import { CCSwitchIcon } from "~/components/icons/CCSwitchIcon"
-import { CherryIcon } from "~/components/icons/CherryIcon"
-import { ClaudeCodeRouterIcon } from "~/components/icons/ClaudeCodeRouterIcon"
-import { CliProxyIcon } from "~/components/icons/CliProxyIcon"
-import { CursorPlusIcon } from "~/components/icons/CursorPlusIcon"
-import { KiloCodeIcon } from "~/components/icons/KiloCodeIcon"
-import { ManagedSiteIcon } from "~/components/icons/ManagedSiteIcon"
+import {
+  EXPORT_ACTION_TARGETS,
+  ExportActionsMenu,
+} from "~/components/ExportActionsMenu"
+import { KelivoExportDialog } from "~/components/KelivoExportDialog"
 import { KiloCodeExportDialog } from "~/components/KiloCodeExportDialog"
+import { ManagedSiteImportButton } from "~/components/ManagedSiteImportButton"
 import { IconButton } from "~/components/ui"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
 import { ACCOUNT_MANAGEMENT_TEST_IDS } from "~/features/AccountManagement/testIds"
@@ -27,6 +25,7 @@ import {
 import type { KeyResourceActionPolicy } from "~/features/KeyManagement/presentation/keyResourceCard"
 import {
   accountRuntimeKeyToLegacyAccountToken,
+  collectAccountRuntimeKeySecrets,
   isAccountTokenRuntimeKey,
   isServiceCredentialRuntimeKey,
   type AccountRuntimeKey,
@@ -35,6 +34,7 @@ import {
 import { resolveDisplayAccountRuntimeKeySecret } from "~/services/accounts/utils/apiServiceRequest"
 import { buildApiCredentialProfileName } from "~/services/apiCredentialProfiles/accountTokenProfileName"
 import { OpenInCherryStudio } from "~/services/integrations/cherryStudio"
+import type { KelivoProviderExportInput } from "~/services/integrations/kelivo"
 import { getManagedSiteLabel } from "~/services/managedSites/utils/managedSite"
 import { startProductAnalyticsAction } from "~/services/productAnalytics/actions"
 import {
@@ -46,6 +46,7 @@ import {
   PRODUCT_ANALYTICS_SURFACE_IDS,
 } from "~/services/productAnalytics/contracts"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
+import { toSanitizedErrorSummary } from "~/services/verification/aiApiVerification/utils"
 import type { ApiToken, DisplaySiteData } from "~/types"
 import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
 import { getErrorMessage } from "~/utils/core/error"
@@ -108,6 +109,14 @@ export function RuntimeKeyActionControls({
   const [isCliProxyDialogOpen, setIsCliProxyDialogOpen] = useState(false)
   const [isKiloCodeDialogOpen, setIsKiloCodeDialogOpen] = useState(false)
   const [isCursorPlusDialogOpen, setIsCursorPlusDialogOpen] = useState(false)
+  const [kelivoExportInput, setKelivoExportInput] =
+    useState<KelivoProviderExportInput | null>(null)
+
+  useEffect(() => {
+    if (!actionPolicy.exportSecret) {
+      setKelivoExportInput(null)
+    }
+  }, [actionPolicy.exportSecret])
 
   const managedSiteLabel = getManagedSiteLabel(t, managedSiteType)
   const accountToken = isAccountTokenRuntimeKey(runtimeKey)
@@ -120,13 +129,15 @@ export function RuntimeKeyActionControls({
         : null,
     [account, runtimeKey],
   )
+  const kelivoActionId = serviceCredentialProfile
+    ? PRODUCT_ANALYTICS_ACTION_IDS.CopyServiceCredentialKelivoImportCode
+    : PRODUCT_ANALYTICS_ACTION_IDS.CopyAccountTokenKelivoImportCode
   const handleCopy = (event: MouseEvent) => {
     event.stopPropagation()
     void onCopyKey(runtimeKey)
   }
 
-  const handleUseInCherry = async (event: MouseEvent) => {
-    event.stopPropagation()
+  const handleUseInCherry = async () => {
     const tracker = startProductAnalyticsAction({
       featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
       actionId: PRODUCT_ANALYTICS_ACTION_IDS.ExportAccountTokenToCherryStudio,
@@ -165,8 +176,54 @@ export function RuntimeKeyActionControls({
     }
   }
 
-  const handleExportToCCSwitch = (event: MouseEvent) => {
-    event.stopPropagation()
+  const handleOpenKelivoExportDialog = async () => {
+    try {
+      let exportInput: KelivoProviderExportInput
+      if (serviceCredentialProfile) {
+        exportInput = serviceCredentialProfile
+      } else {
+        const resolvedRuntimeKey = await resolveDisplayAccountRuntimeKeySecret(
+          account,
+          runtimeKey,
+        )
+        exportInput = {
+          apiType: API_TYPES.OPENAI_COMPATIBLE,
+          name: buildApiCredentialProfileName({
+            accountName: account.name,
+            fallbackAccountName: account.name,
+            tokenName: resolvedRuntimeKey.label,
+          }),
+          baseUrl: resolvedRuntimeKey.baseUrl,
+          apiKey: resolvedRuntimeKey.secret,
+        }
+      }
+
+      setKelivoExportInput(exportInput)
+    } catch (error) {
+      const tracker = startProductAnalyticsAction({
+        featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+        actionId: kelivoActionId,
+        surfaceId:
+          PRODUCT_ANALYTICS_SURFACE_IDS.OptionsAccountManagementRowActions,
+        entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
+      })
+      tracker.complete(PRODUCT_ANALYTICS_RESULTS.Failure, {
+        errorCategory: PRODUCT_ANALYTICS_ERROR_CATEGORIES.Unknown,
+      })
+      showResultToast({
+        success: false,
+        message: t("messages:errors.operation.failed", {
+          error:
+            toSanitizedErrorSummary(
+              error,
+              collectAccountRuntimeKeySecrets([runtimeKey]),
+            ) || t("messages:errors.unknown"),
+        }),
+      })
+    }
+  }
+
+  const handleExportToCCSwitch = () => {
     if (serviceCredentialProfile) {
       onOpenCCSwitchDialog?.(
         createExportToken(serviceCredentialProfile),
@@ -179,8 +236,7 @@ export function RuntimeKeyActionControls({
     onOpenCCSwitchDialog?.(legacyToken, account)
   }
 
-  const handleImportToManagedSite = async (event: MouseEvent) => {
-    event.stopPropagation()
+  const handleImportToManagedSite = async () => {
     const tracker = startProductAnalyticsAction({
       featureId: PRODUCT_ANALYTICS_FEATURE_IDS.ManagedSiteChannels,
       actionId: PRODUCT_ANALYTICS_ACTION_IDS.ImportManagedSiteSingleToken,
@@ -237,8 +293,7 @@ export function RuntimeKeyActionControls({
     }
   }
 
-  const handleOpenCliProxyDialog = (event: MouseEvent) => {
-    event.stopPropagation()
+  const handleOpenCliProxyDialog = () => {
     if (!cliProxyBaseUrl?.trim() || !cliProxyManagementKey?.trim()) {
       showResultToast({
         success: false,
@@ -249,8 +304,7 @@ export function RuntimeKeyActionControls({
     setIsCliProxyDialogOpen(true)
   }
 
-  const handleOpenClaudeCodeRouter = (event: MouseEvent) => {
-    event.stopPropagation()
+  const handleOpenClaudeCodeRouter = () => {
     if (!claudeCodeRouterBaseUrl) {
       showResultToast({
         success: false,
@@ -362,6 +416,20 @@ export function RuntimeKeyActionControls({
           runtimeKey={runtimeKey}
         />
       ) : null}
+      {actionPolicy.exportSecret && kelivoExportInput ? (
+        <KelivoExportDialog
+          isOpen={true}
+          onClose={() => setKelivoExportInput(null)}
+          initialValue={kelivoExportInput}
+          analyticsContext={{
+            featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+            actionId: kelivoActionId,
+            surfaceId:
+              PRODUCT_ANALYTICS_SURFACE_IDS.OptionsAccountManagementRowActions,
+            entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
+          }}
+        />
+      ) : null}
       {renderClaudeCodeRouterImportDialog()}
       {renderCliProxyExportDialog()}
       <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
@@ -377,7 +445,7 @@ export function RuntimeKeyActionControls({
             onClick={handleCopy}
           >
             {copiedRuntimeKeyId === runtimeKey.id ? (
-              <CheckIcon className="h-4 w-4 text-green-500" />
+              <Check className="h-4 w-4 text-green-500" />
             ) : (
               <Copy className="dark:text-dark-text-tertiary h-4 w-4 text-gray-500" />
             )}
@@ -385,78 +453,50 @@ export function RuntimeKeyActionControls({
         ) : null}
         {actionPolicy.exportSecret ? (
           <>
-            <IconButton
-              aria-label={t("dialog.copyKey.useInCherry")}
-              variant="ghost"
-              size="sm"
-              onClick={handleUseInCherry}
-            >
-              <CherryIcon />
-            </IconButton>
-            {onOpenCCSwitchDialog && (
-              <IconButton
-                aria-label={t("dialog.copyKey.exportToCCSwitch")}
-                variant="ghost"
-                size="sm"
-                data-testid={
-                  ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportToCCSwitchButton
-                }
-                onClick={handleExportToCCSwitch}
-              >
-                <CCSwitchIcon />
-              </IconButton>
-            )}
-            <IconButton
-              aria-label={t("keyManagement:actions.exportToKiloCode")}
-              variant="ghost"
-              size="sm"
-              onClick={(event) => {
-                event.stopPropagation()
-                setIsKiloCodeDialogOpen(true)
-              }}
-            >
-              <KiloCodeIcon className="dark:text-dark-text-tertiary text-gray-500" />
-            </IconButton>
-            <IconButton
-              aria-label={t("keyManagement:actions.importToCliProxy")}
-              variant="ghost"
-              size="sm"
-              onClick={handleOpenCliProxyDialog}
-            >
-              <CliProxyIcon size="sm" />
-            </IconButton>
-            <IconButton
-              aria-label={t("keyManagement:actions.importToClaudeCodeRouter")}
-              variant="ghost"
-              size="sm"
-              onClick={handleOpenClaudeCodeRouter}
-            >
-              <ClaudeCodeRouterIcon size="sm" />
-            </IconButton>
-            <IconButton
-              aria-label={t("keyManagement:actions.exportToCursorPlus")}
-              variant="ghost"
-              size="sm"
-              data-testid={
-                ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportToCursorPlusButton
+            <ManagedSiteImportButton
+              managedSiteType={managedSiteType}
+              managedSiteLabel={managedSiteLabel}
+              onImport={handleImportToManagedSite}
+              testId={
+                ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogImportToManagedSiteButton
               }
-              onClick={(event) => {
-                event.stopPropagation()
-                setIsCursorPlusDialogOpen(true)
+            />
+            <ExportActionsMenu
+              triggerTestId={
+                ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportMenuButton
+              }
+              actions={{
+                [EXPORT_ACTION_TARGETS.CherryStudio]: {
+                  onSelect: handleUseInCherry,
+                },
+                [EXPORT_ACTION_TARGETS.Kelivo]: {
+                  onSelect: handleOpenKelivoExportDialog,
+                },
+                ...(onOpenCCSwitchDialog
+                  ? {
+                      [EXPORT_ACTION_TARGETS.CCSwitch]: {
+                        testId:
+                          ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportToCCSwitchButton,
+                        onSelect: handleExportToCCSwitch,
+                      },
+                    }
+                  : {}),
+                [EXPORT_ACTION_TARGETS.CursorPlus]: {
+                  testId:
+                    ACCOUNT_MANAGEMENT_TEST_IDS.copyKeyDialogExportToCursorPlusButton,
+                  onSelect: () => setIsCursorPlusDialogOpen(true),
+                },
+                [EXPORT_ACTION_TARGETS.KiloCode]: {
+                  onSelect: () => setIsKiloCodeDialogOpen(true),
+                },
+                [EXPORT_ACTION_TARGETS.CliProxy]: {
+                  onSelect: handleOpenCliProxyDialog,
+                },
+                [EXPORT_ACTION_TARGETS.ClaudeCodeRouter]: {
+                  onSelect: handleOpenClaudeCodeRouter,
+                },
               }}
-            >
-              <CursorPlusIcon className="dark:text-dark-text-tertiary text-gray-500" />
-            </IconButton>
-            <IconButton
-              aria-label={t("keyManagement:actions.importToManagedSite", {
-                site: managedSiteLabel,
-              })}
-              variant="ghost"
-              size="sm"
-              onClick={handleImportToManagedSite}
-            >
-              <ManagedSiteIcon siteType={managedSiteType} size="sm" />
-            </IconButton>
+            />
           </>
         ) : null}
       </div>

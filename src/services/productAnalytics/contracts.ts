@@ -327,6 +327,17 @@ export const PRODUCT_ANALYTICS_TARGET_KINDS = {
 export type ProductAnalyticsTargetKind =
   (typeof PRODUCT_ANALYTICS_TARGET_KINDS)[keyof typeof PRODUCT_ANALYTICS_TARGET_KINDS]
 
+export const PRODUCT_ANALYTICS_MODEL_PRICE_COMPARISON_PRESETS = {
+  AzureConversation: "azure_conversation",
+  MooncakeToolAgent: "mooncake_tool_agent",
+  AzureCode: "azure_code",
+  TracelabCodingAgent: "tracelab_coding_agent",
+  Custom: "custom",
+} as const
+
+export type ProductAnalyticsModelPriceComparisonPreset =
+  (typeof PRODUCT_ANALYTICS_MODEL_PRICE_COMPARISON_PRESETS)[keyof typeof PRODUCT_ANALYTICS_MODEL_PRICE_COMPARISON_PRESETS]
+
 export const PRODUCT_ANALYTICS_TARGET_STATES = {
   Enabled: "enabled",
   Disabled: "disabled",
@@ -497,6 +508,10 @@ export type ProductAnalyticsFeatureId =
 export const PRODUCT_ANALYTICS_ACTION_IDS = {
   CopyApiCredentialBundle: "copy_api_credential_bundle",
   CopyApiCredentialExportConfig: "copy_api_credential_export_config",
+  CopyApiCredentialProfileKelivoImportCode:
+    "copy_api_credential_profile_kelivo_import_code",
+  CopyApiCredentialProfileCursorPlusProviderConfig:
+    "copy_api_credential_profile_cursor_plus_provider_config",
   CopyApiKey: "copy_api_key",
   CopyBaseUrl: "copy_base_url",
   CopyBookmarkUrl: "copy_bookmark_url",
@@ -508,6 +523,9 @@ export const PRODUCT_ANALYTICS_ACTION_IDS = {
   CopyAccountInviteLink: "copy_account_invite_link",
   CopySelectedAccountInviteLinks: "copy_selected_account_invite_links",
   CopyAccountTokenKey: "copy_account_token_key",
+  CopyAccountTokenKelivoImportCode: "copy_account_token_kelivo_import_code",
+  CopyServiceCredentialKelivoImportCode:
+    "copy_service_credential_kelivo_import_code",
   CopyVisibleModelNames: "copy_visible_model_names",
   CreateAccount: "create_account",
   CreateAccountToken: "create_account_token",
@@ -526,6 +544,7 @@ export const PRODUCT_ANALYTICS_ACTION_IDS = {
   DeleteManagedSiteChannel: "delete_managed_site_channel",
   DeleteSelectedManagedSiteChannels: "delete_selected_managed_site_channels",
   DisableSelectedAccounts: "disable_selected_accounts",
+  ConfigureModelPriceComparison: "configure_model_price_comparison",
   EnableModelPriceComparison: "enable_model_price_comparison",
   EnableProductAnalytics: "enable_product_analytics",
   EnterAccountBulkMode: "enter_account_bulk_mode",
@@ -1184,6 +1203,9 @@ export type ProductAnalyticsEventPayloadMap = {
     model_count?: number
     filter_count?: number
     result_count?: number
+    price_comparison_preset?: ProductAnalyticsModelPriceComparisonPreset
+    changed_meter_count?: number
+    modeled_meter_count?: number
     usage_data_present?: boolean
     route_params_present?: boolean
     shield_bypass_prompt_shown_count?: number

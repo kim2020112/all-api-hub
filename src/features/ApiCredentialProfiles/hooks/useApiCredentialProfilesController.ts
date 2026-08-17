@@ -547,7 +547,11 @@ export function useApiCredentialProfilesController() {
 
   const [ccSwitchProfile, setCCSwitchProfile] =
     useState<ApiCredentialProfile | null>(null)
+  const [cursorPlusProfile, setCursorPlusProfile] =
+    useState<ApiCredentialProfile | null>(null)
   const [kiloCodeProfile, setKiloCodeProfile] =
+    useState<ApiCredentialProfile | null>(null)
+  const [kelivoProfile, setKelivoProfile] =
     useState<ApiCredentialProfile | null>(null)
   const [cliProxyProfile, setCliProxyProfile] =
     useState<ApiCredentialProfile | null>(null)
@@ -583,8 +587,18 @@ export function useApiCredentialProfilesController() {
         return
       }
 
+      if (action === API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.Kelivo) {
+        setKelivoProfile(profile)
+        return
+      }
+
       if (action === API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CCSwitch) {
         setCCSwitchProfile(profile)
+        return
+      }
+
+      if (action === API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CursorPlus) {
+        setCursorPlusProfile(profile)
         return
       }
 
@@ -830,8 +844,12 @@ export function useApiCredentialProfilesController() {
 
     ccSwitchProfile,
     setCCSwitchProfile,
+    cursorPlusProfile,
+    setCursorPlusProfile,
     kiloCodeProfile,
     setKiloCodeProfile,
+    kelivoProfile,
+    setKelivoProfile,
     cliProxyProfile,
     setCliProxyProfile,
     claudeCodeRouterProfile,

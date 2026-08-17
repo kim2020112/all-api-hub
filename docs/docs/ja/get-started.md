@@ -44,14 +44,14 @@
 安定していて効率的かつ互換性の高い AI プロキシサービスをお探しなら、次のパートナーをお試しください。
 
 - [Qiniu Cloud AI](https://s.qiniu.com/qE3eai)：150 以上の主要グローバルモデルへ一括アクセスできる企業向け MaaS プラットフォームです。企業ユーザーは 1,200 万トークンの無料枠を受け取れます。
-- [Fenno.ai](https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4)：OpenAI と Anthropic プロトコルに対応した、安定性と効率性の高い Codex 中継サービスです。Codex、Claude Code、OpenCode などの開発ツールに接続でき、All API Hub ユーザーは 9.9 元 / 150 ドル相当の Coding Plan を利用できます。
+- [FennoAI](https://api.fenno.ai/s/DCGC)：OpenAI と Anthropic プロトコルに対応した、安定性と効率性の高い Codex 中継サービスです。主要なコーディングツールに接続でき、1 日あたり 1,000 億 Token 規模の企業利用を支えます。All API Hub ユーザーは 1.99 ドルで 50 ドル相当の Coding Plan クレジットを購入でき、友人の購入に対して最大 20% の紹介報酬を受け取れます。[設定ガイド](./service-guides/fenno.md)
 - [PackyCode](https://www.packyapi.com/register?aff=all-api-hub)：チャージ時に `all-api-hub` クーポンコードを入力すると 10% オフになります。[設定ガイド](./sponsor-guides/packycode.md)
 - [Xingchen AI](https://ai.centos.hk)：1:1 のチャージ比率、請求書対応、Claude は通常価格の 40% 程度から利用できます。[設定ガイド](./sponsor-guides/xingchen.md)
-- [XuanShu API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイで、Claude、GPT、Grok など世界トップクラスのモデルへ API で一括アクセスできます。チャージは 20% オフ、モデル料金は通常価格の 20% から。登録で 5 米ドル分、この専用リンクからの登録でさらに 5 米ドル分のクレジットを受け取れ、法人向け請求書にも対応します。
-- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：1 つの AI API で 300 以上の厳選された動画、画像、LLM モデルを利用でき、新しい Coding Plan プロモーションでより手頃に API へアクセスできます。
+- [XuanShu API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイで、Claude、GPT、Grok など世界トップクラスのモデルへ、エンタープライズ級の安定性を備えた API で一括アクセスできます。モデル料金は通常価格の 10% から 60% まで。こちらのリンクから登録するとチャージ特典が追加され、初回チャージはさらにお得です。法人のお客様は法人銀行振込と請求書発行に対応しています。[設定ガイド](./service-guides/xuanshuapi.md)
+- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：1 つの AI API で 300 以上の厳選された動画、画像、LLM モデルを利用でき、新しい Coding Plan プロモーションでより手頃に API へアクセスできます。[設定ガイド](./service-guides/atlascloud.md)
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：Claude Code / Codex / Gemini CLI 向けの公式高安定中継サービスです。このリンクから登録すると初回チャージが 20% オフになり、エンタープライズ顧客は最大 25% オフを受けられます。
-- [Suixiang AI Relay](https://sui-xiang.com/)：Claude、Codex、Gemini などの API 中継サービスを提供し、従量課金、毎日のチェックインによるテストクレジット、複数回線冗長、自動フェイルオーバーに対応します。
-- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：提供モデルはすべて実際の呼び出しで検証済みです。10,000 本を超える公式 API と公式アカウントプールの供給経路を負荷分散し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能、透明な料金と利用量、公式価格の 10% からの価格を提供します。
+- [Suixiang AI Relay](https://sui-xiang.com/)：Claude、Codex、Gemini などの API 中継サービスを提供し、従量課金、毎日のチェックインによるテストクレジット、複数回線冗長、自動フェイルオーバーに対応します。[設定ガイド](./service-guides/suixiang.md)
+- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：提供モデルはすべて実際の呼び出しで検証済みです。10,000 本を超える公式 API と公式アカウントプールの供給経路を負荷分散し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能、透明な料金と利用量、公式価格の 10% からの価格を提供します。[設定ガイド](./service-guides/infistar.md)
 - [Dola Seed on BytePlus ModelArk](https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=all-api-hub&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=all-api-hub)：BytePlus ModelArk から登録すると、各モデルにつき 500,000 トークン分の無料推論枠を受け取れます。
 :::
 
@@ -68,8 +68,8 @@
 
 どのアーキテクチャを使っていても、高い確率で対応しています：
 - **アカウントサイト互換アーキテクチャ**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub など。
-- **特色あるアカウントプラットフォームと互換実装**：AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
-- **セルフホスト型管理バックエンド**：New API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。チャネル管理、移行、一部のモデル同期に利用できます。
+- **特色あるアカウントプラットフォームと互換実装**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
+- **セルフホスト型管理バックエンド**：New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。バックエンド管理、移行、一部のモデル同期に利用できます。
 
 ::: tip 互換性に関するヒント
 アカウントサイト互換アーキテクチャで構築された中継サイトは、通常アカウントとして追加できます。AxonHub、Octopus、Claude Code Hub などは主にセルフホスト型管理バックエンドとして利用します。完全な互換性リストについては、[サポートされているサイトとシステムタイプ](./supported-sites.md) を参照してください。
@@ -81,8 +81,8 @@
 アカウントを追加した後、これらの設定をワンクリックで他の AI ツールに「プッシュ」でき、手動でのコピー＆ペーストは不要になります。
 
 1. **`キー管理`** ページに移動します。
-2. エクスポートしたいキーを見つけ、メニューから **`CherryStudio にエクスポート`**、**`CC Switch にエクスポート`** などを選択します。
-3. AI クライアントが自動的に起動し、設定が完了します。
+2. エクスポートしたいキーを見つけます。設定済みのセルフホスト型サイトへインポートする場合は、操作エリアにあるそのサイトのアイコンを直接クリックします。その他のツールへは **`エクスポート`** をクリックし、**チャットクライアント**、**コーディングエージェント**、**ゲートウェイとルーティングツール**のいずれかから対象を選択します。
+3. ダイアログの案内に従って、アプリの起動、設定のコピーまたはダウンロード、管理 API 経由のインポートを完了します。
 
 > 完全なリストについては、[サポートされているエクスポートツールと統合ターゲット](./supported-export-tools.md) を参照してください。
 
@@ -91,6 +91,7 @@
 ## 5. コア機能の詳細ガイド
 
 ### 📊 アセットダッシュボードと統計
+- **[設定ページ概要（メインダッシュボード）](./options-overview.md)**：アカウントステータス、認証情報庫、本日の使用量、およびタスクを一画面で確認。
 - **[アセット概要とリアルタイム更新](./auto-refresh.md)**：複数サイトの残高、使用量、健全状態を一元管理。
 - **[残高履歴](./balance-history.md)**：資産の変動トレンドを直感的に表示。
 - **[使用量統計分析](./usage-analytics.md)**：消費量、モデル分布、遅延を多角的に分析。

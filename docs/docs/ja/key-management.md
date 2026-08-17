@@ -40,13 +40,19 @@
 - **CLI 互換性の検証**: 特定の CLI 環境でトークンが正しく動作するかテストします。
 
 ### 4. 他のツールへのエクスポート
-トークンの横にある **`エクスポート`** ボタンをクリックして、以下のツールに同期できます：
-- CherryStudio
-- CC Switch
-- Kilo Code
-- CLIProxyAPI
-- Claude Code Router
-- 設定済みの自炊・ホスト型管理サイト
+トークンの操作エリアには、現在設定されているセルフホスト型サイトのアイコンが優先表示されます。クリックするとチャネルを作成または更新できます。その他の対象は、隣の **`エクスポート`** メニューにまとめられています。
+
+- **チャットクライアント**：Cherry Studio、Kelivo
+- **コーディングエージェント**：CC Switch、Kilo Code / Roo Code、Cursor++
+- **ゲートウェイとルーティングツール**：CLIProxyAPI、Claude Code Router
+
+#### Kilo Code / Roo Code へのエクスポート
+
+Kilo Code 7.x を選択すると、各アカウントキーがわかりやすい名前の `provider` としてエクスポートされます。この `provider` には、対応するエンドポイントから検出・正規化されたすべてのモデル ID と、そのプロバイダー用に手動で入力して保持したモデル ID が含まれます。エクスポートに含まれていても、すべてのモデルがすべてのワークフローで利用できるとは限りません。デフォルトの `model` とデフォルトの `provider` は個別に選択してください。この選択によって、他のプロバイダーからエクスポートされるモデルが減ることはありません。
+
+各 `provider` では OpenAI Compatible、OpenAI Responses、Anthropic Messages を選択でき、デフォルトは OpenAI Compatible です。プロトコルによって決まるのは Kilo Code が使用する AI SDK プロバイダーパッケージだけであり、All API Hub が読み込んだモデル一覧を再取得、消去、削減することはありません。
+
+旧版の Roo Code / Kilo Code 5.x 形式では、設定ごとに 1 つのモデルを選択し、コピーした内容を `providerProfiles.apiConfigs` にマージします。ファイルのダウンロード、手動マージ、ファイルサイズの上限、インポート後の API キー表示については、[サポートされているエクスポートツールと統合ターゲット](./supported-export-tools.md)を参照してください。
 
 ## 認証情報との連携
 

@@ -1,27 +1,25 @@
-import {
-  ArrowPathIcon,
-  ArrowUpTrayIcon,
-  ChevronDownIcon,
-  CommandLineIcon,
-  CpuChipIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  PencilIcon,
-  TrashIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline"
 import type { TFunction } from "i18next"
-import { CalendarPlus, Copy, History, type LucideIcon } from "lucide-react"
+import {
+  CalendarPlus,
+  ChevronDown,
+  Copy,
+  Cpu,
+  Eye,
+  EyeOff,
+  History,
+  Pencil,
+  RefreshCw,
+  Terminal,
+  Trash2,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react"
 import { useEffect, useId, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { VerificationHistorySummary } from "~/components/dialogs/VerifyApiDialog/VerificationHistorySummary"
-import { CCSwitchIcon } from "~/components/icons/CCSwitchIcon"
-import { CherryIcon } from "~/components/icons/CherryIcon"
-import { ClaudeCodeRouterIcon } from "~/components/icons/ClaudeCodeRouterIcon"
-import { CliProxyIcon } from "~/components/icons/CliProxyIcon"
-import { KiloCodeIcon } from "~/components/icons/KiloCodeIcon"
-import { ManagedSiteIcon } from "~/components/icons/ManagedSiteIcon"
+import { ExportActionsMenu } from "~/components/ExportActionsMenu"
+import { ManagedSiteImportButton } from "~/components/ManagedSiteImportButton"
 import {
   Badge,
   Button,
@@ -35,13 +33,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "~/components/ui/collapsible"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu"
 import type { ManagedSiteType } from "~/constants/siteType"
 import { ProductAnalyticsScope } from "~/contexts/ProductAnalyticsScopeContext"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
@@ -274,10 +265,9 @@ export function ApiCredentialProfileListItem({
   const [isTelemetryOpen, setIsTelemetryOpen] = useState(hasTelemetryDetails)
   const previousHasTelemetryDetailsRef = useRef(hasTelemetryDetails)
   const telemetryContentId = useId()
-  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false)
   const [isImportEntryHighlighted, setIsImportEntryHighlighted] =
     useState(false)
-  const exportMenuButtonRef = useRef<HTMLButtonElement>(null)
+  const managedSiteImportButtonRef = useRef<HTMLButtonElement>(null)
   const handleRefreshTelemetry = () => {
     onRefreshTelemetry(profile)
   }
@@ -318,10 +308,9 @@ export function ApiCredentialProfileListItem({
       return
     }
 
-    setIsExportMenuOpen(true)
     setIsImportEntryHighlighted(true)
 
-    const button = exportMenuButtonRef.current
+    const button = managedSiteImportButtonRef.current
     button?.scrollIntoView?.({ block: "center", inline: "nearest" })
     button?.focus()
 
@@ -409,9 +398,9 @@ export function ApiCredentialProfileListItem({
                       }
                     >
                       {visibleKeys.has(profile.id) ? (
-                        <EyeSlashIcon className="h-4 w-4" />
+                        <EyeOff className="h-4 w-4" />
                       ) : (
-                        <EyeIcon className="h-4 w-4" />
+                        <Eye className="h-4 w-4" />
                       )}
                     </IconButton>
                     <IconButton
@@ -479,7 +468,7 @@ export function ApiCredentialProfileListItem({
                             {getTelemetrySourceLabel(t, telemetry.source)}
                           </Badge>
                         ) : null}
-                        <ChevronDownIcon
+                        <ChevronDown
                           className={cn(
                             "dark:text-dark-text-tertiary ml-auto h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform",
                             isTelemetryOpen ? "rotate-180" : "rotate-0",
@@ -495,7 +484,7 @@ export function ApiCredentialProfileListItem({
                       className="dark:text-dark-text-tertiary dark:hover:text-dark-text-primary h-auto shrink-0 gap-1 px-1.5 py-1 text-[11px] text-gray-500 hover:text-gray-800"
                       onClick={handleRefreshTelemetry}
                       loading={isTelemetryRefreshing}
-                      leftIcon={<ArrowPathIcon className="h-3.5 w-3.5" />}
+                      leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
                     >
                       {isTelemetryRefreshing
                         ? t("apiCredentialProfiles:telemetry.refreshing")
@@ -661,7 +650,7 @@ export function ApiCredentialProfileListItem({
                     PRODUCT_ANALYTICS_ACTION_IDS.OpenUpdateApiCredentialProfileDialog
                   }
                 >
-                  <PencilIcon className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                  <Pencil className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                 </IconButton>
                 <IconButton
                   aria-label={t("apiCredentialProfiles:actions.verifyApi")}
@@ -673,7 +662,7 @@ export function ApiCredentialProfileListItem({
                     PRODUCT_ANALYTICS_ACTION_IDS.VerifyApiCredential
                   }
                 >
-                  <WrenchScrewdriverIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <Wrench className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 </IconButton>
                 <IconButton
                   aria-label={t(
@@ -686,7 +675,7 @@ export function ApiCredentialProfileListItem({
                     PRODUCT_ANALYTICS_ACTION_IDS.VerifyApiCredentialCliSupport
                   }
                 >
-                  <CommandLineIcon className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <Terminal className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                 </IconButton>
                 <IconButton
                   aria-label={t(
@@ -706,139 +695,94 @@ export function ApiCredentialProfileListItem({
                     entrypoint: optionsEntrypoint,
                   }}
                 >
-                  <CpuChipIcon className="h-4 w-4" />
+                  <Cpu className="h-4 w-4" />
                 </IconButton>
-                <DropdownMenu
-                  open={isExportMenuOpen}
-                  onOpenChange={setIsExportMenuOpen}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <IconButton
-                      ref={exportMenuButtonRef}
-                      aria-label={t("common:actions.export")}
-                      size="sm"
-                      variant="ghost"
-                      className={cn(
-                        isImportEntryHighlighted &&
-                          "ring-2 ring-emerald-500 ring-offset-2 dark:ring-emerald-400",
-                      )}
-                      data-guidance-highlight={
-                        isImportEntryHighlighted ? "true" : undefined
-                      }
-                      data-testid={
-                        API_CREDENTIAL_PROFILES_TEST_IDS.exportMenuButton
-                      }
-                      analyticsAction={
-                        PRODUCT_ANALYTICS_ACTION_IDS.OpenApiCredentialExportMenu
-                      }
-                    >
-                      <ArrowUpTrayIcon className="h-4 w-4" />
-                    </IconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onSelect={() =>
+                <ManagedSiteImportButton
+                  buttonRef={managedSiteImportButtonRef}
+                  managedSiteType={managedSiteType}
+                  managedSiteLabel={managedSiteLabel}
+                  onImport={() =>
+                    onExport(
+                      profile,
+                      API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.ManagedSite,
+                    )
+                  }
+                  testId={
+                    API_CREDENTIAL_PROFILES_TEST_IDS.importToManagedSiteButton
+                  }
+                  highlighted={isImportEntryHighlighted}
+                />
+                <ExportActionsMenu
+                  triggerTestId={
+                    API_CREDENTIAL_PROFILES_TEST_IDS.exportMenuButton
+                  }
+                  triggerAnalyticsAction={
+                    PRODUCT_ANALYTICS_ACTION_IDS.OpenApiCredentialExportMenu
+                  }
+                  actions={{
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CherryStudio]: {
+                      onSelect: () =>
                         onExport(
                           profile,
                           API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CherryStudio,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <CherryIcon className="h-4 w-4" />
-                      </span>
-                      {t("keyManagement:actions.useInCherry")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      data-testid={
-                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToCCSwitchMenuItem
-                      }
-                      onSelect={() =>
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.Kelivo]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.copyKelivoImportCodeMenuItem,
+                      onSelect: () =>
+                        onExport(
+                          profile,
+                          API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.Kelivo,
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CCSwitch]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToCCSwitchMenuItem,
+                      onSelect: () =>
                         onExport(
                           profile,
                           API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CCSwitch,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <CCSwitchIcon size="sm" />
-                      </span>
-                      {t("keyManagement:actions.exportToCCSwitch")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      data-testid={
-                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToKiloCodeMenuItem
-                      }
-                      onSelect={() =>
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CursorPlus]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToCursorPlusMenuItem,
+                      onSelect: () =>
+                        onExport(
+                          profile,
+                          API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CursorPlus,
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.KiloCode]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToKiloCodeMenuItem,
+                      onSelect: () =>
                         onExport(
                           profile,
                           API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.KiloCode,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <KiloCodeIcon size="sm" />
-                      </span>
-                      {t("keyManagement:actions.exportToKiloCode")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      data-testid={
-                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToCliProxyMenuItem
-                      }
-                      onSelect={() =>
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CliProxy]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToCliProxyMenuItem,
+                      onSelect: () =>
                         onExport(
                           profile,
                           API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.CliProxy,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <CliProxyIcon size="sm" />
-                      </span>
-                      {t("keyManagement:actions.importToCliProxy")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      data-testid={
-                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToClaudeCodeRouterMenuItem
-                      }
-                      onSelect={() =>
+                        ),
+                    },
+                    [API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.ClaudeCodeRouter]: {
+                      testId:
+                        API_CREDENTIAL_PROFILES_TEST_IDS.exportToClaudeCodeRouterMenuItem,
+                      onSelect: () =>
                         onExport(
                           profile,
                           API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.ClaudeCodeRouter,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <ClaudeCodeRouterIcon size="sm" />
-                      </span>
-                      {t("keyManagement:actions.importToClaudeCodeRouter")}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className={cn(
-                        isImportEntryHighlighted &&
-                          "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500 ring-inset dark:bg-emerald-950/40 dark:text-emerald-100 dark:ring-emerald-400",
-                      )}
-                      data-guidance-highlight={
-                        isImportEntryHighlighted ? "true" : undefined
-                      }
-                      onSelect={() =>
-                        onExport(
-                          profile,
-                          API_CREDENTIAL_PROFILE_EXPORT_ACTIONS.ManagedSite,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        <ManagedSiteIcon siteType={managedSiteType} size="sm" />
-                      </span>
-                      {t("keyManagement:actions.importToManagedSite", {
-                        site: managedSiteLabel,
-                      })}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                        ),
+                    },
+                  }}
+                />
                 <IconButton
                   aria-label={t("common:actions.delete")}
                   size="sm"
@@ -851,7 +795,7 @@ export function ApiCredentialProfileListItem({
                     PRODUCT_ANALYTICS_ACTION_IDS.DeleteApiCredentialProfile
                   }
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" />
                 </IconButton>
               </div>
             </div>

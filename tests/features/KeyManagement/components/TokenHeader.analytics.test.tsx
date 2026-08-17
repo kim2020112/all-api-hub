@@ -34,6 +34,7 @@ import {
 
 const {
   completeProductAnalyticsActionMock,
+  kelivoExportDialogRenderMock,
   cliProxyDialogRenderMock,
   claudeCodeRouterDialogRenderMock,
   createProfileMock,
@@ -51,6 +52,7 @@ const {
   verifyDialogRenderMock,
 } = vi.hoisted(() => ({
   completeProductAnalyticsActionMock: vi.fn(),
+  kelivoExportDialogRenderMock: vi.fn(),
   cliProxyDialogRenderMock: vi.fn(),
   claudeCodeRouterDialogRenderMock: vi.fn(),
   createProfileMock: vi.fn(),
@@ -81,6 +83,21 @@ vi.mock("~/components/KiloCodeExportDialog", () => ({
   KiloCodeExportDialog: (props: unknown) => {
     kiloCodeDialogRenderMock(props)
     return null
+  },
+}))
+
+vi.mock("~/components/KelivoExportDialog", () => ({
+  KelivoExportDialog: (props: unknown) => {
+    kelivoExportDialogRenderMock(props)
+    const { isOpen, onClose } = props as {
+      isOpen: boolean
+      onClose: () => void
+    }
+    return isOpen ? (
+      <button type="button" onClick={onClose}>
+        close Kelivo export
+      </button>
+    ) : null
   },
 }))
 
@@ -191,9 +208,35 @@ vi.mock("react-hot-toast", () => ({
   },
 }))
 
+async function selectExportAction(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  const directAction = screen.queryByRole("button", { name })
+  if (directAction) {
+    await user.click(directAction)
+    return
+  }
+
+  const openItem = screen.queryByRole("menuitem", { name })
+  if (openItem) {
+    await user.click(openItem)
+    return
+  }
+
+  const trigger = screen.getByRole("button", {
+    name: "common:actions.export",
+  })
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    await user.click(trigger)
+  }
+  await user.click(screen.getByRole("menuitem", { name }))
+}
+
 describe("TokenHeader analytics", () => {
   beforeEach(() => {
     completeProductAnalyticsActionMock.mockReset()
+    kelivoExportDialogRenderMock.mockReset()
     cliProxyDialogRenderMock.mockReset()
     claudeCodeRouterDialogRenderMock.mockReset()
     createProfileMock.mockReset()
@@ -246,19 +289,26 @@ describe("TokenHeader analytics", () => {
     ).toBeVisible()
   })
 
+  it("omits CC Switch when its export opener is unavailable", async () => {
+    const user = userEvent.setup()
+    renderTokenHeader({ withCCSwitchExport: false })
+
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.export" }),
+    )
+
+    expect(
+      screen.queryByRole("menuitem", {
+        name: "keyManagement:actions.exportToCCSwitch",
+      }),
+    ).not.toBeInTheDocument()
+  })
+
   it("opens Cursor++ export from a recoverable token row", async () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    const cursorPlusButton = screen.getByRole("button", {
-      name: "keyManagement:actions.exportToCursorPlus",
-    })
-    expect(cursorPlusButton.nextElementSibling).toBe(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
-    await user.click(cursorPlusButton)
+    await selectExportAction(user, "keyManagement:actions.exportToCursorPlus")
 
     expect(
       screen.getByRole("dialog", { name: "Cursor++ export" }),
@@ -874,11 +924,7 @@ describe("TokenHeader analytics", () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.useInCherry",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.useInCherry")
 
     await waitFor(() => {
       expect(startProductAnalyticsActionMock).toHaveBeenCalledWith({
@@ -895,6 +941,128 @@ describe("TokenHeader analytics", () => {
     })
   })
 
+  it("opens an editable Kelivo export dialog with the resolved account token", async () => {
+    resolveDisplayAccountTokenForSecretMock.mockResolvedValueOnce(
+      createToken({ id: 1, key: "sk-resolved" }),
+    )
+
+    const user = userEvent.setup()
+    renderTokenHeader()
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(kelivoExportDialogRenderMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isOpen: true,
+          initialValue: expect.objectContaining({
+            apiType: API_TYPES.OPENAI_COMPATIBLE,
+            apiKey: "sk-resolved",
+          }),
+        }),
+      )
+    })
+    expect(startProductAnalyticsActionMock).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", { name: "close Kelivo export" }),
+    )
+    expect(
+      screen.queryByRole("button", { name: "close Kelivo export" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("redacts credential values from Kelivo export errors", async () => {
+    resolveDisplayAccountTokenForSecretMock.mockRejectedValueOnce(
+      new Error(
+        "Provider rejected sk-sensitive-original because the account is suspended",
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderTokenHeader()
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(showResultToastMock).toHaveBeenCalledWith({
+        success: false,
+        message: "messages:errors.operation.failed",
+      })
+    })
+    expect(JSON.stringify(showResultToastMock.mock.calls)).not.toContain(
+      "sk-sensitive-original",
+    )
+    expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
+      PRODUCT_ANALYTICS_RESULTS.Failure,
+      { errorCategory: PRODUCT_ANALYTICS_ERROR_CATEGORIES.Unknown },
+    )
+  })
+
+  it("falls back to the local unknown error for a blank Kelivo failure", async () => {
+    resolveDisplayAccountTokenForSecretMock.mockRejectedValueOnce(new Error(""))
+
+    const user = userEvent.setup()
+    renderTokenHeader()
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+
+    await waitFor(() => {
+      expect(showResultToastMock).toHaveBeenCalledWith({
+        success: false,
+        message: "messages:errors.operation.failed",
+      })
+    })
+  })
+
+  it("ignores a pending Kelivo secret after export permission is revoked", async () => {
+    const deferred = createDeferred<ReturnType<typeof createToken>>()
+    resolveDisplayAccountTokenForSecretMock.mockReturnValueOnce(
+      deferred.promise,
+    )
+    const user = userEvent.setup()
+    const { rerenderTokenHeader } = renderTokenHeader()
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+    rerenderTokenHeader({
+      actionPolicy: { ...RECOVERABLE_ACTION_POLICY, exportSecret: false },
+    })
+
+    await act(async () => {
+      deferred.resolve(createToken({ id: 1, key: "sk-stale-permission" }))
+      await deferred.promise
+    })
+    rerenderTokenHeader({ actionPolicy: RECOVERABLE_ACTION_POLICY })
+
+    expect(kelivoExportDialogRenderMock).not.toHaveBeenCalled()
+    expect(showResultToastMock).not.toHaveBeenCalled()
+  })
+
+  it("ignores a pending Kelivo secret after the token changes", async () => {
+    const deferred = createDeferred<ReturnType<typeof createToken>>()
+    resolveDisplayAccountTokenForSecretMock.mockReturnValueOnce(
+      deferred.promise,
+    )
+    const user = userEvent.setup()
+    const account = createAccount({ id: "acc-1" })
+    const token = createToken({ id: 1, accountId: account.id })
+    const { rerenderTokenHeader } = renderTokenHeader({ account, token })
+
+    await selectExportAction(user, "keyManagement:actions.copyKelivoImportCode")
+    rerenderTokenHeader({
+      account,
+      token: createToken({ id: 2, accountId: account.id }),
+    })
+
+    await act(async () => {
+      deferred.resolve(createToken({ id: 1, key: "sk-stale-token" }))
+      await deferred.promise
+    })
+
+    expect(kelivoExportDialogRenderMock).not.toHaveBeenCalled()
+    expect(showResultToastMock).not.toHaveBeenCalled()
+  })
+
   it("tracks Cherry Studio export as unknown failure when opening throws", async () => {
     resolveDisplayAccountTokenForSecretMock.mockResolvedValueOnce(
       createToken({ id: 1, key: "sk-resolved" }),
@@ -906,11 +1074,7 @@ describe("TokenHeader analytics", () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.useInCherry",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.useInCherry")
 
     await waitFor(() => {
       expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
@@ -926,11 +1090,7 @@ describe("TokenHeader analytics", () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(startProductAnalyticsActionMock).toHaveBeenCalledWith({
@@ -954,11 +1114,7 @@ describe("TokenHeader analytics", () => {
 
     const user = userEvent.setup()
     renderTokenHeader()
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     const onImportCompleted = openWithAccountMock.mock.calls[0]?.[2]
     expect(onImportCompleted).toEqual(expect.any(Function))
@@ -999,25 +1155,12 @@ describe("TokenHeader analytics", () => {
       guidedManagedSiteImportRequest: "request-1",
     })
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.exportToKiloCode",
-      }),
-    )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.exportToCursorPlus",
-      }),
-    )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToCliProxy",
-      }),
-    )
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToClaudeCodeRouter",
-      }),
+    await selectExportAction(user, "keyManagement:actions.exportToKiloCode")
+    await selectExportAction(user, "keyManagement:actions.exportToCursorPlus")
+    await selectExportAction(user, "keyManagement:actions.importToCliProxy")
+    await selectExportAction(
+      user,
+      "keyManagement:actions.importToClaudeCodeRouter",
     )
     expect(kiloCodeDialogRenderMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ isOpen: true }),
@@ -1311,11 +1454,7 @@ describe("TokenHeader analytics", () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
@@ -1331,11 +1470,7 @@ describe("TokenHeader analytics", () => {
     const user = userEvent.setup()
     renderTokenHeader()
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.importToManagedSite",
-      }),
-    )
+    await selectExportAction(user, "keyManagement:actions.importToManagedSite")
 
     await waitFor(() => {
       expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(

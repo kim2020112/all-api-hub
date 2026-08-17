@@ -38,7 +38,11 @@ import {
   MODEL_UNAVAILABLE_PRICE_REASONS,
   type PricingResponse,
 } from "~/services/modelList/pricingModel"
-import { resolveModelIdentity } from "~/services/models/modelMetadata/modelIdentityIndex"
+import {
+  resolveComparableModelIdentity,
+  resolveModelIdentity,
+  type ComparableModelIdentity,
+} from "~/services/models/modelMetadata/modelIdentityIndex"
 import type {
   ModelMetadata,
   ModelVendorCandidate,
@@ -62,6 +66,10 @@ import {
   MODEL_LIST_BILLING_MODES,
   type ModelListBillingMode,
 } from "../billingModes"
+import {
+  calculateWeightedTokenPrice,
+  type ModelPriceComparisonWeights,
+} from "../priceComparison"
 import type { AccountPricingContext } from "./useModelData"
 
 interface UseFilteredModelsProps {
@@ -76,6 +84,7 @@ interface UseFilteredModelsProps {
   selectedModelCapabilities: ModelCapabilitySelectionValue[]
   modelMetadata: ModelMetadata[]
   sortMode: ModelListSortMode
+  priceComparisonWeights: ModelPriceComparisonWeights
   showRealPrice: boolean
   accountFilterAccountIds?: string[]
 }
@@ -98,6 +107,7 @@ interface RawModelItem {
   groupContext: ModelGroupContext
   exchangeRate: number
   modelMetadata?: ModelMetadata
+  comparableModelIdentity: ComparableModelIdentity
   resolvedVendor: ResolvedModelVendor
 }
 
@@ -124,9 +134,11 @@ export type CalculatedModelItem = {
   activeGroupContext: ActiveModelGroupContext
   effectiveGroup?: string
   modelMetadata?: ModelMetadata
+  comparableModelIdentity: ComparableModelIdentity
   resolvedVendor: ResolvedModelVendor
   hasAutoSelectedGroup?: boolean
   isLowestPrice?: boolean
+  isPriceComparable?: boolean
 }
 
 const BILLING_MODE_ORDER: Record<PricingBillingMode, number> = {
@@ -286,6 +298,7 @@ function getSourceExchangeRate(item: Pick<CalculatedModelItem, "source">) {
 function getComparablePriceKey(
   item: Pick<CalculatedModelItem, "model" | "calculatedPrice" | "source">,
   showRealPrice: boolean,
+  priceComparisonWeights: ModelPriceComparisonWeights,
 ): ComparablePriceKey {
   if (
     isModelPriceUnavailable(item.model) ||
@@ -311,11 +324,38 @@ function getComparablePriceKey(
       currency,
       exchangeRate,
     )
+    const cacheReadPrice = item.calculatedPrice.usdPerMillionTokens.cacheRead
+    const cacheWritePrice = item.calculatedPrice.usdPerMillionTokens.cacheWrite
+    const weightedPrice = calculateWeightedTokenPrice(
+      {
+        input: inputPrice,
+        output: outputPrice,
+        ...(cacheReadPrice === undefined
+          ? {}
+          : {
+              cacheRead: resolvePriceAmount(
+                cacheReadPrice,
+                currency,
+                exchangeRate,
+              ),
+            }),
+        ...(cacheWritePrice === undefined
+          ? {}
+          : {
+              cacheWrite: resolvePriceAmount(
+                cacheWritePrice,
+                currency,
+                exchangeRate,
+              ),
+            }),
+      },
+      priceComparisonWeights,
+    )
 
     return {
       billingMode: MODEL_LIST_BILLING_MODES.TOKEN_BASED,
-      primary: isFiniteNumber(inputPrice) ? inputPrice : null,
-      secondary: isFiniteNumber(outputPrice) ? outputPrice : null,
+      primary: weightedPrice,
+      secondary: null,
     }
   }
 
@@ -472,6 +512,7 @@ function resolveBestCalculatedItem(
   rawItem: RawModelItem,
   groupCandidates: string[] | undefined,
   showRealPrice: boolean,
+  priceComparisonWeights: ModelPriceComparisonWeights,
 ): CalculatedModelItem | null {
   const activeGroupContext = resolveActiveModelGroupContext({
     context: rawItem.groupContext,
@@ -492,6 +533,7 @@ function resolveBestCalculatedItem(
     activeGroupContext: params.activeGroupContext,
     effectiveGroup: params.effectiveGroup,
     modelMetadata: rawItem.modelMetadata,
+    comparableModelIdentity: rawItem.comparableModelIdentity,
     resolvedVendor: rawItem.resolvedVendor,
     hasAutoSelectedGroup: params.hasAutoSelectedGroup,
   })
@@ -557,7 +599,11 @@ function resolveBestCalculatedItem(
       }),
       hasAutoSelectedGroup: activeGroupContext.activePriceableGroups.length > 1,
     })
-    const candidateKey = getComparablePriceKey(candidateItem, showRealPrice)
+    const candidateKey = getComparablePriceKey(
+      candidateItem,
+      showRealPrice,
+      priceComparisonWeights,
+    )
 
     if (!bestResult || !bestKey) {
       bestResult = candidateItem
@@ -589,12 +635,23 @@ function resolveCalculatedModels(params: {
   rawItems: RawModelItem[]
   getGroupCandidates: (item: RawModelItem) => string[] | undefined
   showRealPrice: boolean
+  priceComparisonWeights: ModelPriceComparisonWeights
 }) {
-  const { rawItems, getGroupCandidates, showRealPrice } = params
+  const {
+    rawItems,
+    getGroupCandidates,
+    showRealPrice,
+    priceComparisonWeights,
+  } = params
 
   return rawItems
     .map((item) =>
-      resolveBestCalculatedItem(item, getGroupCandidates(item), showRealPrice),
+      resolveBestCalculatedItem(
+        item,
+        getGroupCandidates(item),
+        showRealPrice,
+        priceComparisonWeights,
+      ),
     )
     .filter((item): item is CalculatedModelItem => item !== null)
 }
@@ -637,6 +694,7 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
     selectedModelCapabilities,
     modelMetadata,
     sortMode,
+    priceComparisonWeights,
     showRealPrice,
     accountFilterAccountIds = [],
   } = params
@@ -692,7 +750,10 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
     }
 
     const attachVendorCandidate = (
-      item: Omit<RawModelItem, "resolvedVendor" | "modelMetadata">,
+      item: Omit<
+        RawModelItem,
+        "resolvedVendor" | "modelMetadata" | "comparableModelIdentity"
+      >,
     ): CandidateRawModelItem => {
       const lookupResult = resolveModelIdentity(
         modelMetadataIndex,
@@ -703,6 +764,10 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
         ...item,
         modelMetadata:
           lookupResult.state === "resolved" ? lookupResult.metadata : undefined,
+        comparableModelIdentity: resolveComparableModelIdentity(
+          modelMetadataIndex,
+          item.model.model_name,
+        ),
         vendorCandidate: resolveModelVendorCandidate(
           {
             id: item.model.model_name,
@@ -1208,6 +1273,7 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
             overrides.selectedGroups ?? selectedGroups,
           ),
         showRealPrice,
+        priceComparisonWeights,
       })
 
       const effectiveVendor = resolveEffectiveSelectedVendor(
@@ -1221,6 +1287,7 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
       getAccountFilteredRawModels,
       getBaseFilteredRawModels,
       getGroupCandidatesForRawItem,
+      priceComparisonWeights,
       selectedGroups,
       selectedProvider,
       showRealPrice,
@@ -1279,8 +1346,14 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
         rawItems: accountFilteredBaseRawModels,
         getGroupCandidates: getGroupCandidatesForRawItem,
         showRealPrice,
+        priceComparisonWeights,
       }),
-    [accountFilteredBaseRawModels, getGroupCandidatesForRawItem, showRealPrice],
+    [
+      accountFilteredBaseRawModels,
+      getGroupCandidatesForRawItem,
+      priceComparisonWeights,
+      showRealPrice,
+    ],
   )
 
   const vendorCatalog = useMemo(
@@ -1315,7 +1388,7 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
         if (isModelPriceUnavailable(item.model)) {
           priceKeys.set(
             getModelItemKey(item),
-            getComparablePriceKey(item, showRealPrice),
+            getComparablePriceKey(item, showRealPrice, priceComparisonWeights),
           )
         }
         return
@@ -1323,7 +1396,7 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
 
       priceKeys.set(
         getModelItemKey(item),
-        getComparablePriceKey(item, showRealPrice),
+        getComparablePriceKey(item, showRealPrice, priceComparisonWeights),
       )
     })
 
@@ -1337,7 +1410,10 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
           return
         }
 
-        const groupKey = `${item.model.model_name}:${priceKey.billingMode}`
+        const groupKey = JSON.stringify([
+          item.comparableModelIdentity.key,
+          priceKey.billingMode,
+        ])
         const group = groups.get(groupKey) ?? []
         group.push(item)
         groups.set(groupKey, group)
@@ -1399,11 +1475,12 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
       b: (typeof indexedItems)[number] & { priceKey: ComparablePriceKey },
     ) => {
       if (sortMode === MODEL_LIST_SORT_MODES.MODEL_CHEAPEST_FIRST) {
-        const modelNameComparison = a.item.model.model_name.localeCompare(
-          b.item.model.model_name,
+        const modelIdentityComparison = compareCodePoints(
+          a.item.comparableModelIdentity.key,
+          b.item.comparableModelIdentity.key,
         )
-        if (modelNameComparison !== 0) {
-          return modelNameComparison
+        if (modelIdentityComparison !== 0) {
+          return modelIdentityComparison
         }
       }
 
@@ -1470,13 +1547,16 @@ export function useFilteredModels(params: UseFilteredModelsProps) {
           return [...pricedItems, ...missingPriceItems]
         })()
 
-    return sortedWithIndices.map(({ item, itemKey }) => ({
+    return sortedWithIndices.map(({ item, itemKey, priceKey }) => ({
       ...item,
       isLowestPrice: lowestPriceKeys.has(itemKey),
+      isPriceComparable:
+        priceKey !== undefined && hasComparablePriceValue(priceKey),
     }))
   }, [
     baseFilteredModels,
     effectiveSelectedVendor,
+    priceComparisonWeights,
     selectedSource?.kind,
     showRealPrice,
     sortMode,

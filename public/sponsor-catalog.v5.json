@@ -466,7 +466,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "充值享八折，模型2折起，注册送5美金，企业支持开票，点此链接注册额外获赠5美金额度。",
+          "postClickNote": "模型一折到六折，通过此链接注册，充值额外加赠，首充送更多！企业支持对公转账和开票。",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",
@@ -484,7 +484,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "儲值享八折，模型 2 折起，註冊即送 5 美元，企業支援開立發票；透過此連結註冊可額外獲贈 5 美元額度。",
+          "postClickNote": "模型價格為原價一折至六折，透過此連結註冊可享額外儲值贈送，首次儲值加贈更多！企業支援對公轉帳及開立發票。",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",
@@ -502,7 +502,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "Top-ups are 20% off, model pricing starts at 20% of standard rates, registration includes US$5 in credit, and business invoices are available. Register through this link for an additional US$5 credit.",
+          "postClickNote": "Model pricing ranges from 10% to 60% of standard rates. Register through this link to receive extra top-up bonuses, with more for your first top-up. Business customers can pay by corporate bank transfer and request invoices.",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",
@@ -520,7 +520,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "As recargas têm 20% de desconto, os modelos custam a partir de 20% do preço padrão, o cadastro inclui US$ 5 em créditos e há emissão de fatura para empresas. Cadastre-se por este link para receber mais US$ 5 em créditos.",
+          "postClickNote": "Os modelos custam de 10% a 60% do preço padrão. Cadastre-se por este link para receber bônus extras nas recargas, com benefícios maiores na primeira recarga. Empresas podem pagar por transferência bancária corporativa e solicitar nota fiscal.",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",
@@ -538,7 +538,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "チャージは 20% オフ、モデル料金は通常価格の 20% から。登録で 5 米ドル分、さらにこのリンクからの登録で 5 米ドル分の追加クレジットを受け取れ、法人向け請求書にも対応します。",
+          "postClickNote": "モデル料金は通常価格の 10% から 60% まで。こちらのリンクから登録するとチャージ特典が追加され、初回チャージはさらにお得です。法人のお客様は法人銀行振込と請求書発行に対応しています。",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",
@@ -556,7 +556,7 @@
           "links": {
             "primary": "https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB"
           },
-          "postClickNote": "Nap tien duoc giam 20%, gia mo hinh tu 20% muc tieu chuan, dang ky duoc tang 5 USD va ho tro hoa don doanh nghiep. Dang ky qua lien ket nay de nhan them 5 USD han muc.",
+          "postClickNote": "Gia mo hinh tu 10% den 60% gia chuan. Dang ky qua lien ket nay de nhan them uu dai khi nap tien, nap tien lan dau duoc tang them nhieu hon. Ho tro doanh nghiep chuyen khoan ngan hang va xuat hoa don.",
           "actions": {
             "addAccount": {
               "siteType": "sub2api",

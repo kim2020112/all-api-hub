@@ -198,7 +198,6 @@
       "defaultGroup": "Nhóm mặc định",
       "disabled": "Vô hiệu hóa",
       "enabled": "Kích hoạt",
-      "exportToCCSwitch": "Xuất sang CC Switch",
       "getFailed": "Lấy dữ liệu thất bại",
       "keyCopied": "Đã sao chép API Key vào khay nhớ tạm",
       "loadFailed": "Tải danh sách API Key thất bại: {{error}}",
@@ -208,8 +207,7 @@
       "noKeysDescription": "Tài khoản này hiện không có API Key khả dụng, bạn có thể tạo nhanh API Key mặc định hoặc tạo tùy chỉnh rồi sao chép.",
       "retry": "Thử lại",
       "title": "Danh sách API Key",
-      "totalKeys_other": "Tổng cộng {{count}} API Key",
-      "useInCherry": "Sử dụng trong Cherry Studio"
+      "totalKeys_other": "Tổng cộng {{count}} API Key"
     },
     "cursorPlus": {
       "actions": {
@@ -334,6 +332,33 @@
       "popupLimitation": "Không thể sử dụng bình thường tính năng này trong cửa sổ bật lên của trình duyệt Firefox. Vui lòng sử dụng chế độ thanh bên để thêm tài khoản",
       "sidebarInstruction": "Nhấp vào biểu tượng tiện ích trong thanh công cụ của trình duyệt, sau đó chọn \"Thanh bên\" để mở chế độ thanh bên",
       "warningTitle": "Nhắc nhở giới hạn tính năng"
+    },
+    "kelivo": {
+      "actions": {
+        "copy": "Sao chép mã nhập di động"
+      },
+      "baseUrlDescription": "Địa chỉ này sẽ được giữ nguyên trong mã nhập.",
+      "description": "Kiểm tra các trường của nhà cung cấp, sau đó quét bằng Kelivo di động hoặc sao chép mã nhập.",
+      "desktopNotice": {
+        "description": "Kelivo trên máy tính hiện chưa hỗ trợ nhập nhà cung cấp. Hãy dùng các trường bên trên để thêm thủ công.",
+        "title": "Kelivo trên máy tính cần cấu hình thủ công"
+      },
+      "googleBaseUrlDescription": "Kelivo sử dụng địa chỉ API chính thức của Google cho nhà cung cấp Google.",
+      "googleNotice": {
+        "description": "Kelivo không chấp nhận Base URL tùy chỉnh cho nhà cung cấp Google. Base URL của giao thức khác sẽ được giữ lại khi bạn chuyển về.",
+        "title": "Google sử dụng địa chỉ API cố định"
+      },
+      "mobileQrCode": {
+        "description": "Mở phần nhập nhà cung cấp trong Kelivo di động và quét mã QR này.",
+        "title": "Quét bằng Kelivo di động"
+      },
+      "mobileQrCodeLabel": "Mã QR nhập nhà cung cấp cho Kelivo di động",
+      "protocolDescription": "Mã nhập Kelivo không thể chứa tùy chọn OpenAI Responses. Hãy nhập dưới dạng OpenAI Compatible rồi bật Responses trong Kelivo nếu cần.",
+      "securityNotice": {
+        "description": "Mã QR và mã nhập đã sao chép đều chứa khóa API của bạn. Không chia sẻ trong cuộc trò chuyện, issue, nhật ký hoặc kho mã.",
+        "title": "Nội dung nhập di động chứa khóa API của bạn"
+      },
+      "title": "Xuất sang Kelivo di động"
     },
     "kiloCode": {
       "actions": {

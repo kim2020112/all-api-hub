@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next"
 import { CCSwitchExportDialog } from "~/components/CCSwitchExportDialog"
 import { ClaudeCodeRouterImportDialog } from "~/components/ClaudeCodeRouterImportDialog"
 import { CliProxyExportDialog } from "~/components/CliProxyExportDialog"
+import { CursorPlusExportDialog } from "~/components/CursorPlusExportDialog"
 import { VerifyCliSupportDialog } from "~/components/dialogs/VerifyCliSupportDialog"
+import { KelivoExportDialog } from "~/components/KelivoExportDialog"
 import { DestructiveConfirmDialog } from "~/components/ui"
 import {
   PRODUCT_ANALYTICS_ACTION_IDS,
@@ -18,6 +20,7 @@ import { API_CREDENTIAL_PROFILES_TEST_IDS } from "../testIds"
 import {
   createCliProxyExportPayload,
   createExportAccount,
+  createExportRuntimeKey,
   createExportToken,
 } from "../utils/exportShims"
 import { ApiCredentialProfileDialog } from "./ApiCredentialProfileDialog"
@@ -93,11 +96,38 @@ export function ApiCredentialProfilesDialogs({
         />
       ) : null}
 
+      {controller.cursorPlusProfile ? (
+        <CursorPlusExportDialog
+          isOpen={true}
+          onClose={() => controller.setCursorPlusProfile(null)}
+          account={createExportAccount(controller.cursorPlusProfile)}
+          runtimeKey={createExportRuntimeKey(controller.cursorPlusProfile)}
+          analyticsContext={{
+            ...apiCredentialProfileThirdPartyExportContext,
+            actionId:
+              PRODUCT_ANALYTICS_ACTION_IDS.CopyApiCredentialProfileCursorPlusProviderConfig,
+          }}
+        />
+      ) : null}
+
       {controller.kiloCodeProfile ? (
         <KiloCodeProfileExportDialog
           isOpen={true}
           onClose={() => controller.setKiloCodeProfile(null)}
           profile={controller.kiloCodeProfile}
+        />
+      ) : null}
+
+      {controller.kelivoProfile ? (
+        <KelivoExportDialog
+          isOpen={true}
+          onClose={() => controller.setKelivoProfile(null)}
+          initialValue={controller.kelivoProfile}
+          analyticsContext={{
+            ...apiCredentialProfileThirdPartyExportContext,
+            actionId:
+              PRODUCT_ANALYTICS_ACTION_IDS.CopyApiCredentialProfileKelivoImportCode,
+          }}
         />
       ) : null}
 

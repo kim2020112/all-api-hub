@@ -16,7 +16,7 @@
 - **健康与用量概览**：可查看余额、今日用量、今日请求数、可用模型数量、最近刷新时间和健康状态。
 - **接口验证**：支持验证 API 是否可用，也支持单独验证 CLI 兼容性。
 - **模型联动**：可直接在模型列表中打开当前凭证，查看模型目录和验证结果。
-- **快捷导出**：支持导出到 CherryStudio、CC Switch、Kilo Code、CLIProxyAPI、Claude Code Router，以及当前配置的自建托管站点。
+- **快捷导出**：优先提供当前自建托管站点的直达入口；其他目标按聊天客户端、编程 Agents、网关与路由工具分组，支持 Cherry Studio、Kelivo、CC Switch、Kilo Code / Roo Code、Cursor++、CLIProxyAPI 和 Claude Code Router。
 
 ## 进入方式
 
@@ -30,14 +30,14 @@
 如果你需要稳定且支持 CLI 的 API 接口来填充你的凭据库，可以尝试我们的合作伙伴：
 
 - [七牛云AI](https://s.qiniu.com/qE3eai)：企业级大模型 MaaS 平台，一站式调用全球 150+ 主流模型，企业用户可免费领 1200 万 Token。
-- [FennoAI](https://api.fenno.ai/s/DCGC)：稳定、高效的 Codex 中转服务商，兼容 OpenAI 及 Anthropic 协议，可接入主流编程工具并支撑千亿 Token/日的企业级调用；All API Hub 用户仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度，邀请好友购买最高可获得 20% 返佣。
+- [FennoAI](https://api.fenno.ai/s/DCGC)：稳定、高效的 Codex 中转服务商，兼容 OpenAI 及 Anthropic 协议，可接入主流编程工具并支撑千亿 Token/日的企业级调用；All API Hub 用户仅需 1.99 美元即可获得价值 50 美元的 Coding Plan 额度，邀请好友购买最高可获得 20% 返佣。[使用教程](./service-guides/fenno.md)
 - [PackyCode](https://www.packyapi.com/register?aff=all-api-hub)：注册并充值时填写 `all-api-hub` 优惠码可享 9 折。[使用教程](./sponsor-guides/packycode.md)
 - [星辰AI](https://ai.centos.hk)：充值比例 1:1，可开发票；Claude 低至 4 折。[使用教程](./sponsor-guides/xingchen.md)
-- [玄枢API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供 Claude、GPT、Grok 等全球顶级模型一站式 API 接入；充值享八折，模型 2 折起，注册送 5 美金，通过专属链接注册额外获赠 5 美金额度，企业支持开票。
-- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：一个 AI API 访问 300+ 精选视频、图像和 LLM 模型，新 Coding Plan 提供更高性价比的 API 访问。
+- [玄枢API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：面向企业、技术团队和个人开发者的新一代 AI 模型路由网关，提供企业级稳定性的全球顶级模型（Claude, GPT, Grok等）一站式 API 接入。模型一折到六折，通过此链接注册，充值额外加赠，首充送更多！企业支持对公转账和开票。[使用教程](./service-guides/xuanshuapi.md)
+- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：一个 AI API 访问 300+ 精选视频、图像和 LLM 模型，新 Coding Plan 提供更高性价比的 API 访问。[使用教程](./service-guides/atlascloud.md)
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：提供 Claude Code / Codex / Gemini CLI 官方高稳定中转服务，通过此链接注册可享首充 8 折，企业客户最高可享 7.5 折。
-- [随想AI中转站](https://sui-xiang.com/)：提供 Claude、Codex、Gemini 等 API 中继服务，按量付费，支持每日签到测试额度、多线路冗余和自动故障切换。
-- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：在售模型均经真实调用验真，通过超 10000 条官方 API 与官方号池供应链路负载均衡，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明，模型低至官方价的 10%。
+- [随想AI中转站](https://sui-xiang.com/)：提供 Claude、Codex、Gemini 等 API 中继服务，按量付费，支持每日签到测试额度、多线路冗余和自动故障切换。[使用教程](./service-guides/suixiang.md)
+- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：在售模型均经真实调用验真，通过超 10000 条官方 API 与官方号池供应链路负载均衡，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明，模型低至官方价的 10%。[使用教程](./service-guides/infistar.md)
 - [火山引擎方舟 Coding-Plan](https://dis.chatdesks.cn/chatdesk/hsyqallapihub.html)：Lite 套餐 9.9 元/月起，并有邀请返利及首单优惠。
 :::
 
@@ -145,12 +145,12 @@
 
 支持从单个凭证直接导出到：
 
-- CherryStudio
-- CC Switch
-- Kilo Code
-- CLIProxyAPI
-- Claude Code Router
-- 当前自建托管站点
+- **自建托管站点**：操作区会直接显示当前托管站点图标，点击即可创建或更新渠道。
+- **聊天客户端**：Cherry Studio、Kelivo
+- **编程 Agents**：CC Switch、Kilo Code / Roo Code、Cursor++
+- **网关与路由工具**：CLIProxyAPI、Claude Code Router
+
+除自建托管站点外，其余目标统一收在 **`导出`** 菜单中。Cursor++ 会读取当前 API 凭据的模型列表，并生成可合并到 `providers.json` 的提供商配置。
 
 导出到 Kilo Code 7.x 时，当前凭据会成为一个名称易读的 `provider`，其中包含从接口发现并规范化的全部模型 ID，以及为该 `provider` 手动输入并保留的模型 ID。被包含在导出中并不保证每个模型都适用于所有工作流；导出前只需选择默认 `model`。旧版 Roo Code / Kilo Code 5.x 格式仍是每个配置一个模型，并将复制内容合并到 `providerProfiles.apiConfigs`。
 

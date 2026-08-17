@@ -1,12 +1,5 @@
-import {
-  ArrowPathIcon,
-  CommandLineIcon,
-  PencilIcon,
-  TrashIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/outline"
 import type { TFunction } from "i18next"
-import { Copy } from "lucide-react"
+import { Copy, Pencil, RefreshCw, Terminal, Trash2, Wrench } from "lucide-react"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
@@ -16,14 +9,12 @@ import { CliProxyExportDialog } from "~/components/CliProxyExportDialog"
 import { CursorPlusExportDialog } from "~/components/CursorPlusExportDialog"
 import { useChannelDialog } from "~/components/dialogs/ChannelDialog"
 import { VerifyCliSupportDialog } from "~/components/dialogs/VerifyCliSupportDialog"
-import { CCSwitchIcon } from "~/components/icons/CCSwitchIcon"
-import { CherryIcon } from "~/components/icons/CherryIcon"
-import { ClaudeCodeRouterIcon } from "~/components/icons/ClaudeCodeRouterIcon"
-import { CliProxyIcon } from "~/components/icons/CliProxyIcon"
-import { CursorPlusIcon } from "~/components/icons/CursorPlusIcon"
-import { KiloCodeIcon } from "~/components/icons/KiloCodeIcon"
-import { ManagedSiteIcon } from "~/components/icons/ManagedSiteIcon"
+import {
+  EXPORT_ACTION_TARGETS,
+  ExportActionsMenu,
+} from "~/components/ExportActionsMenu"
 import { ApiCredentialLibraryIcon } from "~/components/icons/productIcons"
+import { KelivoExportDialog } from "~/components/KelivoExportDialog"
 import { KiloCodeExportDialog } from "~/components/KiloCodeExportDialog"
 import {
   getKeySignalLabel,
@@ -36,6 +27,7 @@ import {
   SignalBadge,
 } from "~/components/ManagedSiteChannelAssessmentSignalHelpers"
 import ManagedSiteChannelLinkButton from "~/components/ManagedSiteChannelLinkButton"
+import { ManagedSiteImportButton } from "~/components/ManagedSiteImportButton"
 import Tooltip from "~/components/Tooltip"
 import {
   Badge,
@@ -51,13 +43,16 @@ import {
 } from "~/features/KeyManagement/components/KeyResourceCard"
 import type { KeyResourceActionPolicy } from "~/features/KeyManagement/presentation/keyResourceCard"
 import { TOKEN_PROVISIONING_TEST_IDS } from "~/features/TokenProvisioning/testIds"
-import { cn } from "~/lib/utils"
-import { buildDisplayAccountTokenRuntimeKey } from "~/services/accounts/accountRuntimeKeys"
+import {
+  buildDisplayAccountTokenRuntimeKey,
+  collectAccountRuntimeKeySecrets,
+} from "~/services/accounts/accountRuntimeKeys"
 import { resolveDisplayAccountTokenForSecret } from "~/services/accounts/utils/apiServiceRequest"
 import { normalizeAccountSiteUrlForManagedChannel } from "~/services/accounts/utils/siteUrlNormalization"
 import { createProfileFromAccountToken } from "~/services/apiCredentialProfiles/accountTokenImport"
 import { buildApiCredentialProfileName } from "~/services/apiCredentialProfiles/accountTokenProfileName"
 import { OpenInCherryStudio } from "~/services/integrations/cherryStudio"
+import type { KelivoProviderExportInput } from "~/services/integrations/kelivo"
 import {
   MANAGED_SITE_TOKEN_CHANNEL_STATUS_UNKNOWN_REASONS,
   MANAGED_SITE_TOKEN_CHANNEL_STATUSES,
@@ -312,6 +307,8 @@ function TokenActionButtons({
   const [isCliProxyDialogOpen, setIsCliProxyDialogOpen] = useState(false)
   const [isCursorPlusDialogOpen, setIsCursorPlusDialogOpen] = useState(false)
   const [isKiloCodeDialogOpen, setIsKiloCodeDialogOpen] = useState(false)
+  const [kelivoExportInput, setKelivoExportInput] =
+    useState<KelivoProviderExportInput | null>(null)
   const [isManagedSiteImportHighlighted, setIsManagedSiteImportHighlighted] =
     useState(false)
   const managedSiteImportButtonRef = useRef<HTMLButtonElement>(null)
@@ -322,6 +319,7 @@ function TokenActionButtons({
   const verificationGenerationRef = useRef<symbol | null>(null)
   const apiVerificationEpochRef = useRef(0)
   const cliVerificationEpochRef = useRef(0)
+  const kelivoExportEpochRef = useRef(0)
   const [verifyingProfile, setVerifyingProfile] =
     useState<ApiCredentialProfile | null>(null)
   const [cliVerifyingProfile, setCliVerifyingProfile] =
@@ -357,6 +355,7 @@ function TokenActionButtons({
     setIsCliProxyDialogOpen(false)
     setIsCursorPlusDialogOpen(false)
     setIsKiloCodeDialogOpen(false)
+    setKelivoExportInput(null)
     setIsManagedSiteImportHighlighted(false)
   }, [actionPolicy.exportSecret])
 
@@ -387,6 +386,29 @@ function TokenActionButtons({
     token.accountId,
     token.id,
     token.key,
+  ])
+
+  useLayoutEffect(() => {
+    kelivoExportEpochRef.current += 1
+    setKelivoExportInput(null)
+
+    return () => {
+      kelivoExportEpochRef.current += 1
+    }
+  }, [
+    account.authType,
+    account.baseUrl,
+    account.cookieAuthSessionCookie,
+    account.id,
+    account.name,
+    account.siteType,
+    account.token,
+    account.userId,
+    actionPolicy.exportSecret,
+    token.accountId,
+    token.id,
+    token.key,
+    token.name,
   ])
 
   useEffect(() => {
@@ -545,6 +567,53 @@ function TokenActionButtons({
         success: false,
         message: t("messages:errors.operation.failed", {
           error: getErrorMessage(error),
+        }),
+      })
+    }
+  }
+
+  const handleOpenKelivoExportDialog = async () => {
+    const exportEpoch = ++kelivoExportEpochRef.current
+    try {
+      const resolvedToken = await resolveDisplayAccountTokenForSecret(
+        account,
+        token,
+      )
+      if (kelivoExportEpochRef.current !== exportEpoch) return
+
+      setKelivoExportInput({
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        name: buildApiCredentialProfileName({
+          accountName: account.name,
+          fallbackAccountName: token.accountName,
+          tokenName: token.name,
+        }),
+        baseUrl: account.baseUrl,
+        apiKey: resolvedToken.key,
+      })
+    } catch (error) {
+      if (kelivoExportEpochRef.current !== exportEpoch) return
+
+      const tracker = startProductAnalyticsAction({
+        featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+        actionId: PRODUCT_ANALYTICS_ACTION_IDS.CopyAccountTokenKelivoImportCode,
+        surfaceId:
+          PRODUCT_ANALYTICS_SURFACE_IDS.AccountTokenThirdPartyExportDialog,
+        entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
+      })
+      tracker.complete(PRODUCT_ANALYTICS_RESULTS.Failure, {
+        errorCategory: PRODUCT_ANALYTICS_ERROR_CATEGORIES.Unknown,
+      })
+      showResultToast({
+        success: false,
+        message: t("messages:errors.operation.failed", {
+          error:
+            toSanitizedErrorSummary(
+              error,
+              collectAccountRuntimeKeySecrets([
+                buildDisplayAccountTokenRuntimeKey(account, token),
+              ]),
+            ) || t("messages:errors.unknown"),
         }),
       })
     }
@@ -753,6 +822,21 @@ function TokenActionButtons({
               runtimeKey={buildDisplayAccountTokenRuntimeKey(account, token)}
             />
           ) : null}
+          {kelivoExportInput ? (
+            <KelivoExportDialog
+              isOpen={true}
+              onClose={() => setKelivoExportInput(null)}
+              initialValue={kelivoExportInput}
+              analyticsContext={{
+                featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+                actionId:
+                  PRODUCT_ANALYTICS_ACTION_IDS.CopyAccountTokenKelivoImportCode,
+                surfaceId:
+                  PRODUCT_ANALYTICS_SURFACE_IDS.AccountTokenThirdPartyExportDialog,
+                entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
+              }}
+            />
+          ) : null}
           <ClaudeCodeRouterImportDialog
             isOpen={isClaudeCodeRouterOpen}
             onClose={() => setIsClaudeCodeRouterOpen(false)}
@@ -818,7 +902,7 @@ function TokenActionButtons({
             data-testid={KEY_MANAGEMENT_TEST_IDS.verifyTokenApiButton}
             onClick={() => void handleVerifyApi()}
           >
-            <WrenchScrewdriverIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <Wrench className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </IconButton>
           <IconButton
             aria-label={t("keyManagement:actions.verifyCliSupport")}
@@ -827,82 +911,51 @@ function TokenActionButtons({
             data-testid={KEY_MANAGEMENT_TEST_IDS.verifyTokenCliSupportButton}
             onClick={() => void handleVerifyCliSupport()}
           >
-            <CommandLineIcon className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+            <Terminal className="h-4 w-4 text-sky-600 dark:text-sky-400" />
           </IconButton>
         </>
       ) : null}
       {actionPolicy.exportSecret ? (
         <>
-          <IconButton
-            aria-label={t("actions.useInCherry")}
-            size="sm"
-            variant="ghost"
-            onClick={() => void handleUseInCherry()}
-          >
-            <CherryIcon />
-          </IconButton>
-          {onOpenCCSwitchDialog ? (
-            <IconButton
-              aria-label={t("actions.exportToCCSwitch")}
-              size="sm"
-              variant="ghost"
-              data-testid={KEY_MANAGEMENT_TEST_IDS.exportToCCSwitchButton}
-              onClick={onOpenCCSwitchDialog}
-            >
-              <CCSwitchIcon />
-            </IconButton>
-          ) : null}
-          <IconButton
-            aria-label={t("keyManagement:actions.exportToKiloCode")}
-            size="sm"
-            variant="ghost"
-            onClick={() => setIsKiloCodeDialogOpen(true)}
-          >
-            <KiloCodeIcon className="dark:text-dark-text-tertiary text-gray-500" />
-          </IconButton>
-          <IconButton
-            aria-label={t("actions.importToCliProxy")}
-            size="sm"
-            variant="ghost"
-            onClick={handleOpenCliProxyDialog}
-          >
-            <CliProxyIcon size="sm" />
-          </IconButton>
-          <IconButton
-            aria-label={t("actions.importToClaudeCodeRouter")}
-            size="sm"
-            variant="ghost"
-            onClick={handleOpenClaudeCodeRouter}
-          >
-            <ClaudeCodeRouterIcon size="sm" />
-          </IconButton>
-          <IconButton
-            aria-label={t("keyManagement:actions.exportToCursorPlus")}
-            size="sm"
-            variant="ghost"
-            onClick={() => setIsCursorPlusDialogOpen(true)}
-          >
-            <CursorPlusIcon className="dark:text-dark-text-tertiary text-gray-500" />
-          </IconButton>
-          <IconButton
-            ref={managedSiteImportButtonRef}
-            aria-label={t("actions.importToManagedSite", {
-              site: managedSiteLabel,
-            })}
-            data-testid={KEY_MANAGEMENT_TEST_IDS.importToManagedSiteButton}
-            data-guidance-highlight={
-              isManagedSiteImportHighlighted ? "true" : undefined
-            }
-            size="sm"
-            variant="ghost"
-            className={cn(
-              isManagedSiteImportHighlighted &&
-                "dark:ring-offset-dark-bg-secondary ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-emerald-400",
-            )}
-            onClick={handleImportToManagedSite}
-          >
-            <ManagedSiteIcon siteType={managedSiteType} size="sm" />
-          </IconButton>
+          <ManagedSiteImportButton
+            buttonRef={managedSiteImportButtonRef}
+            managedSiteType={managedSiteType}
+            managedSiteLabel={managedSiteLabel}
+            onImport={handleImportToManagedSite}
+            testId={KEY_MANAGEMENT_TEST_IDS.importToManagedSiteButton}
+            highlighted={isManagedSiteImportHighlighted}
+          />
+          <ExportActionsMenu
+            triggerTestId={KEY_MANAGEMENT_TEST_IDS.exportMenuButton}
+            actions={{
+              [EXPORT_ACTION_TARGETS.CherryStudio]: {
+                onSelect: handleUseInCherry,
+              },
+              [EXPORT_ACTION_TARGETS.Kelivo]: {
+                onSelect: handleOpenKelivoExportDialog,
+              },
+              ...(onOpenCCSwitchDialog
+                ? {
+                    [EXPORT_ACTION_TARGETS.CCSwitch]: {
+                      testId: KEY_MANAGEMENT_TEST_IDS.exportToCCSwitchButton,
+                      onSelect: onOpenCCSwitchDialog,
+                    },
+                  }
+                : {}),
+              [EXPORT_ACTION_TARGETS.CursorPlus]: {
+                onSelect: () => setIsCursorPlusDialogOpen(true),
+              },
+              [EXPORT_ACTION_TARGETS.KiloCode]: {
+                onSelect: () => setIsKiloCodeDialogOpen(true),
+              },
+              [EXPORT_ACTION_TARGETS.CliProxy]: {
+                onSelect: handleOpenCliProxyDialog,
+              },
+              [EXPORT_ACTION_TARGETS.ClaudeCodeRouter]: {
+                onSelect: handleOpenClaudeCodeRouter,
+              },
+            }}
+          />
         </>
       ) : null}
       {actionPolicy.edit ? (
@@ -912,7 +965,7 @@ function TokenActionButtons({
           variant="ghost"
           onClick={() => handleEditToken(token)}
         >
-          <PencilIcon className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+          <Pencil className="h-4 w-4 text-blue-500 dark:text-blue-400" />
         </IconButton>
       ) : null}
       {actionPolicy.delete ? (
@@ -922,7 +975,7 @@ function TokenActionButtons({
           variant="destructiveGhost"
           onClick={() => handleDeleteToken(token)}
         >
-          <TrashIcon className="h-4 w-4" />
+          <Trash2 className="h-4 w-4" />
         </IconButton>
       ) : null}
     </div>
@@ -1070,7 +1123,7 @@ export function TokenHeader({
         data-testid={KEY_MANAGEMENT_TEST_IDS.managedSiteStatusBadge}
       >
         {isManagedSiteStatusChecking ? (
-          <ArrowPathIcon className="h-3 w-3 animate-spin" />
+          <RefreshCw className="h-3 w-3 animate-spin" />
         ) : null}
         {getManagedSiteStatusLabel(t, {
           isChecking: isManagedSiteStatusChecking,

@@ -1,11 +1,12 @@
-import { CpuChipIcon } from "@heroicons/react/24/outline"
+import { Cpu, Info } from "lucide-react"
 import { forwardRef, useCallback, useEffect, useMemo, useState } from "react"
 import type { HTMLAttributes } from "react"
 import { useTranslation } from "react-i18next"
 import { Virtuoso } from "react-virtuoso"
 
-import { EmptyState } from "~/components/ui"
+import { Badge, EmptyState } from "~/components/ui"
 import { resolveAccountExchangeRate } from "~/features/ModelList/accountExchangeRate"
+import { MODEL_LIST_BILLING_MODES } from "~/features/ModelList/billingModes"
 import {
   MODEL_LIST_GROUP_SELECTION_SCOPES,
   type ModelListGroupSelectionScope,
@@ -21,6 +22,10 @@ import type {
 import { MODEL_MANAGEMENT_SOURCE_KINDS } from "~/features/ModelList/modelManagementSources"
 import { MODEL_LIST_TEST_IDS } from "~/features/ModelList/testIds"
 import { cn } from "~/lib/utils"
+import {
+  getBillingModeText,
+  isTokenBillingType,
+} from "~/services/models/utils/modelPricing"
 import type { ApiVerificationHistorySummary } from "~/services/verification/verificationResultHistory"
 import {
   createAccountModelVerificationHistoryTarget,
@@ -55,11 +60,54 @@ interface ModelDisplayProps {
   showRealPrice: boolean
   showRatioColumn: boolean
   showEndpointTypes: boolean
+  showPriceComparisonGroups?: boolean
   handleGroupClick: (group: string) => void
   groupSelectionScope?: ModelListGroupSelectionScope
   isGroupSelectionInteractive?: boolean
   displayCapabilities?: ModelManagementSourceCapabilities
   onFilterAccount?: (accountId: string) => void
+}
+
+interface PriceComparisonDisplayGroup {
+  key: string
+  modelName: string
+  quotaType: number
+  comparableItems: CalculatedModelItem[]
+  notComparedItems: CalculatedModelItem[]
+}
+
+type ModelDisplayEntry =
+  | { kind: "model"; item: CalculatedModelItem }
+  | { kind: "price-comparison-group"; group: PriceComparisonDisplayGroup }
+
+/** Groups comparable model identities while keeping billing modes separate. */
+function createPriceComparisonDisplayGroups(
+  models: CalculatedModelItem[],
+): PriceComparisonDisplayGroup[] {
+  const groups = new Map<string, PriceComparisonDisplayGroup>()
+
+  models.forEach((item) => {
+    const billingMode = isTokenBillingType(item.model.quota_type)
+      ? MODEL_LIST_BILLING_MODES.TOKEN_BASED
+      : MODEL_LIST_BILLING_MODES.PER_CALL
+    const key = JSON.stringify([item.comparableModelIdentity.key, billingMode])
+    const group = groups.get(key) ?? {
+      key,
+      modelName: item.comparableModelIdentity.displayName,
+      quotaType: item.model.quota_type,
+      comparableItems: [],
+      notComparedItems: [],
+    }
+
+    if (item.isPriceComparable) {
+      group.comparableItems.push(item)
+    } else {
+      group.notComparedItems.push(item)
+    }
+    groups.set(key, group)
+  })
+
+  return Array.from(groups.values())
 }
 
 const ModelRowsList = forwardRef<
@@ -103,6 +151,7 @@ export function ModelDisplay(props: ModelDisplayProps) {
     showRealPrice,
     showRatioColumn,
     showEndpointTypes,
+    showPriceComparisonGroups = false,
     handleGroupClick,
     groupSelectionScope = MODEL_LIST_GROUP_SELECTION_SCOPES.SINGLE_SOURCE,
     isGroupSelectionInteractive = true,
@@ -111,6 +160,16 @@ export function ModelDisplay(props: ModelDisplayProps) {
   } = props
   const { t } = useTranslation("modelList")
   const modelKeys = useMemo(() => models.map(getModelItemKey), [models])
+  const displayEntries = useMemo<ModelDisplayEntry[]>(
+    () =>
+      showPriceComparisonGroups
+        ? createPriceComparisonDisplayGroups(models).map((group) => ({
+            kind: "price-comparison-group",
+            group,
+          }))
+        : models.map((item) => ({ kind: "model", item })),
+    [models, showPriceComparisonGroups],
+  )
   const [expandedModelKeys, setExpandedModelKeys] = useState<string[]>([])
   const [listHeight, setListHeight] = useState(0)
 
@@ -140,8 +199,70 @@ export function ModelDisplay(props: ModelDisplayProps) {
   if (models.length === 0) {
     return (
       <EmptyState
-        icon={<CpuChipIcon className="h-12 w-12" />}
+        icon={<Cpu className="h-12 w-12" />}
         title={t("noMatchingModels")}
+      />
+    )
+  }
+
+  const renderModelItem = (
+    item: CalculatedModelItem,
+    isComparisonOffer = false,
+  ) => {
+    const itemKey = getModelItemKey(item)
+    const sourceForModel = item.source
+    const accountForModel =
+      sourceForModel.kind === MODEL_MANAGEMENT_SOURCE_KINDS.ACCOUNT
+        ? sourceForModel.account
+        : undefined
+    const exchangeRate = resolveAccountExchangeRate(accountForModel)
+    const modelId = item.model.model_name
+    const historyTarget =
+      sourceForModel.kind === MODEL_MANAGEMENT_SOURCE_KINDS.PROFILE
+        ? createProfileModelVerificationHistoryTarget(
+            sourceForModel.profile.id,
+            modelId,
+          )
+        : createAccountModelVerificationHistoryTarget(
+            sourceForModel.account.id,
+            modelId,
+          )
+    const verificationSummary = historyTarget
+      ? verificationSummariesByKey[
+          serializeVerificationHistoryTarget(historyTarget)
+        ] ?? null
+      : null
+
+    return (
+      <ModelItem
+        model={item.model}
+        resolvedVendor={item.resolvedVendor}
+        modelMetadata={item.modelMetadata}
+        calculatedPrice={item.calculatedPrice}
+        exchangeRate={exchangeRate}
+        showRealPrice={showRealPrice}
+        showRatioColumn={showRatioColumn}
+        showEndpointTypes={showEndpointTypes}
+        groupRatios={item.groupRatios}
+        groupContext={item.groupContext}
+        activeGroupContext={item.activeGroupContext}
+        effectiveGroup={item.effectiveGroup}
+        onGroupClick={handleGroupClick}
+        isLowestPrice={item.isLowestPrice}
+        isComparisonOffer={isComparisonOffer}
+        showsOptimalGroup={item.hasAutoSelectedGroup}
+        groupSelectionScope={groupSelectionScope}
+        isGroupSelectionInteractive={isGroupSelectionInteractive}
+        source={sourceForModel}
+        sourceIdentity={item.sourceIdentity}
+        displayCapabilities={displayCapabilities}
+        verificationSummary={verificationSummary}
+        onFilterAccount={onFilterAccount}
+        onVerifyModel={onVerifyModel}
+        onVerifyCliSupport={onVerifyCliSupport}
+        onOpenModelKeyDialog={onOpenModelKeyDialog}
+        isExpanded={expandedModelKeySet.has(itemKey)}
+        onToggleExpand={() => toggleModelExpand(itemKey)}
       />
     )
   }
@@ -154,69 +275,113 @@ export function ModelDisplay(props: ModelDisplayProps) {
     >
       <Virtuoso
         className="h-full"
-        data={models}
-        computeItemKey={(_, item) => getModelItemKey(item)}
+        data={displayEntries}
+        computeItemKey={(_, entry) =>
+          entry.kind === "model" ? getModelItemKey(entry.item) : entry.group.key
+        }
         components={{
           Item: ModelRowsItem,
           List: ModelRowsList,
         }}
         totalListHeightChanged={setListHeight}
         style={{ height: "100%" }}
-        itemContent={(_index, item) => {
-          const itemKey = getModelItemKey(item)
-          const sourceForModel = item.source
-          const accountForModel =
-            sourceForModel.kind === MODEL_MANAGEMENT_SOURCE_KINDS.ACCOUNT
-              ? sourceForModel.account
-              : undefined
-          const exchangeRate = resolveAccountExchangeRate(accountForModel)
-          const modelId = item.model.model_name
-          const historyTarget =
-            sourceForModel.kind === MODEL_MANAGEMENT_SOURCE_KINDS.PROFILE
-              ? createProfileModelVerificationHistoryTarget(
-                  sourceForModel.profile.id,
-                  modelId,
-                )
-              : createAccountModelVerificationHistoryTarget(
-                  sourceForModel.account.id,
-                  modelId,
-                )
-          const verificationSummary = historyTarget
-            ? verificationSummariesByKey[
-                serializeVerificationHistoryTarget(historyTarget)
-              ] ?? null
-            : null
+        itemContent={(index, entry) => {
+          if (entry.kind === "model") {
+            return renderModelItem(entry.item)
+          }
+
+          const { group } = entry
+          const headingId = `model-price-comparison-group-${index}`
+          const billingModeId = `${headingId}-billing-mode`
 
           return (
-            <ModelItem
-              model={item.model}
-              resolvedVendor={item.resolvedVendor}
-              modelMetadata={item.modelMetadata}
-              calculatedPrice={item.calculatedPrice}
-              exchangeRate={exchangeRate}
-              showRealPrice={showRealPrice}
-              showRatioColumn={showRatioColumn}
-              showEndpointTypes={showEndpointTypes}
-              groupRatios={item.groupRatios}
-              groupContext={item.groupContext}
-              activeGroupContext={item.activeGroupContext}
-              effectiveGroup={item.effectiveGroup}
-              onGroupClick={handleGroupClick}
-              isLowestPrice={item.isLowestPrice}
-              showsOptimalGroup={item.hasAutoSelectedGroup}
-              groupSelectionScope={groupSelectionScope}
-              isGroupSelectionInteractive={isGroupSelectionInteractive}
-              source={sourceForModel}
-              sourceIdentity={item.sourceIdentity}
-              displayCapabilities={displayCapabilities}
-              verificationSummary={verificationSummary}
-              onFilterAccount={onFilterAccount}
-              onVerifyModel={onVerifyModel}
-              onVerifyCliSupport={onVerifyCliSupport}
-              onOpenModelKeyDialog={onOpenModelKeyDialog}
-              isExpanded={expandedModelKeySet.has(itemKey)}
-              onToggleExpand={() => toggleModelExpand(itemKey)}
-            />
+            <section
+              aria-labelledby={`${headingId} ${billingModeId}`}
+              className="dark:border-dark-bg-tertiary dark:bg-dark-bg-secondary overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+            >
+              <header className="dark:border-dark-bg-tertiary dark:bg-dark-bg-primary/45 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-gray-50/80 px-3 py-2.5 sm:px-4">
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-1">
+                  <h2
+                    id={headingId}
+                    className="text-foreground max-w-full min-w-0 font-mono text-sm font-semibold break-all"
+                  >
+                    {group.modelName}
+                  </h2>
+                  <Badge variant="secondary" size="sm" className="shrink-0">
+                    <span id={billingModeId}>
+                      {getBillingModeText(group.quotaType)}
+                    </span>
+                  </Badge>
+                </div>
+                <div className="flex w-full flex-wrap items-center gap-1.5 text-xs lg:w-auto lg:shrink-0 lg:justify-end">
+                  <span className="dark:border-dark-bg-tertiary dark:bg-dark-bg-secondary dark:text-dark-text-secondary rounded-full border border-gray-200 bg-white/80 px-2.5 py-1 text-gray-600">
+                    {t("priceComparison.results.comparable")}:{" "}
+                    <strong className="font-semibold text-emerald-700 dark:text-emerald-400">
+                      {group.comparableItems.length}
+                    </strong>
+                  </span>
+                  {group.notComparedItems.length > 0 && (
+                    <span className="dark:border-dark-bg-tertiary dark:bg-dark-bg-secondary dark:text-dark-text-secondary rounded-full border border-gray-200 bg-white/80 px-2.5 py-1 text-gray-600">
+                      {t("priceComparison.results.notCompared")}:{" "}
+                      <strong className="text-foreground font-semibold">
+                        {group.notComparedItems.length}
+                      </strong>
+                    </span>
+                  )}
+                </div>
+              </header>
+
+              {group.comparableItems.length > 0 && (
+                <ul
+                  aria-label={t("priceComparison.results.comparable")}
+                  className="dark:divide-dark-bg-tertiary divide-y divide-gray-200/80"
+                >
+                  {group.comparableItems.map((item) => (
+                    <li key={getModelItemKey(item)}>
+                      {renderModelItem(item, true)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {group.notComparedItems.length > 0 && (
+                <div
+                  className={cn(
+                    "bg-gray-50/55 dark:bg-white/[0.018]",
+                    group.comparableItems.length > 0 &&
+                      "dark:border-dark-bg-tertiary border-t border-dashed border-gray-300",
+                  )}
+                >
+                  <div
+                    role="note"
+                    className="dark:border-dark-bg-tertiary flex min-w-0 gap-2 border-b border-gray-200/80 px-3 py-2.5 sm:px-4"
+                  >
+                    <Info
+                      aria-hidden="true"
+                      className="dark:text-dark-text-tertiary mt-0.5 h-4 w-4 shrink-0 text-gray-500"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-foreground text-xs font-medium">
+                        {t("priceComparison.results.notCompared")}
+                      </p>
+                      <p className="dark:text-dark-text-tertiary mt-0.5 text-xs leading-5 text-gray-600">
+                        {t("priceComparison.results.notComparedHint")}
+                      </p>
+                    </div>
+                  </div>
+                  <ul
+                    aria-label={t("priceComparison.results.notCompared")}
+                    className="dark:divide-dark-bg-tertiary divide-y divide-gray-200/80"
+                  >
+                    {group.notComparedItems.map((item) => (
+                      <li key={getModelItemKey(item)}>
+                        {renderModelItem(item, true)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
           )
         }}
       />

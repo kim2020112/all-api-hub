@@ -8,14 +8,15 @@ The following are the most common and suitable types of sites for unified manage
 
 | Site / System | Official Description | Official Link |
 |---------------|----------------------|---------------|
+| OpenRouter | Independent AI model aggregation platform. The extension supports account balances, native key management, and the model catalog. | [Official Website](https://openrouter.ai/) / [Documentation](https://openrouter.ai/docs) / [Setup Guide](./service-guides/openrouter.md) |
 | New API | Unified AI model aggregation and distribution center. | [Official Website](https://www.newapi.ai/) / [GitHub](https://github.com/QuantumNous/new-api) |
 | one-api | LLM API management and distribution system, supporting mainstream models such as OpenAI, Azure, Anthropic Claude, Google Gemini, DeepSeek, etc. Unified API adaptation, can be used for Key management and secondary distribution. | [GitHub](https://github.com/songquanpeng/one-api) |
-| Sub2API | Sub2API-CRS2 one-stop open-source intermediate service, allowing unified access to Claude, Openai, Gemini, Antigravity subscriptions, supporting carpooling and sharing, more efficient cost sharing, and seamless use of native tools. | [GitHub](https://github.com/Wei-Shaw/sub2api) |
+| Sub2API | Sub2API-CRS2 one-stop open-source relay service, providing unified access to Claude, OpenAI, Gemini, and Antigravity subscriptions, with shared plans, more efficient cost sharing, and seamless use of native tools. | [GitHub](https://github.com/Wei-Shaw/sub2api) |
+| AnyRouter | Claude Code intermediate station · Zero threshold · Free $50 | [Documentation](https://docs.anyrouter.top/) / [Official Website](https://anyrouter.top) |
 | one-hub | OpenAI interface management and distribution system, modified from songquanpeng/one-api, supports more models, adds a statistics page, and improves function calls for non-OpenAI models. | [Official Website](https://one-hub.xiao5.info/) / [GitHub](https://github.com/MartialBE/one-hub) |
 | Veloera | This project has been discontinued. | [GitHub](https://github.com/Veloera/Veloera) |
 | VoAPI | Only legacy compatible deployments are supported; newer VoAPI versions are outside the extension's current compatibility scope. | [GitHub](https://github.com/VoAPI/VoAPI) |
 | done-hub | This project is a secondary development based on one-hub. | [GitHub](https://github.com/deanxv/done-hub) |
-| AnyRouter | Claude Code intermediate station · Zero threshold · Free $50 | [Documentation](https://docs.anyrouter.top/) / [Official Website](https://anyrouter.top) |
 | AIHubMix | Independent AI API aggregation site. The extension supports its balance, key, and model APIs through a dedicated account type. | [Official Website](https://aihubmix.com/?aff=W3DN) / [API Documentation](https://docs.aihubmix.com/cn/api/Cli) / [Setup Guide](./sponsor-guides/aihubmix.md) |
 | Super-API | Super-Api brand new AI model interface management and distribution system, for personal learning use only, please do not use for any commercial purposes. This project is based on NewAPI. | [Official Website](https://api.cngov.top/) / [GitHub](https://github.com/SuperAI-Api/Super-API) |
 | v-api | A powerful intermediate platform based on the secondary development of one-api. | No data available |
@@ -38,11 +39,11 @@ If you are looking for stable, efficient, and highly compatible AI relay service
   <hr>
 
   <section class="sponsor-item">
-    <a class="sponsor-logo" href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4">
-      <img src="../../../resources/partners/fennoai.jpg" alt="Fenno.ai">
+    <a class="sponsor-logo" href="https://api.fenno.ai/s/DCGC">
+      <img src="../../../resources/partners/fennoai.jpg" alt="FennoAI">
     </a>
     <p>
-      <strong>Fenno.ai</strong> is a stable and efficient API relay provider focused on Codex relay service, compatible with OpenAI and Anthropic protocols for Codex, Claude Code, OpenCode, and other coding tools. All API Hub users can subscribe to the <strong>9.9 RMB / $150-equivalent Coding Plan</strong> through <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4">this link</a>, and referrals can earn up to 20% rewards.
+      <strong>FennoAI</strong> is a stable and efficient API relay provider focused on Codex relay services. It supports the OpenAI and Anthropic protocols, integrates with popular coding tools such as Codex, Claude Code, and OpenCode, reliably handles enterprise demand at the scale of 100 billion tokens per day, and supports business-to-business settlement and invoicing for entities in China and overseas. Subscribe through <a href="https://api.fenno.ai/s/DCGC">the dedicated link</a> for just <strong>$1.99</strong> to receive $50 in Coding Plan credits. Referral purchases earn up to 20% commission, with higher rewards as you invite more people (<a href="./service-guides/fenno.md">setup guide</a>).
     </p>
   </section>
 
@@ -75,7 +76,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
       <img src="../../../resources/partners/xuanshu-api.png" alt="XuanShu API">
     </a>
     <p>
-      <strong>XuanShu API</strong> is a next-generation AI model routing gateway for enterprises, technical teams, and individual developers. It provides one-stop API access to leading global models including Claude, GPT, and Grok with enterprise-grade reliability. Top-ups are 20% off, model pricing starts at 20% of standard rates, registration includes US$5 in credit, and business invoices are available. Register through <a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">this link</a> for an additional US$5 credit.
+      <strong>XuanShu API</strong> is a next-generation AI model routing gateway for enterprises, technical teams, and individual developers. It provides one-stop API access to leading global models including Claude, GPT, and Grok with enterprise-grade reliability. Model pricing ranges from 10% to 60% of standard rates. Register through <a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">this link</a> to receive extra top-up bonuses, with more for your first top-up. Business customers can pay by corporate bank transfer and request invoices (<a href="./service-guides/xuanshuapi.md">setup guide</a>).
     </p>
   </section>
 
@@ -86,7 +87,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
       <img src="../../../resources/partners/atlas-cloud-logo-display.svg" alt="Atlas Cloud">
     </a>
     <p>
-      <strong>Atlas Cloud</strong> is a full-modal AI inference platform. One AI API gives developers access to video generation, image generation, and LLM APIs across 300+ curated models. Explore the new coding plan promotion for more budget-friendly API access through <a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">this link</a>.
+      <strong>Atlas Cloud</strong> is a full-modal AI inference platform. One AI API gives developers access to video generation, image generation, and LLM APIs across 300+ curated models. Explore the new coding plan promotion for more budget-friendly API access through <a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">this link</a> (<a href="./service-guides/atlascloud.md">setup guide</a>).
     </p>
   </section>
 
@@ -108,7 +109,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
       <img src="../../../resources/partners/suixiang.jpg" alt="Suixiang AI Relay">
     </a>
     <p>
-      <strong>Suixiang AI Relay</strong> is a reliable and efficient API relay provider for Claude, Codex, Gemini, and more. It supports pay-as-you-go 1:1 top-ups, daily check-in test credits, redundant routes, cross-region disaster recovery, and automatic failover. Learn more through <a href="https://sui-xiang.com/">this link</a>.
+      <strong>Suixiang AI Relay</strong> is a reliable and efficient API relay provider for Claude, Codex, Gemini, and more. It supports pay-as-you-go 1:1 top-ups, daily check-in test credits, redundant routes, cross-region disaster recovery, and automatic failover. Learn more through <a href="https://sui-xiang.com/">this link</a> (<a href="./service-guides/suixiang.md">setup guide</a>).
     </p>
   </section>
 
@@ -119,7 +120,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
       <img src="../../../resources/partners/infistar.png" alt="Infistar.ai">
     </a>
     <p>
-      <strong>Infistar.ai</strong> Concerned about diluted models, reduced model intelligence, or opaque pricing? Every model offered by Infistar.ai is verified through real API calls. Supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to ensure low latency and peak-hour stability. It covers mainstream models including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, reranking, and more. Pricing and usage are transparent and easy to review, with models available from 10% of official prices. All API Hub users can register and try it through <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">the dedicated link</a>.
+      Are you concerned about diluted models, reduced model intelligence, or opaque pricing? Every model offered by <strong>Infistar.ai</strong> is verified through real API calls. Supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to ensure low latency and peak-hour stability. It covers mainstream models including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, reranking, and more. Pricing and usage are transparent and easy to review, with models available from 10% of official prices. All API Hub users can register and try it through <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">the dedicated link</a> (<a href="./service-guides/infistar.md">setup guide</a>).
     </p>
   </section>
 
@@ -153,6 +154,7 @@ If you are also building your own backend system, All API Hub supports importing
 | Backend System | Official Description | Official Link |
 |----------------|----------------------|---------------|
 | New API | Unified AI model aggregation and distribution center. | [Official Website](https://www.newapi.ai/) / [GitHub](https://github.com/QuantumNous/new-api) |
+| Sub2API | Sub2API-CRS2 one-stop open-source relay service, providing unified access to Claude, OpenAI, Gemini, and Antigravity subscriptions, with support for shared plans and native tools. | [GitHub](https://github.com/Wei-Shaw/sub2api) |
 | AxonHub | Open-source AI Gateway, callable via any SDK for 100+ LLMs, with built-in failover, load balancing, cost control, and full-link tracing. | [Official Website](https://axonhub.onrender.com/) / [GitHub](https://github.com/looplj/axonhub) |
 | Claude Code Hub | A multi-vendor AI API proxy and operating platform for teams, unifying access to Claude, OpenAI Compatible, Codex, and Gemini, with support for elastic scheduling, monitoring, and price management. | [GitHub](https://github.com/ding113/claude-code-hub) |
 | Octopus | Personal LLM API aggregation service. | [GitHub](https://github.com/bestruirui/octopus) |
@@ -162,6 +164,7 @@ If you are also building your own backend system, All API Hub supports importing
 ## Related Documentation
 
 - [Supported Export Tools List](./supported-export-tools.md)
+- [Sponsor Setup Guides](./sponsor-guides.md)
 - [Quick Export Site Configuration](./quick-export.md)
 - [Self-Hosted Site Management](./self-hosted-site-management.md)
 - [Managed Site Model Sync](./managed-site-model-sync.md)

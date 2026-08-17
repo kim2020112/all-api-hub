@@ -16,7 +16,7 @@
 - **健全性と使用状況の概要**：残高、今日の使用量、今日のリクエスト数、利用可能なモデル数、最終更新時間、および健全性を表示できます。
 - **インターフェース検証**：API が利用可能かどうか、および CLI との互換性を個別に検証できます。
 - **モデル連携**：現在の認証情報をモデルリストで直接開き、モデルディレクトリと検証結果を表示できます。
-- **クイックエクスポート**：CherryStudio、CC Switch、Kilo Code、CLIProxyAPI、Claude Code Router、および現在設定されているカスタムホストサイトにエクスポートできます。
+- **クイックエクスポート**：現在設定されているセルフホスト型サイトへの直接操作を優先表示します。その他の対象は、チャットクライアント、コーディングエージェント、ゲートウェイとルーティングツールに分かれ、Cherry Studio、Kelivo、CC Switch、Kilo Code / Roo Code、Cursor++、CLIProxyAPI、Claude Code Router に対応します。
 
 ## アクセス方法
 
@@ -30,14 +30,14 @@
 認証情報庫を充実させるために、安定していて CLI にも対応した API インターフェースが必要な場合は、次のパートナーをお試しください。
 
 - [Qiniu Cloud AI](https://s.qiniu.com/qE3eai)：150 以上の主要グローバルモデルへ一括アクセスできる企業向け MaaS プラットフォームです。企業ユーザーは 1,200 万トークンの無料枠を受け取れます。
-- [Fenno.ai](https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4)：OpenAI と Anthropic プロトコルに対応した、安定性と効率性の高い Codex 中継サービスです。Codex、Claude Code、OpenCode などの開発ツールに接続でき、All API Hub ユーザーは 9.9 元 / 150 ドル相当の Coding Plan を利用できます。
+- [FennoAI](https://api.fenno.ai/s/DCGC)：OpenAI と Anthropic プロトコルに対応した、安定性と効率性の高い Codex 中継サービスです。主要なコーディングツールに接続でき、1 日あたり 1,000 億 Token 規模の企業利用を支えます。All API Hub ユーザーは 1.99 ドルで 50 ドル相当の Coding Plan クレジットを購入でき、友人の購入に対して最大 20% の紹介報酬を受け取れます。[設定ガイド](./service-guides/fenno.md)
 - [PackyCode](https://www.packyapi.com/register?aff=all-api-hub)：チャージ時に `all-api-hub` クーポンコードを入力すると 10% オフになります。[設定ガイド](./sponsor-guides/packycode.md)
 - [Xingchen AI](https://ai.centos.hk)：1:1 のチャージ比率、請求書対応、Claude は通常価格の 40% 程度から利用できます。[設定ガイド](./sponsor-guides/xingchen.md)
-- [XuanShu API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイで、Claude、GPT、Grok など世界トップクラスのモデルへ API で一括アクセスできます。チャージは 20% オフ、モデル料金は通常価格の 20% から。登録で 5 米ドル分、この専用リンクからの登録でさらに 5 米ドル分のクレジットを受け取れ、法人向け請求書にも対応します。
-- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：1 つの AI API で 300 以上の厳選された動画、画像、LLM モデルを利用でき、新しい Coding Plan プロモーションでより手頃に API へアクセスできます。
+- [XuanShu API](https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB)：企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイで、Claude、GPT、Grok など世界トップクラスのモデルへ、エンタープライズ級の安定性を備えた API で一括アクセスできます。モデル料金は通常価格の 10% から 60% まで。こちらのリンクから登録するとチャージ特典が追加され、初回チャージはさらにお得です。法人のお客様は法人銀行振込と請求書発行に対応しています。[設定ガイド](./service-guides/xuanshuapi.md)
+- [Atlas Cloud](https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub)：1 つの AI API で 300 以上の厳選された動画、画像、LLM モデルを利用でき、新しい Coding Plan プロモーションでより手頃に API へアクセスできます。[設定ガイド](./service-guides/atlascloud.md)
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：Claude Code / Codex / Gemini CLI 向けの公式高安定中継サービスです。このリンクから登録すると初回チャージが 20% オフになり、エンタープライズ顧客は最大 25% オフを受けられます。
-- [Suixiang AI Relay](https://sui-xiang.com/)：Claude、Codex、Gemini などの API 中継サービスを提供し、従量課金、毎日のチェックインによるテストクレジット、複数回線冗長、自動フェイルオーバーに対応します。
-- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：提供モデルはすべて実際の呼び出しで検証済みです。10,000 本を超える公式 API と公式アカウントプールの供給経路を負荷分散し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能、透明な料金と利用量、公式価格の 10% からの価格を提供します。
+- [Suixiang AI Relay](https://sui-xiang.com/)：Claude、Codex、Gemini などの API 中継サービスを提供し、従量課金、毎日のチェックインによるテストクレジット、複数回線冗長、自動フェイルオーバーに対応します。[設定ガイド](./service-guides/suixiang.md)
+- [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：提供モデルはすべて実際の呼び出しで検証済みです。10,000 本を超える公式 API と公式アカウントプールの供給経路を負荷分散し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能、透明な料金と利用量、公式価格の 10% からの価格を提供します。[設定ガイド](./service-guides/infistar.md)
 - [Dola Seed on BytePlus ModelArk](https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=all-api-hub&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=all-api-hub)：BytePlus ModelArk から登録すると、各モデルにつき 500,000 トークン分の無料推論枠を受け取れます。
 :::
 
@@ -143,14 +143,20 @@
 
 ### 4. クイックエクスポート
 
-個々の認証情報から直接エクスポートできます。
+個々の認証情報から次の対象へ直接エクスポートできます。
 
-- CherryStudio
-- CC Switch
-- Kilo Code
-- CLIProxyAPI
-- Claude Code Router
-- 現在のカスタムホストサイト
+- **セルフホスト型サイト**：操作エリアに現在設定されているサイトのアイコンが表示されます。クリックするとチャネルを作成または更新できます。
+- **チャットクライアント**：Cherry Studio、Kelivo
+- **コーディングエージェント**：CC Switch、Kilo Code / Roo Code、Cursor++
+- **ゲートウェイとルーティングツール**：CLIProxyAPI、Claude Code Router
+
+セルフホスト型サイト以外は **`エクスポート`** メニューにまとめられています。Cursor++ では現在の API 認証情報からモデル一覧を読み取り、`providers.json` にマージできるプロバイダー設定を生成します。
+
+Kilo Code 7.x にエクスポートすると、現在の認証情報はわかりやすい名前の `provider` になります。この `provider` には、エンドポイントから検出・正規化されたすべてのモデル ID と、そのプロバイダー用に手動で入力して保持したモデル ID が含まれます。エクスポートに含まれていても、すべてのモデルがすべてのワークフローで利用できるとは限りません。エクスポート前に選択する必要があるのはデフォルトの `model` だけです。旧版の Roo Code / Kilo Code 5.x 形式では、引き続き設定ごとに 1 つのモデルを使用し、コピーした内容を `providerProfiles.apiConfigs` にマージします。
+
+現在の `provider` では OpenAI Compatible、OpenAI Responses、Anthropic Messages を選択でき、デフォルトは OpenAI Compatible です。プロトコルによって変わるのは、エクスポートされる AI SDK プロバイダーパッケージだけです。モデル一覧には引き続き All API Hub の既存の読み込み結果が使用され、Anthropic Messages を選択してもモデルが省略または削減されることはありません。
+
+Kilo Code 7.x のファイルインポート、`{ provider, model }` の手動マージ、ファイルサイズ超過時の対処、API キーフィールドの表示制限については、[サポートされているエクスポートツールと統合ターゲット](./supported-export-tools.md)を参照してください。
 
 主に「多数のアップストリームインターフェース設定を管理し、複数のダウンストリームツールに配布する」場合は、`API 認証情報庫` は完全なアカウント管理よりも直接的です。
 

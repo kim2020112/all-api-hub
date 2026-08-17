@@ -41,7 +41,7 @@ features:
   - title: "🚀 Web ページからの取り込みとワンクリックエクスポート"
     details: "Web ページから Base URL や API Key をすばやく検出し、よく使う AI クライアントへワンクリックでエクスポートできます。"
   - title: "🛠️ 主要 AI ゲートウェイ対応"
-    details: "New API、AxonHub、Claude Code Hub、Octopus、Veloera、DoneHub を一元管理し、保存済みのアカウントや API 認証情報からチャネルを作成できます。ゲートウェイ経由でモデルをまとめて呼び出し、チャネルを切り替えながら、モデル同期やリダイレクトも利用できます。"
+    details: "New API、Sub2API、AxonHub、Claude Code Hub、Octopus、Veloera、DoneHub を一元管理し、保存済みのアカウントや API 認証情報からサイト設定をすばやく追加できます。モデル同期やリダイレクトにも対応しています。"
   - title: "🔐 ローカル優先と自動同期"
     details: "データはデフォルトでブラウザ内に保存されます。暗号化 WebDAV 自動同期を有効にすると、複数デバイス間で安全に同期し、パソコンを替えてもそのまま使い続けられます。"
 
@@ -79,8 +79,8 @@ AI の時代には、節約したり別のモデルを試したりするため�
 どのアーキテクチャを使っていても、高い確率で対応しています：
 
 - **アカウントサイト互換アーキテクチャ**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub など。
-- **特色あるアカウントプラットフォームと互換実装**：AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
-- **セルフホスト型管理バックエンド**：New API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。チャネル管理、移行、一部のモデル同期に利用できます。
+- **特色あるアカウントプラットフォームと互換実装**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
+- **セルフホスト型管理バックエンド**：New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。バックエンド管理、移行、一部のモデル同期に利用できます。
 
 > macOS で Safari を使う場合は、先に [Safari インストールガイド](./safari-install.md) を確認してください。
 > QQ / 360 / Brave / Vivaldi / Opera などのブラウザを使う場合は、[その他のブラウザへのインストールガイド](./other-browser-install.md) を確認してください。
@@ -123,12 +123,12 @@ AI の時代には、節約したり別のモデルを試したりするため�
 
 <div class="readme-sponsor">
   <div class="readme-sponsor-logo">
-    <a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4">
-      <img src="../../../resources/partners/fennoai.jpg" alt="Fenno.ai">
+    <a href="https://api.fenno.ai/s/DCGC">
+      <img src="../../../resources/partners/fennoai.jpg" alt="FennoAI">
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    Fenno.ai は安定性と効率性に優れた API 中継サービスプロバイダーで、主に Codex 中継サービスを提供しています。OpenAI と Anthropic のプロトコルに互換性があり、Codex、Claude Code、OpenCode などの主要なコーディングツールから柔軟に利用できます。All API Hub ユーザー向け特典として、<a href="https://api.fenno.ai/register?redirect=/purchase?tab=subscription%26group=16&aff=VS3FMCGW4XK4">こちらのリンク</a> から 9.9 元 / 150 ドル相当の Coding Plan を購読でき、紹介では最大 20% の報酬を受け取れます。
+    FennoAI は、Codex 中継サービスを中心に提供する安定性と効率性に優れた API 中継サービスプロバイダーです。OpenAI と Anthropic のプロトコルに対応し、Codex、Claude Code、OpenCode などの主要なコーディングツールへ柔軟に接続できます。1 日あたり 1,000 億 Token 規模の企業利用を安定して支え、中国国内および海外法人との企業間決済と請求書発行にも対応しています。All API Hub ユーザー向け特典として、<a href="https://api.fenno.ai/s/DCGC">専用リンク</a>からわずか 1.99 ドルで、50 ドル相当の Coding Plan クレジットを購入できます。友人の購入に対して最大 20% の紹介報酬を受け取ることができ、紹介人数に応じて報酬も増えます（<a href="./service-guides/fenno.md">設定ガイド</a>）。
   </p>
 </div>
 
@@ -168,7 +168,7 @@ AI の時代には、節約したり別のモデルを試したりするため�
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    XuanShu API は、企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイです。Claude、GPT、Grok など世界トップクラスのモデルへ、エンタープライズ級の安定性を備えた API で一括アクセスできます。チャージは 20% オフ、モデル料金は通常価格の 20% から。登録で 5 米ドル分のクレジットを受け取れ、法人向け請求書にも対応します。<a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">こちらのリンク</a>から登録すると、さらに 5 米ドル分の追加クレジットを受け取れます。
+    XuanShu API は、企業、技術チーム、個人開発者向けの次世代 AI モデルルーティングゲートウェイです。Claude、GPT、Grok など世界トップクラスのモデルへ、エンタープライズ級の安定性を備えた API で一括アクセスできます。モデル料金は通常価格の 10% から 60% まで。<a href="https://www.xuanshuapi.com/register?aff=ALL-API-HUB&promo=ALL-API-HUB">こちらのリンク</a>から登録するとチャージ特典が追加され、初回チャージはさらにお得です。法人のお客様は法人銀行振込と請求書発行に対応しています（<a href="./service-guides/xuanshuapi.md">設定ガイド</a>）。
   </p>
 </div>
 
@@ -182,20 +182,7 @@ AI の時代には、節約したり別のモデルを試したりするため�
   </div>
   <p class="readme-sponsor-copy">
     Atlas Cloud はフルモーダル AI 推論プラットフォームで、1 つの AI API から動画生成、画像生成、LLM API にアクセスでき、300
-    以上の厳選モデルを横断して利用できます。より手頃な API 利用に向けた新しい Coding Plan プロモーションは、<a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">こちらのリンク</a>をご覧ください。
-  </p>
-</div>
-
-<hr class="readme-sponsor-divider">
-
-<div class="readme-sponsor">
-  <div class="readme-sponsor-logo">
-    <a href="https://sui-xiang.com/">
-      <img src="../../../resources/partners/suixiang.jpg" alt="Suixiang AI Relay">
-    </a>
-  </div>
-  <p class="readme-sponsor-copy">
-    Suixiang AI Relay は、Claude、Codex、Gemini などの中継サービスを提供する、信頼性と効率性に優れた API 中継サービスプロバイダーです。プライバシー、透明性、迅速なサポートを重視し、データ転売やモデル品質の水増しを行いません。新規アカウントは毎日のチェックインで ¥0.5 のテストクレジットを受け取れ、1:1 チャージ、従量課金、複数回線冗長、リージョン間 DR、自動フェイルオーバー、長時間 SSE 接続の維持、99.9% の可用性に対応します。詳しくは <a href="https://sui-xiang.com/">こちらのリンク</a> をご覧ください。
+    以上の厳選モデルを横断して利用できます。より手頃な API 利用に向けた新しい Coding Plan プロモーションは、<a href="https://www.atlascloud.ai/console/coding-plan?utm_source=github&utm_medium=link&utm_campaign=all-api-hub">こちらのリンク</a>をご覧ください（<a href="./service-guides/atlascloud.md">設定ガイド</a>）。
   </p>
 </div>
 
@@ -216,12 +203,25 @@ AI の時代には、節約したり別のモデルを試したりするため�
 
 <div class="readme-sponsor">
   <div class="readme-sponsor-logo">
+    <a href="https://sui-xiang.com/">
+      <img src="../../../resources/partners/suixiang.jpg" alt="Suixiang AI Relay">
+    </a>
+  </div>
+  <p class="readme-sponsor-copy">
+    Suixiang AI Relay は、Claude、Codex、Gemini などの中継サービスを提供する、信頼性と効率性に優れた API 中継サービスプロバイダーです。プライバシー、透明性、迅速なサポートを重視し、データ転売やモデル品質の水増しを行いません。新規アカウントは毎日のチェックインで ¥0.5 のテストクレジットを受け取れ、1:1 チャージ、従量課金、複数回線冗長、リージョン間 DR、自動フェイルオーバー、長時間 SSE 接続の維持、99.9% の可用性に対応します。詳しくは <a href="https://sui-xiang.com/">こちらのリンク</a> をご覧ください（<a href="./service-guides/suixiang.md">設定ガイド</a>）。
+  </p>
+</div>
+
+<hr class="readme-sponsor-divider">
+
+<div class="readme-sponsor">
+  <div class="readme-sponsor-logo">
     <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">
       <img src="../../../resources/partners/infistar.png" alt="Infistar.ai">
     </a>
   </div>
   <p class="readme-sponsor-copy">
-    モデル品質の低下、性能制限、料金の不透明さが気になりますか？Infistar.ai で提供するすべてのモデルは実際の API 呼び出しで検証済みです。供給元は公式 API と公式アカウントプールで、10,000 本を超える供給経路を負荷分散し、低遅延とピーク時の安定性を確保しています。ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax など国内外の主要モデルに対応し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能をカバーします。料金と利用量は明確に確認でき、モデルは公式価格の 10% から利用できます。All API Hub ユーザーは<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">専用リンク</a>から登録してお試しいただけます。
+    モデル品質の低下、性能制限、料金の不透明さが気になりますか？Infistar.ai で提供するすべてのモデルは実際の API 呼び出しで検証済みです。供給元は公式 API と公式アカウントプールで、10,000 本を超える供給経路を負荷分散し、低遅延とピーク時の安定性を確保しています。ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax など国内外の主要モデルに対応し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能をカバーします。料金と利用量は明確に確認でき、モデルは公式価格の 10% から利用できます。All API Hub ユーザーは<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">専用リンク</a>から登録してお試しいただけます（<a href="./service-guides/infistar.md">設定ガイド</a>）。
   </p>
 </div>
 
