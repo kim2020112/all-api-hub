@@ -73,6 +73,8 @@ export interface ModelHubPreferences {
   viewMode: ModelHubViewMode
   sortMode: ModelHubSortMode
   favoriteModels: FavoriteModel[]
+  excludedSourceUrls: string[]
+  selectedTokenIds: Record<string, number>
   selectedTargetModel?: string
 }
 
@@ -192,6 +194,10 @@ function normalizeOverride(value: unknown): ModelHubManualOverride | null {
 
 export function normalizeModelHubModelName(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+export function normalizeModelHubSourceUrl(value: string) {
+  return value.trim().replace(/\/+$/, "").toLowerCase()
 }
 
 export function inferModelHubModelType(modelName: string): ModelHubModelType {
@@ -388,6 +394,8 @@ export function normalizeModelHubPreferences(
       viewMode: "favorites",
       sortMode: "multiplier-asc",
       favoriteModels: [],
+      excludedSourceUrls: [],
+      selectedTokenIds: {},
     }
   }
 
@@ -426,11 +434,35 @@ export function normalizeModelHubPreferences(
     raw.selectedTargetModel.trim()
       ? raw.selectedTargetModel.trim().toLowerCase()
       : undefined
+  const excludedSourceUrls = Array.isArray(raw.excludedSourceUrls)
+    ? Array.from(
+        new Set(
+          raw.excludedSourceUrls
+            .filter((item): item is string => typeof item === "string")
+            .map(normalizeModelHubSourceUrl)
+            .filter(Boolean),
+        ),
+      )
+    : []
+  const selectedTokenIds =
+    raw.selectedTokenIds && typeof raw.selectedTokenIds === "object"
+      ? Object.fromEntries(
+          Object.entries(raw.selectedTokenIds).filter(
+            (entry): entry is [string, number] =>
+              entry[0].trim().length > 0 &&
+              typeof entry[1] === "number" &&
+              Number.isInteger(entry[1]) &&
+              entry[1] >= 0,
+          ),
+        )
+      : {}
 
   return {
     viewMode: normalizeViewMode(raw.viewMode),
     sortMode: normalizeSortMode(raw.sortMode),
     favoriteModels,
+    excludedSourceUrls,
+    selectedTokenIds,
     ...(selectedTargetModel ? { selectedTargetModel } : {}),
   }
 }

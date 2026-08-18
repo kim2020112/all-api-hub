@@ -1,4 +1,13 @@
-import { Pencil, Plus, RefreshCw, Search, Star, Trash2 } from "lucide-react"
+import {
+  KeyRound,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings2,
+  Star,
+  Trash2,
+} from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -23,18 +32,19 @@ import {
   createExportAccount,
   createExportToken,
 } from "~/features/ApiCredentialProfiles/utils/exportShims"
+import { KEY_MANAGEMENT_ALL_ACCOUNTS_VALUE } from "~/features/KeyManagement/constants"
 import { useKeyManagement } from "~/features/KeyManagement/hooks/useKeyManagement"
+import { formatQuota } from "~/features/KeyManagement/utils"
 import { useAccountData } from "~/hooks/useAccountData"
-import { isAccountTokenRuntimeKey } from "~/services/accounts/accountRuntimeKeys"
 import {
   createDisplayAccountApiContext,
-  fetchDisplayAccountRuntimeKeys,
-  resolveDisplayAccountRuntimeKeySecret,
+  resolveDisplayAccountTokenForSecret,
 } from "~/services/accounts/utils/apiServiceRequest"
 import type { UserGroupInfo } from "~/services/accountTokens/tokenProvisioningModel"
 import { apiCredentialProfilesStorage } from "~/services/apiCredentialProfiles/apiCredentialProfilesStorage"
 import { fetchApiCredentialModelIds } from "~/services/apiCredentialProfiles/modelCatalog"
 import type { ProductCanonicalModel } from "~/services/modelList/pricingModel"
+import { isTokenCompatibleWithModel } from "~/services/models/utils/tokenModelCompatibility"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import type { AccountToken, ApiToken, DisplaySiteData } from "~/types"
 
@@ -68,6 +78,7 @@ import {
   getModelHubPreferences,
   inferModelHubModelType,
   normalizeModelHubModelName,
+  normalizeModelHubSourceUrl,
   removeModelHubManualOverride,
   removeModelHubManualSource,
   saveModelHubBenchmarkResult,
@@ -97,7 +108,10 @@ interface AccountOffering extends AccountOfferingProjection {
   exchangeRate?: number
   groupRatioSource: "automatic" | "manual" | "unavailable"
   multiplier: number | null
-  tokenId?: number
+  accountUsername: string
+  compatibleTokens?: AccountToken[]
+  selectedToken?: AccountToken
+  selectedTokenUsable?: boolean
 }
 
 type FavoriteOffering = AccountOffering | ManualOfferingProjection
@@ -124,6 +138,57 @@ const BILLING_OPTIONS: Array<[ModelHubBillingUnit, string]> = [
   ["request", "请求"],
   ["unknown", "未知"],
 ]
+const CATALOG_PAGE_SIZE = 50
+const GENERIC_GROUP_NAMES = new Set(["", "default", "通用", "默认分组"])
+
+function isGenericGroup(groupName: string) {
+  return GENERIC_GROUP_NAMES.has(normalizeModelHubModelName(groupName))
+}
+
+function compatibleTokensForOffering(
+  tokens: readonly AccountToken[],
+  offering: Pick<AccountOffering, "groupName" | "modelName">,
+) {
+  return tokens.filter((token) =>
+    isTokenCompatibleWithModel(token, {
+      id: offering.modelName,
+      enableGroups: isGenericGroup(offering.groupName)
+        ? undefined
+        : [offering.groupName],
+    }),
+  )
+}
+
+function isTokenExpired(token: AccountToken) {
+  return token.expired_time > 0 && token.expired_time <= Date.now() / 1000
+}
+
+function isTokenQuotaExhausted(token: AccountToken) {
+  return !token.unlimited_quota && token.remain_quota <= 0
+}
+
+function isTokenUsable(token: AccountToken) {
+  return !isTokenExpired(token) && !isTokenQuotaExhausted(token)
+}
+
+function selectOfferingToken(
+  tokens: AccountToken[],
+  preferredTokenId: number | undefined,
+) {
+  const preferred = tokens.find((token) => token.id === preferredTokenId)
+  if (preferred && isTokenUsable(preferred)) return preferred
+  return (
+    [...tokens]
+      .filter(isTokenUsable)
+      .sort(
+        (left, right) =>
+          Number(right.unlimited_quota) - Number(left.unlimited_quota) ||
+          right.remain_quota - left.remain_quota,
+      )[0] ??
+    preferred ??
+    tokens[0]
+  )
+}
 
 function groupsForModel(
   model: ProductCanonicalModel,
@@ -176,22 +241,47 @@ function formatBalance(value: number | null, known = true) {
   return known && value !== null ? `$${value.toFixed(2)}` : "--"
 }
 
+function balanceTextClass(value: number | null, known = true) {
+  if (!known || value === null) return "text-gray-500"
+  if (value > 10) return "text-emerald-600 dark:text-emerald-400"
+  if (value > 1) return "text-amber-600 dark:text-amber-400"
+  return "text-red-600 dark:text-red-400"
+}
+
 function ModelHub() {
   const { enabledAccounts, enabledDisplayData: accounts } = useAccountData()
+  const [isConfigLoading, setIsConfigLoading] = useState(true)
+  const [excludedSourceUrls, setExcludedSourceUrls] = useState<Set<string>>(
+    new Set(),
+  )
+  const includedAccounts = useMemo(
+    () =>
+      accounts.filter(
+        (account) =>
+          !excludedSourceUrls.has(normalizeModelHubSourceUrl(account.baseUrl)),
+      ),
+    [accounts, excludedSourceUrls],
+  )
   const selectedSource = useMemo(() => createAllAccountsSource(), [])
   const {
     pricingContexts,
     isLoading: accountModelsLoading,
     loadPricingData,
     accountQueryStates,
-  } = useModelData({ selectedSource, accounts })
+  } = useModelData({
+    selectedSource,
+    accounts: isConfigLoading ? [] : includedAccounts,
+  })
 
   const [viewMode, setViewMode] = useState<ModelHubViewMode>("favorites")
   const [favorites, setFavorites] = useState<FavoriteModel[]>([])
   const [manualSources, setManualSources] = useState<ModelHubManualSource[]>([])
   const [overrides, setOverrides] = useState<ModelHubManualOverrideStore>({})
   const [benchmarks, setBenchmarks] = useState<ModelHubBenchmarkResultStore>({})
-  const [isConfigLoading, setIsConfigLoading] = useState(true)
+  const [isSourceManagerOpen, setIsSourceManagerOpen] = useState(false)
+  const [selectedTokenIds, setSelectedTokenIds] = useState<
+    Record<string, number>
+  >({})
   const [favoriteType, setFavoriteType] = useState<TypeFilter>("text")
   const [selectedFavoriteName, setSelectedFavoriteName] = useState("")
   const [favoriteSearch, setFavoriteSearch] = useState("")
@@ -207,6 +297,7 @@ function ModelHub() {
   const [allSection, setAllSection] = useState<AllSection>("catalog")
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all")
   const [allSort, setAllSort] = useState<AllSort>("model")
+  const [catalogPage, setCatalogPage] = useState(1)
   const [expandedModelNames, setExpandedModelNames] = useState<Set<string>>(
     new Set(),
   )
@@ -242,18 +333,17 @@ function ModelHub() {
     token: ApiToken
     modelName: string
   } | null>(null)
-  const [accountExportRequest, setAccountExportRequest] =
-    useState<AccountOffering | null>(null)
-
-  const ccSwitchRouteParams = useMemo(
-    () => ({ accountId: accountExportRequest?.accountId ?? "" }),
-    [accountExportRequest],
+  const keyManagementRouteParams = useMemo(
+    () => ({ accountId: KEY_MANAGEMENT_ALL_ACCOUNTS_VALUE }),
+    [],
   )
   const {
-    selectedAccount: selectedKeyAccountId,
     tokenInventories,
     tokens: accountTokens,
-  } = useKeyManagement(ccSwitchRouteParams)
+    tokenLoadProgress,
+    failedAccounts: keyLoadFailures,
+    retryFailedAccounts: retryFailedKeyAccounts,
+  } = useKeyManagement(keyManagementRouteParams)
 
   useEffect(() => {
     let active = true
@@ -267,6 +357,8 @@ function ModelHub() {
         if (!active) return
         setViewMode(preferences.viewMode)
         setFavorites(preferences.favoriteModels)
+        setExcludedSourceUrls(new Set(preferences.excludedSourceUrls))
+        setSelectedTokenIds(preferences.selectedTokenIds)
         setManualSources(Object.values(sources))
         setOverrides(storedOverrides)
         setBenchmarks(storedBenchmarks)
@@ -277,23 +369,204 @@ function ModelHub() {
     }
   }, [])
 
-  useEffect(() => {
-    let active = true
-    let settled = false
-    const requestedAccountIds = requestedGroupInfoAccountIds.current
+  const accountOfferings = useMemo<AccountOffering[]>(() => {
+    const displayById = new Map(
+      includedAccounts.map((account) => [account.id, account]),
+    )
+    const rawById = new Map(
+      enabledAccounts.map((account) => [account.id, account]),
+    )
+    const rows: AccountOffering[] = []
     const favoriteNames = new Set(
       favorites.map((favorite) => favorite.normalizedName),
     )
-    const relevantAccountIds = new Set(
+    for (const context of pricingContexts) {
+      const account = displayById.get(context.account.id) ?? context.account
+      const raw = rawById.get(account.id)
+      const tokenId =
+        context.sourceIdentity && "tokenId" in context.sourceIdentity
+          ? context.sourceIdentity.tokenId
+          : undefined
+      for (const model of context.pricing.data ?? []) {
+        const normalizedName = normalizeModelHubModelName(model.model_name)
+        if (viewMode === "favorites" && !favoriteNames.has(normalizedName)) {
+          continue
+        }
+        for (const groupName of groupsForModel(
+          model,
+          selectedSource.groupSemantics,
+        )) {
+          const id = createModelHubOfferingKey({
+            sourceType: "account",
+            stableSourceId: account.id,
+            modelName: model.model_name,
+            groupName,
+          })
+          const automatic =
+            typeof context.pricing.group_ratio[groupName] === "number"
+              ? context.pricing.group_ratio[groupName]
+              : null
+          const groupOverrideKey = createModelHubGroupOverrideKey(
+            account.id,
+            groupName,
+          )
+          const manual =
+            overrides[groupOverrideKey]?.manualMultiplier ??
+            overrides[id]?.manualMultiplier ??
+            null
+          const groupRatio = manual ?? automatic
+          rows.push({
+            id,
+            sourceType: "account",
+            accountId: account.id,
+            sourceId: context.sourceIdentity?.id ?? account.id,
+            ...(tokenId !== undefined ? { tokenId } : {}),
+            modelName: model.model_name,
+            normalizedName,
+            type: inferModelHubModelType(model.model_name),
+            providerName: account.name,
+            accountUsername: account.username,
+            groupName,
+            ...(groupInfoByAccount[account.id]?.[groupName]?.desc
+              ? {
+                  groupDescription:
+                    groupInfoByAccount[account.id][groupName].desc,
+                }
+              : {}),
+            groupRatio,
+            groupRatioSource:
+              manual !== null
+                ? "manual"
+                : automatic !== null
+                  ? "automatic"
+                  : "unavailable",
+            multiplier: groupRatio,
+            balanceUsd: account.balance.USD,
+            balanceKnown: Boolean(
+              raw?.last_sync_time || account.last_sync_time,
+            ),
+            updatedAt: raw?.last_sync_time ?? account.last_sync_time ?? 0,
+            model,
+            baseUrl: account.baseUrl,
+            exchangeRate: raw?.exchange_rate,
+          })
+        }
+      }
+    }
+    return dedupeOfferingsByBusinessKey(rows)
+  }, [
+    enabledAccounts,
+    favorites,
+    groupInfoByAccount,
+    includedAccounts,
+    overrides,
+    pricingContexts,
+    selectedSource.groupSemantics,
+    viewMode,
+  ])
+
+  const favoriteByName = useMemo(
+    () =>
+      new Map(favorites.map((favorite) => [favorite.normalizedName, favorite])),
+    [favorites],
+  )
+  const allRows = useMemo(
+    () => buildAllModelRows(accountOfferings, manualSources),
+    [accountOfferings, manualSources],
+  )
+  const visibleFavorites = useMemo(
+    () =>
+      favorites.filter(
+        (favorite) => favoriteType === "all" || favorite.type === favoriteType,
+      ),
+    [favoriteType, favorites],
+  )
+  const activeFavorite =
+    visibleFavorites.find(
+      (favorite) => favorite.normalizedName === selectedFavoriteName,
+    ) ?? visibleFavorites[0]
+  const favoriteRows = useMemo(() => {
+    const names = new Set(favorites.map((favorite) => favorite.normalizedName))
+    const accountById = new Map(accountOfferings.map((row) => [row.id, row]))
+    return allRows
+      .filter((row) => names.has(row.normalizedName))
+      .map((row) =>
+        row.sourceType === "account" ? accountById.get(row.id) ?? row : row,
+      ) as FavoriteOffering[]
+  }, [accountOfferings, allRows, favorites])
+  const activeFavoriteRows = useMemo(
+    () =>
+      activeFavorite
+        ? favoriteRows.filter(
+            (row) => row.normalizedName === activeFavorite.normalizedName,
+          )
+        : [],
+    [activeFavorite, favoriteRows],
+  )
+  const relevantKeyAccounts = useMemo(() => {
+    if (viewMode !== "favorites" || !activeFavorite) return []
+    const accountIds = new Set(
       pricingContexts
         .filter((context) =>
-          context.pricing.data.some((model) =>
-            favoriteNames.has(normalizeModelHubModelName(model.model_name)),
+          context.pricing.data.some(
+            (model) =>
+              normalizeModelHubModelName(model.model_name) ===
+              activeFavorite.normalizedName,
           ),
         )
         .map((context) => context.account.id),
     )
-    const targetAccounts = accounts.filter(
+    return includedAccounts.filter((account) => accountIds.has(account.id))
+  }, [activeFavorite, includedAccounts, pricingContexts, viewMode])
+  const tokensByAccount = useMemo(() => {
+    const result = new Map<string, AccountToken[]>()
+    for (const token of accountTokens) {
+      const current = result.get(token.accountId) ?? []
+      current.push(token)
+      result.set(token.accountId, current)
+    }
+    return result
+  }, [accountTokens])
+
+  const actionableFavoriteRows = useMemo<FavoriteOffering[]>(
+    () =>
+      activeFavoriteRows.flatMap<FavoriteOffering>((row) => {
+        if (row.sourceType === "manual") return [row]
+        const inventory = tokenInventories[row.accountId]
+        if (inventory?.status !== "loaded") return []
+        const tokens = compatibleTokensForOffering(
+          tokensByAccount.get(row.accountId) ?? [],
+          row,
+        )
+        if (tokens.length === 0) return []
+        const selectedToken = selectOfferingToken(
+          tokens,
+          selectedTokenIds[row.id],
+        )
+        return [
+          {
+            ...row,
+            compatibleTokens: tokens,
+            selectedToken,
+            selectedTokenUsable: selectedToken
+              ? isTokenUsable(selectedToken)
+              : false,
+          },
+        ]
+      }),
+    [activeFavoriteRows, selectedTokenIds, tokenInventories, tokensByAccount],
+  )
+
+  useEffect(() => {
+    let active = true
+    let settled = false
+    const requestedAccountIds = requestedGroupInfoAccountIds.current
+    const relevantAccountIds = new Set(
+      actionableFavoriteRows.flatMap((row) =>
+        row.sourceType === "account" ? [row.accountId] : [],
+      ),
+    )
+    const targetAccounts = includedAccounts.filter(
       (account) =>
         relevantAccountIds.has(account.id) &&
         !requestedAccountIds.has(account.id),
@@ -336,140 +609,17 @@ function ModelHub() {
         )
       }
     }
-  }, [accounts, favorites, pricingContexts])
-
-  const accountOfferings = useMemo<AccountOffering[]>(() => {
-    const displayById = new Map(
-      accounts.map((account) => [account.id, account]),
-    )
-    const rawById = new Map(
-      enabledAccounts.map((account) => [account.id, account]),
-    )
-    const rows: AccountOffering[] = []
-    for (const context of pricingContexts) {
-      const account = displayById.get(context.account.id) ?? context.account
-      const raw = rawById.get(account.id)
-      const tokenId =
-        context.sourceIdentity && "tokenId" in context.sourceIdentity
-          ? context.sourceIdentity.tokenId
-          : undefined
-      for (const model of context.pricing.data ?? []) {
-        for (const groupName of groupsForModel(
-          model,
-          selectedSource.groupSemantics,
-        )) {
-          const id = createModelHubOfferingKey({
-            sourceType: "account",
-            stableSourceId: account.id,
-            modelName: model.model_name,
-            groupName,
-          })
-          const automatic =
-            typeof context.pricing.group_ratio[groupName] === "number"
-              ? context.pricing.group_ratio[groupName]
-              : null
-          const groupOverrideKey = createModelHubGroupOverrideKey(
-            account.id,
-            groupName,
-          )
-          const manual =
-            overrides[groupOverrideKey]?.manualMultiplier ??
-            overrides[id]?.manualMultiplier ??
-            null
-          const groupRatio = manual ?? automatic
-          rows.push({
-            id,
-            sourceType: "account",
-            accountId: account.id,
-            sourceId: context.sourceIdentity?.id ?? account.id,
-            ...(tokenId !== undefined ? { tokenId } : {}),
-            modelName: model.model_name,
-            normalizedName: normalizeModelHubModelName(model.model_name),
-            type: inferModelHubModelType(model.model_name),
-            providerName: account.name,
-            groupName,
-            ...(groupInfoByAccount[account.id]?.[groupName]?.desc
-              ? {
-                  groupDescription:
-                    groupInfoByAccount[account.id][groupName].desc,
-                }
-              : {}),
-            groupRatio,
-            groupRatioSource:
-              manual !== null
-                ? "manual"
-                : automatic !== null
-                  ? "automatic"
-                  : "unavailable",
-            multiplier: groupRatio,
-            balanceUsd: account.balance.USD,
-            balanceKnown: Boolean(
-              raw?.last_sync_time || account.last_sync_time,
-            ),
-            updatedAt: raw?.last_sync_time ?? account.last_sync_time ?? 0,
-            model,
-            baseUrl: account.baseUrl,
-            exchangeRate: raw?.exchange_rate,
-          })
-        }
-      }
-    }
-    return dedupeOfferingsByBusinessKey(rows)
-  }, [
-    accounts,
-    enabledAccounts,
-    groupInfoByAccount,
-    overrides,
-    pricingContexts,
-    selectedSource.groupSemantics,
-  ])
-
-  const favoriteByName = useMemo(
-    () =>
-      new Map(favorites.map((favorite) => [favorite.normalizedName, favorite])),
-    [favorites],
-  )
-  const allRows = useMemo(
-    () => buildAllModelRows(accountOfferings, manualSources),
-    [accountOfferings, manualSources],
-  )
-  const visibleFavorites = useMemo(
-    () =>
-      favorites.filter(
-        (favorite) => favoriteType === "all" || favorite.type === favoriteType,
-      ),
-    [favoriteType, favorites],
-  )
-  const activeFavorite =
-    visibleFavorites.find(
-      (favorite) => favorite.normalizedName === selectedFavoriteName,
-    ) ?? visibleFavorites[0]
-  const favoriteRows = useMemo(() => {
-    const names = new Set(favorites.map((favorite) => favorite.normalizedName))
-    const accountById = new Map(accountOfferings.map((row) => [row.id, row]))
-    return allRows
-      .filter((row) => names.has(row.normalizedName))
-      .map((row) =>
-        row.sourceType === "account" ? accountById.get(row.id) ?? row : row,
-      ) as FavoriteOffering[]
-  }, [accountOfferings, allRows, favorites])
-  const activeFavoriteRows = useMemo(
-    () =>
-      activeFavorite
-        ? favoriteRows.filter(
-            (row) => row.normalizedName === activeFavorite.normalizedName,
-          )
-        : [],
-    [activeFavorite, favoriteRows],
-  )
+  }, [actionableFavoriteRows, includedAccounts])
   const availableFavoriteTags = useMemo(
     () =>
       Array.from(
         new Set(
-          activeFavoriteRows.flatMap((row) => overrides[row.id]?.tags ?? []),
+          actionableFavoriteRows.flatMap(
+            (row) => overrides[row.id]?.tags ?? [],
+          ),
         ),
       ).sort((left, right) => left.localeCompare(right, "zh-CN")),
-    [activeFavoriteRows, overrides],
+    [actionableFavoriteRows, overrides],
   )
 
   useEffect(() => {
@@ -490,10 +640,12 @@ function ModelHub() {
         viewMode,
         sortMode: "name",
         favoriteModels: next,
+        excludedSourceUrls: [...excludedSourceUrls],
+        selectedTokenIds,
       })
       setFavorites(saved.favoriteModels)
     },
-    [viewMode],
+    [excludedSourceUrls, selectedTokenIds, viewMode],
   )
 
   const changeView = (next: ModelHubViewMode) => {
@@ -502,6 +654,37 @@ function ModelHub() {
       viewMode: next,
       sortMode: "name",
       favoriteModels: favorites,
+      excludedSourceUrls: [...excludedSourceUrls],
+      selectedTokenIds,
+    })
+  }
+
+  const saveExcludedSources = async (next: Set<string>) => {
+    const saved = await saveModelHubPreferences({
+      viewMode,
+      sortMode: "multiplier-asc",
+      favoriteModels: favorites,
+      excludedSourceUrls: [...next],
+      selectedTokenIds,
+    })
+    setExcludedSourceUrls(new Set(saved.excludedSourceUrls))
+    requestedGroupInfoAccountIds.current.clear()
+    setGroupInfoByAccount({})
+    setIsSourceManagerOpen(false)
+  }
+
+  const selectTokenForOffering = async (
+    offeringId: string,
+    tokenId: number,
+  ) => {
+    const next = { ...selectedTokenIds, [offeringId]: tokenId }
+    setSelectedTokenIds(next)
+    await saveModelHubPreferences({
+      viewMode,
+      sortMode: "multiplier-asc",
+      favoriteModels: favorites,
+      excludedSourceUrls: [...excludedSourceUrls],
+      selectedTokenIds: next,
     })
   }
 
@@ -666,6 +849,7 @@ function ModelHub() {
     [accountOfferings],
   )
   const catalogRows = useMemo(() => {
+    if (viewMode !== "all" || allSection !== "catalog") return []
     const query = search.trim().toLowerCase()
     const aggregated = aggregateModelCatalogRows(allRows, (row) => {
       if (row.sourceType === "manual") return priceForManual(row).usdAmount
@@ -709,7 +893,25 @@ function ModelHub() {
     priceForManual,
     search,
     typeFilter,
+    allSection,
+    viewMode,
   ])
+  const catalogPageCount = Math.max(
+    1,
+    Math.ceil(catalogRows.length / CATALOG_PAGE_SIZE),
+  )
+  const pagedCatalogRows = useMemo(
+    () =>
+      catalogRows.slice(
+        (catalogPage - 1) * CATALOG_PAGE_SIZE,
+        catalogPage * CATALOG_PAGE_SIZE,
+      ),
+    [catalogPage, catalogRows],
+  )
+  useEffect(() => setCatalogPage(1), [allSort, search, typeFilter])
+  useEffect(() => {
+    if (catalogPage > catalogPageCount) setCatalogPage(catalogPageCount)
+  }, [catalogPage, catalogPageCount])
   const filteredManualSources = useMemo(() => {
     const query = search.trim().toLowerCase()
     return manualSources
@@ -727,7 +929,7 @@ function ModelHub() {
   }, [manualSources, search])
   const sortedActiveFavoriteRows = useMemo(() => {
     const query = favoriteSearch.trim().toLowerCase()
-    const rows = activeFavoriteRows.filter((row) => {
+    const rows = actionableFavoriteRows.filter((row) => {
       const matchesSearch =
         !query ||
         row.providerName.toLowerCase().includes(query) ||
@@ -764,7 +966,7 @@ function ModelHub() {
       )
     })
   }, [
-    activeFavoriteRows,
+    actionableFavoriteRows,
     benchmarks,
     favoriteSearch,
     favoriteSort,
@@ -817,7 +1019,7 @@ function ModelHub() {
   }
 
   const applyBatchTags = async (tags: string[], mode: "add" | "remove") => {
-    const selectedRows = activeFavoriteRows.filter((row) =>
+    const selectedRows = actionableFavoriteRows.filter((row) =>
       selectedOfferingIds.has(row.id),
     )
     const updates = await Promise.all(
@@ -840,26 +1042,51 @@ function ModelHub() {
     toast.success(mode === "add" ? "标签已批量添加" : "标签已批量移除")
   }
 
+  const keyInventoryProgress = useMemo(() => {
+    const inventories = relevantKeyAccounts.map(
+      (account) => tokenInventories[account.id],
+    )
+    const relevantAccountIds = new Set(
+      relevantKeyAccounts.map((account) => account.id),
+    )
+    return {
+      total: relevantKeyAccounts.length,
+      completed: inventories.filter(
+        (inventory) => inventory?.status === "loaded",
+      ).length,
+      loading: inventories.some(
+        (inventory) =>
+          !inventory ||
+          inventory.status === "idle" ||
+          inventory.status === "loading",
+      ),
+      errors: keyLoadFailures.filter((failure) =>
+        relevantAccountIds.has(failure.accountId),
+      ),
+      globalProgress: tokenLoadProgress,
+    }
+  }, [
+    keyLoadFailures,
+    relevantKeyAccounts,
+    tokenInventories,
+    tokenLoadProgress,
+  ])
+
   const benchmarkAccount = async (row: AccountOffering) => {
     if (row.type !== "text" || testingIds.has(row.id)) return
     const account = accounts.find((item) => item.id === row.accountId)
     if (!account) return
     setTestingIds((current) => new Set(current).add(row.id))
     try {
-      const keys = await fetchDisplayAccountRuntimeKeys(account)
-      const key = keys.find((item) =>
-        isAccountTokenRuntimeKey(item)
-          ? item.token.group === row.groupName
-          : row.groupName === "通用" || row.groupName === "默认分组",
-      )
-      if (!key) throw new Error("该分组尚未创建 API 密钥")
-      const credential = await resolveDisplayAccountRuntimeKeySecret(
+      if (!row.selectedToken) throw new Error("该分组尚未创建 API 密钥")
+      if (!row.selectedTokenUsable) throw new Error("当前密钥已过期或额度耗尽")
+      const token = await resolveDisplayAccountTokenForSecret(
         account,
-        key,
+        row.selectedToken,
       )
       const metrics = await runModelHubBenchmark({
-        baseUrl: credential.baseUrl || account.baseUrl,
-        apiKey: credential.secret,
+        baseUrl: account.baseUrl,
+        apiKey: token.key,
         model: row.modelName,
       })
       const result = {
@@ -954,8 +1181,19 @@ function ModelHub() {
   const benchmarkOffering = (row: FavoriteOffering) =>
     row.sourceType === "account" ? benchmarkAccount(row) : benchmarkManual(row)
 
-  const exportOffering = (row: FavoriteOffering) =>
-    row.sourceType === "account" ? requestAccountExport(row) : exportManual(row)
+  const exportOffering = (row: FavoriteOffering) => {
+    if (row.sourceType === "manual") return exportManual(row)
+    const account = accounts.find((item) => item.id === row.accountId)
+    if (!account || !row.selectedToken) {
+      toast.error("该分组没有可导出的账号密钥")
+      return
+    }
+    if (!row.selectedTokenUsable) {
+      toast.error("当前密钥已过期或额度耗尽")
+      return
+    }
+    setCCSwitch({ account, token: row.selectedToken, modelName: row.modelName })
+  }
 
   const editOffering = (row: FavoriteOffering) => {
     if (row.sourceType === "account") {
@@ -987,43 +1225,6 @@ function ModelHub() {
     toast.success(`批量测试完成，共 ${rows.length} 项`)
   }
 
-  const requestAccountExport = (row: AccountOffering) =>
-    setAccountExportRequest(row)
-  useEffect(() => {
-    if (
-      !accountExportRequest ||
-      selectedKeyAccountId !== accountExportRequest.accountId
-    )
-      return
-    const inventory = tokenInventories[accountExportRequest.accountId]
-    if (
-      !inventory ||
-      inventory.status === "idle" ||
-      inventory.status === "loading"
-    )
-      return
-    const account = accounts.find(
-      (item) => item.id === accountExportRequest.accountId,
-    )
-    const token: AccountToken | undefined = accountTokens.find(
-      (item) =>
-        item.accountId === accountExportRequest.accountId &&
-        (accountExportRequest.tokenId !== undefined
-          ? item.id === accountExportRequest.tokenId
-          : item.group === accountExportRequest.groupName),
-    )
-    if (!account || !token) toast.error("该分组没有可导出的账号密钥")
-    else
-      setCCSwitch({ account, token, modelName: accountExportRequest.modelName })
-    setAccountExportRequest(null)
-  }, [
-    accountExportRequest,
-    accountTokens,
-    accounts,
-    selectedKeyAccountId,
-    tokenInventories,
-  ])
-
   const handleManualSaved = (saved: ModelHubManualSource) => {
     setManualSources((current) => [
       ...current.filter((item) => item.id !== saved.id),
@@ -1053,21 +1254,32 @@ function ModelHub() {
             选择常用模型，快速比较账号分组与价格
           </p>
         </div>
-        <div className="flex rounded-md border border-gray-200 p-1 dark:border-gray-700">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
-            variant={viewMode === "favorites" ? "default" : "ghost"}
-            onClick={() => changeView("favorites")}
+            variant="outline"
+            leftIcon={<Settings2 />}
+            onClick={() => setIsSourceManagerOpen(true)}
           >
-            常用模型 <span className="ml-1 opacity-70">{favorites.length}</span>
+            来源管理 {includedAccounts.length}/{accounts.length}
           </Button>
-          <Button
-            size="sm"
-            variant={viewMode === "all" ? "default" : "ghost"}
-            onClick={() => changeView("all")}
-          >
-            全部模型
-          </Button>
+          <div className="flex rounded-md border border-gray-200 p-1 dark:border-gray-700">
+            <Button
+              size="sm"
+              variant={viewMode === "favorites" ? "default" : "ghost"}
+              onClick={() => changeView("favorites")}
+            >
+              常用模型{" "}
+              <span className="ml-1 opacity-70">{favorites.length}</span>
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "all" ? "default" : "ghost"}
+              onClick={() => changeView("all")}
+            >
+              全部模型
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1225,6 +1437,52 @@ function ModelHub() {
                   ))}
                 </div>
               )}
+              {keyInventoryProgress.total > 0 &&
+                (keyInventoryProgress.loading ||
+                  keyInventoryProgress.errors.length > 0) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900/40">
+                    {keyInventoryProgress.loading && (
+                      <span>
+                        正在检查相关账号的密钥分组，已确认{" "}
+                        {keyInventoryProgress.completed}/
+                        {keyInventoryProgress.total}
+                      </span>
+                    )}
+                    {keyInventoryProgress.errors.length > 0 && (
+                      <span className="text-amber-700 dark:text-amber-400">
+                        {keyInventoryProgress.errors.length} 个账号密钥加载失败
+                      </span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void retryFailedKeyAccounts()}
+                    >
+                      重试
+                    </Button>
+                    {showAccountFailures &&
+                      keyInventoryProgress.errors.map((failure) => (
+                        <span
+                          key={failure.accountId}
+                          className="w-full text-xs"
+                        >
+                          {failure.accountName}：
+                          {failure.errorMessage ?? "密钥加载失败"}
+                        </span>
+                      ))}
+                    {keyInventoryProgress.errors.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setShowAccountFailures((value) => !value)
+                        }
+                      >
+                        {showAccountFailures ? "收起详情" : "查看详情"}
+                      </Button>
+                    )}
+                  </div>
+                )}
               {selectedOfferingIds.size > 0 && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-blue-900 dark:bg-blue-950/30">
                   <span>已选择 {selectedOfferingIds.size} 项</span>
@@ -1233,7 +1491,7 @@ function ModelHub() {
                     variant="secondary"
                     onClick={() =>
                       setBatchTestRows(
-                        activeFavoriteRows.filter((row) =>
+                        actionableFavoriteRows.filter((row) =>
                           selectedOfferingIds.has(row.id),
                         ),
                       )
@@ -1262,7 +1520,9 @@ function ModelHub() {
               )}
               {sortedActiveFavoriteRows.length === 0 ? (
                 <Empty>
-                  当前没有账号来源提供此模型，可到全部模型查看手动 API 来源。
+                  {keyInventoryProgress.loading
+                    ? "正在检查可用密钥分组。"
+                    : "当前没有已配置有效密钥的账号分组或手动 API 来源。"}
                 </Empty>
               ) : (
                 <FavoriteTable
@@ -1276,6 +1536,9 @@ function ModelHub() {
                   onTest={benchmarkOffering}
                   onExport={exportOffering}
                   onEdit={editOffering}
+                  onTokenChange={(row, tokenId) =>
+                    void selectTokenForOffering(row.id, tokenId)
+                  }
                 />
               )}
             </div>
@@ -1387,25 +1650,53 @@ function ModelHub() {
             catalogRows.length === 0 ? (
               <Empty>没有符合条件的模型。</Empty>
             ) : (
-              <CatalogTable
-                rows={catalogRows}
-                accountRows={accountOfferings}
-                favoriteNames={
-                  new Set(favorites.map((favorite) => favorite.normalizedName))
-                }
-                prices={priceForAccount}
-                manualPrices={priceForManual}
-                expandedNames={expandedModelNames}
-                onToggleExpanded={(name) =>
-                  setExpandedModelNames((current) => {
-                    const next = new Set(current)
-                    if (next.has(name)) next.delete(name)
-                    else next.add(name)
-                    return next
-                  })
-                }
-                onToggleFavorite={toggleFavorite}
-              />
+              <div className="space-y-3">
+                <CatalogTable
+                  rows={pagedCatalogRows}
+                  accountRows={accountOfferings}
+                  favoriteNames={
+                    new Set(
+                      favorites.map((favorite) => favorite.normalizedName),
+                    )
+                  }
+                  prices={priceForAccount}
+                  manualPrices={priceForManual}
+                  expandedNames={expandedModelNames}
+                  onToggleExpanded={(name) =>
+                    setExpandedModelNames((current) => {
+                      const next = new Set(current)
+                      if (next.has(name)) next.delete(name)
+                      else next.add(name)
+                      return next
+                    })
+                  }
+                  onToggleFavorite={toggleFavorite}
+                />
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <span>
+                    共 {catalogRows.length} 个模型，第 {catalogPage}/
+                    {catalogPageCount} 页
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={catalogPage <= 1}
+                      onClick={() => setCatalogPage((page) => page - 1)}
+                    >
+                      上一页
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={catalogPage >= catalogPageCount}
+                      onClick={() => setCatalogPage((page) => page + 1)}
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )
           ) : filteredManualSources.length === 0 ? (
             <Empty>还没有手动 API 来源。</Empty>
@@ -1471,6 +1762,13 @@ function ModelHub() {
         onClose={() => setEditingManualSource(null)}
         onSaved={handleManualSaved}
       />
+      <SourceManagerDialog
+        isOpen={isSourceManagerOpen}
+        accounts={accounts}
+        excludedSourceUrls={excludedSourceUrls}
+        onClose={() => setIsSourceManagerOpen(false)}
+        onSave={saveExcludedSources}
+      />
       <Modal
         isOpen={deletingSource !== null}
         onClose={() => setDeletingSource(null)}
@@ -1508,6 +1806,128 @@ function ModelHub() {
   )
 }
 
+function SourceManagerDialog({
+  isOpen,
+  accounts,
+  excludedSourceUrls,
+  onClose,
+  onSave,
+}: {
+  isOpen: boolean
+  accounts: DisplaySiteData[]
+  excludedSourceUrls: Set<string>
+  onClose: () => void
+  onSave: (urls: Set<string>) => void | Promise<void>
+}) {
+  const [search, setSearch] = useState("")
+  const [draft, setDraft] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (isOpen) {
+      setDraft(new Set(excludedSourceUrls))
+      setSearch("")
+    }
+  }, [excludedSourceUrls, isOpen])
+
+  const sources = useMemo(() => {
+    const byUrl = new Map<
+      string,
+      { url: string; names: Set<string>; accountCount: number }
+    >()
+    for (const account of accounts) {
+      const url = normalizeModelHubSourceUrl(account.baseUrl)
+      if (!url) continue
+      const current = byUrl.get(url) ?? {
+        url,
+        names: new Set<string>(),
+        accountCount: 0,
+      }
+      current.names.add(account.name)
+      current.accountCount += 1
+      byUrl.set(url, current)
+    }
+    const query = search.trim().toLowerCase()
+    return [...byUrl.values()]
+      .filter(
+        (source) =>
+          !query ||
+          source.url.includes(query) ||
+          [...source.names].some((name) => name.toLowerCase().includes(query)),
+      )
+      .sort((left, right) =>
+        [...left.names][0].localeCompare([...right.names][0], "zh-CN"),
+      )
+  }, [accounts, search])
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="模型筛选来源管理"
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            取消
+          </Button>
+          <Button onClick={() => void onSave(draft)}>保存</Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-gray-500">
+          关闭聚合站等无须比较的来源，仅影响模型筛选页面。
+        </p>
+        <div className="flex gap-2">
+          <label className="relative flex-1">
+            <Search className="absolute top-2.5 left-3 h-4 w-4 text-gray-400" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="搜索中转站或 URL"
+            />
+          </label>
+          <Button variant="outline" onClick={() => setDraft(new Set())}>
+            全部参与
+          </Button>
+        </div>
+        <div className="max-h-[55vh] divide-y divide-gray-200 overflow-y-auto rounded-md border border-gray-200 dark:divide-gray-700 dark:border-gray-700">
+          {sources.map((source) => {
+            const enabled = !draft.has(source.url)
+            return (
+              <label
+                key={source.url}
+                className="flex cursor-pointer items-start gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-900"
+              >
+                <Checkbox
+                  checked={enabled}
+                  onCheckedChange={(checked) => {
+                    const next = new Set(draft)
+                    if (checked === true) next.delete(source.url)
+                    else next.add(source.url)
+                    setDraft(next)
+                  }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900 dark:text-white">
+                    {[...source.names].join(" / ")}
+                  </span>
+                  <span className="block truncate text-xs text-gray-500">
+                    {source.url} · {source.accountCount} 个账号
+                  </span>
+                </span>
+                <Badge variant={enabled ? "secondary" : "outline"}>
+                  {enabled ? "参与筛选" : "已排除"}
+                </Badge>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 function FavoriteTable({
   rows,
   prices,
@@ -1519,6 +1939,7 @@ function FavoriteTable({
   onTest,
   onExport,
   onEdit,
+  onTokenChange,
 }: {
   rows: FavoriteOffering[]
   prices: (row: FavoriteOffering) => ModelHubPriceView
@@ -1530,16 +1951,32 @@ function FavoriteTable({
   onTest: (row: FavoriteOffering) => void
   onExport: (row: FavoriteOffering) => void
   onEdit: (row: FavoriteOffering) => void
+  onTokenChange: (row: AccountOffering, tokenId: number) => void
 }) {
+  const priceHeader =
+    rows[0]?.type === "text" ? "输入价格" : rows[0] ? "调用价格" : "价格"
+
   return (
     <Table
+      tableClassName="table-fixed min-w-[1100px]"
+      columnWidths={[
+        "44px",
+        "170px",
+        "200px",
+        "210px",
+        "76px",
+        "96px",
+        "56px",
+        "60px",
+        "170px",
+      ]}
       headers={[
         "选择",
         "中转站/账号",
         "分组",
-        "输入价格",
+        "使用密钥",
         "分组倍率",
-        "余额",
+        priceHeader,
         "首字",
         "速度",
         "管理",
@@ -1548,6 +1985,13 @@ function FavoriteTable({
       {rows.map((row) => {
         const price = prices(row)
         const benchmark = benchmarks[row.id]
+        const selectedToken =
+          row.sourceType === "account" ? row.selectedToken : undefined
+        const compatibleTokens =
+          row.sourceType === "account" ? row.compatibleTokens ?? [] : []
+        const usableTokenCount = compatibleTokens.filter(isTokenUsable).length
+        const accountTokenUnavailable =
+          row.sourceType === "account" && !row.selectedTokenUsable
         return (
           <tr
             key={row.id}
@@ -1556,6 +2000,7 @@ function FavoriteTable({
             <Cell>
               <Checkbox
                 checked={selectedIds.has(row.id)}
+                disabled={accountTokenUnavailable}
                 onCheckedChange={(checked) => {
                   const next = new Set(selectedIds)
                   if (checked === true) next.add(row.id)
@@ -1565,29 +2010,70 @@ function FavoriteTable({
               />
             </Cell>
             <Cell>
-              {row.baseUrl ? (
-                <a
-                  className="font-medium text-blue-600 hover:underline"
-                  href={row.baseUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {row.providerName}
-                </a>
-              ) : (
-                row.providerName
-              )}
+              <div className="max-w-52 space-y-1">
+                {row.baseUrl ? (
+                  <a
+                    className="block truncate font-medium text-blue-600 hover:underline"
+                    href={row.baseUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={row.providerName}
+                  >
+                    {row.providerName}
+                  </a>
+                ) : (
+                  <span className="block truncate" title={row.providerName}>
+                    {row.providerName}
+                  </span>
+                )}
+                <p className="truncate text-xs text-gray-500">
+                  {row.sourceType === "account"
+                    ? `${row.accountUsername || "未命名账号"} · 账号 `
+                    : "手动来源 · "}
+                  <span
+                    className={balanceTextClass(
+                      row.balanceUsd,
+                      row.sourceType === "account"
+                        ? row.balanceKnown
+                        : row.balanceUsd !== null,
+                    )}
+                    title={
+                      row.sourceType === "account"
+                        ? `账号余额 ${formatBalance(row.balanceUsd, row.balanceKnown)}`
+                        : `手动来源余额 ${formatBalance(row.balanceUsd, row.balanceUsd !== null)}`
+                    }
+                  >
+                    {formatBalance(
+                      row.balanceUsd,
+                      row.sourceType === "account"
+                        ? row.balanceKnown
+                        : row.balanceUsd !== null,
+                    )}
+                  </span>
+                </p>
+              </div>
             </Cell>
             <Cell>
-              <div className="max-w-72 space-y-1">
-                <div className="flex flex-wrap gap-1">
-                  <Badge variant="secondary">{row.groupName}</Badge>
+              <div className="max-w-full min-w-0 space-y-1 overflow-hidden">
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  <Badge
+                    className="max-w-full min-w-0"
+                    variant="secondary"
+                    title={row.groupName}
+                  >
+                    <span className="truncate">{row.groupName}</span>
+                  </Badge>
                   {row.sourceType === "manual" && (
                     <Badge variant="outline">手动 API</Badge>
                   )}
                   {(overrides[row.id]?.tags ?? []).map((tag) => (
-                    <Badge key={tag} variant="outline">
-                      {tag}
+                    <Badge
+                      key={tag}
+                      className="max-w-full min-w-0"
+                      variant="outline"
+                      title={tag}
+                    >
+                      <span className="truncate">{tag}</span>
                     </Badge>
                   ))}
                 </div>
@@ -1602,31 +2088,81 @@ function FavoriteTable({
               </div>
             </Cell>
             <Cell>
-              <Price value={price} />
+              {row.sourceType === "account" ? (
+                <div className="max-w-full min-w-0 space-y-1 overflow-hidden">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                    {compatibleTokens.length > 1 ? (
+                      <select
+                        className="h-7 min-w-0 flex-1 truncate rounded border border-gray-300 bg-white px-1.5 text-xs dark:border-gray-700 dark:bg-gray-900"
+                        value={selectedToken?.id ?? ""}
+                        title={selectedToken?.name}
+                        onChange={(event) =>
+                          onTokenChange(row, Number(event.target.value))
+                        }
+                      >
+                        {compatibleTokens.map((token) => (
+                          <option
+                            key={token.id}
+                            value={token.id}
+                            disabled={
+                              usableTokenCount > 0 && !isTokenUsable(token)
+                            }
+                          >
+                            {token.name || `密钥 ${token.id}`} ·{" "}
+                            {formatQuota(
+                              token.remain_quota,
+                              token.unlimited_quota,
+                            )}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span
+                        className="truncate text-sm font-medium"
+                        title={selectedToken?.name}
+                      >
+                        {selectedToken?.name ||
+                          (selectedToken ? `密钥 ${selectedToken.id}` : "--")}
+                      </span>
+                    )}
+                  </div>
+                  {selectedToken && (
+                    <p
+                      className={`truncate text-xs ${row.selectedTokenUsable ? "text-gray-500" : "text-red-600"}`}
+                      title={
+                        isTokenExpired(selectedToken)
+                          ? "密钥已过期"
+                          : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}${compatibleTokens.length > 1 ? ` · ${usableTokenCount} 个可用密钥` : ""}`
+                      }
+                    >
+                      {isTokenExpired(selectedToken)
+                        ? "密钥已过期"
+                        : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}${compatibleTokens.length > 1 ? ` · ${usableTokenCount} 个可用` : ""}`}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-gray-500">手动 API</span>
+              )}
             </Cell>
             <Cell>{formatRatio(row.groupRatio)}</Cell>
             <Cell>
-              <span
-                title={
-                  row.sourceType === "account"
-                    ? "余额来自账号管理"
-                    : "手动来源余额"
-                }
-              >
-                {formatBalance(
-                  row.balanceUsd,
-                  row.sourceType === "account"
-                    ? row.balanceKnown
-                    : row.balanceUsd !== null,
-                )}
-              </span>
+              <Price value={price} />
             </Cell>
             <Cell>
-              {benchmark?.status === "failed"
-                ? "失败"
-                : benchmark?.firstTokenMs !== undefined
-                  ? `${(benchmark.firstTokenMs / 1000).toFixed(1)} s`
-                  : "--"}
+              {benchmark?.status === "failed" ? (
+                <span
+                  className="cursor-help text-red-600 dark:text-red-400"
+                  title={benchmark.errorSummary ?? "测试失败"}
+                >
+                  失败
+                </span>
+              ) : benchmark?.firstTokenMs !== undefined ? (
+                `${(benchmark.firstTokenMs / 1000).toFixed(1)} s`
+              ) : (
+                "--"
+              )}
             </Cell>
             <Cell>
               {benchmark?.overallTokensPerSecond !== undefined
@@ -1634,20 +2170,32 @@ function FavoriteTable({
                 : "--"}
             </Cell>
             <Cell>
-              <div className="flex gap-1">
+              <div className="flex gap-0.5 whitespace-nowrap">
                 <Button
+                  className="px-2"
                   size="sm"
                   variant="ghost"
                   loading={testingIds.has(row.id)}
-                  disabled={row.type !== "text"}
+                  disabled={row.type !== "text" || accountTokenUnavailable}
                   onClick={() => onTest(row)}
                 >
                   测试
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => onExport(row)}>
+                <Button
+                  className="px-2"
+                  size="sm"
+                  variant="ghost"
+                  disabled={accountTokenUnavailable}
+                  onClick={() => onExport(row)}
+                >
                   导入 CCS
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => onEdit(row)}>
+                <Button
+                  className="px-2"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onEdit(row)}
+                >
                   编辑
                 </Button>
               </div>
@@ -2067,11 +2615,21 @@ function AccountOverrideDialog({
   const [ratio, setRatio] = useState("")
   const [input, setInput] = useState("")
   const [output, setOutput] = useState("")
+  const [perCallPrice, setPerCallPrice] = useState("")
+  const [billingUnit, setBillingUnit] =
+    useState<ModelHubBillingUnit>("token-million")
   const [tags, setTags] = useState("")
   const [ratioDirty, setRatioDirty] = useState(false)
   const [inputDirty, setInputDirty] = useState(false)
   const [outputDirty, setOutputDirty] = useState(false)
+  const [perCallPriceDirty, setPerCallPriceDirty] = useState(false)
+  const [billingUnitDirty, setBillingUnitDirty] = useState(false)
   useEffect(() => {
+    const resolvedBillingUnit =
+      override?.manualBillingUnit ??
+      (currentPrice?.billingMode === "per-call"
+        ? currentPrice.billingUnit
+        : "token-million")
     setRatio(
       override?.manualMultiplier?.toString() ??
         row?.groupRatio?.toString() ??
@@ -2087,11 +2645,40 @@ function AccountOverrideDialog({
         currentPrice?.outputUsd?.toString() ??
         "",
     )
+    setPerCallPrice(
+      override?.manualPriceUsd?.toString() ??
+        (currentPrice?.billingMode === "per-call"
+          ? currentPrice.usdAmount?.toString() ?? ""
+          : ""),
+    )
+    setBillingUnit(resolvedBillingUnit)
     setTags(override?.tags.join(", ") ?? "")
     setRatioDirty(false)
     setInputDirty(false)
     setOutputDirty(false)
+    setPerCallPriceDirty(false)
+    setBillingUnitDirty(false)
   }, [currentPrice, override, row])
+  const isTokenPrice = billingUnit === "token-million"
+  const billingUnitOptions =
+    row?.type === "image"
+      ? BILLING_OPTIONS.filter(([value]) =>
+          ["image", "request", "token-million"].includes(value),
+        )
+      : row?.type === "video"
+        ? BILLING_OPTIONS.filter(([value]) =>
+            [
+              "video-second",
+              "video-minute",
+              "request",
+              "token-million",
+            ].includes(value),
+          )
+        : row?.type === "other"
+          ? BILLING_OPTIONS.filter(([value]) =>
+              ["request", "token-million"].includes(value),
+            )
+          : [["token-million", "百万 Token"]]
   const save = () => {
     if (!row) return
     const manualInput = inputDirty
@@ -2100,21 +2687,26 @@ function AccountOverrideDialog({
     const manualOutput = outputDirty
       ? nonNegative(output)
       : override?.manualOutputPriceUsd
+    const manualPerCallPrice = perCallPriceDirty
+      ? nonNegative(perCallPrice)
+      : override?.manualPriceUsd
+    const hasTokenPriceOverride =
+      manualInput !== undefined || manualOutput !== undefined
+    const hasPerCallPriceOverride = manualPerCallPrice !== undefined
     void onSave(row, {
       aliases: override?.aliases ?? [],
       manualMultiplier: ratioDirty
         ? nonNegative(ratio) ?? null
         : override?.manualMultiplier ?? null,
-      ...(manualInput !== undefined
-        ? { manualInputPriceUsd: manualInput }
-        : {}),
-      ...(manualOutput !== undefined
-        ? { manualOutputPriceUsd: manualOutput }
-        : {}),
+      manualPriceUsd: isTokenPrice ? null : manualPerCallPrice ?? null,
+      manualInputPriceUsd: isTokenPrice ? manualInput ?? null : null,
+      manualOutputPriceUsd: isTokenPrice ? manualOutput ?? null : null,
       manualBillingUnit:
-        manualInput !== undefined || manualOutput !== undefined
+        isTokenPrice && hasTokenPriceOverride
           ? "token-million"
-          : null,
+          : !isTokenPrice && (hasPerCallPriceOverride || billingUnitDirty)
+            ? billingUnit
+            : null,
       tags: tags
         .split(/[,，]/)
         .map((item) => item.trim())
@@ -2161,28 +2753,59 @@ function AccountOverrideDialog({
         </div>
         <div className="space-y-2">
           <h3 className="text-sm font-medium">模型价格</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="输入价格（USD / 百万 Token）">
+          {row?.type !== "text" && (
+            <FormField label="计费单位">
+              <select
+                className="h-9 w-full rounded border border-gray-300 bg-white px-3 dark:border-gray-700 dark:bg-gray-900"
+                value={billingUnit}
+                onChange={(event) => {
+                  setBillingUnit(event.target.value as ModelHubBillingUnit)
+                  setBillingUnitDirty(true)
+                }}
+              >
+                {billingUnitOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          )}
+          {isTokenPrice ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="输入价格（USD / 百万 Token）">
+                <Input
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value)
+                    setInputDirty(true)
+                  }}
+                  inputMode="decimal"
+                />
+              </FormField>
+              <FormField label="输出价格（USD / 百万 Token）">
+                <Input
+                  value={output}
+                  onChange={(e) => {
+                    setOutput(e.target.value)
+                    setOutputDirty(true)
+                  }}
+                  inputMode="decimal"
+                />
+              </FormField>
+            </div>
+          ) : (
+            <FormField label="调用价格（USD）">
               <Input
-                value={input}
+                value={perCallPrice}
                 onChange={(e) => {
-                  setInput(e.target.value)
-                  setInputDirty(true)
+                  setPerCallPrice(e.target.value)
+                  setPerCallPriceDirty(true)
                 }}
                 inputMode="decimal"
               />
             </FormField>
-            <FormField label="输出价格（USD / 百万 Token）">
-              <Input
-                value={output}
-                onChange={(e) => {
-                  setOutput(e.target.value)
-                  setOutputDirty(true)
-                }}
-                inputMode="decimal"
-              />
-            </FormField>
-          </div>
+          )}
         </div>
         <div>
           <FormField label="标签">
@@ -2689,13 +3312,26 @@ function ManualSourceDialog({
 function Table({
   headers,
   children,
+  tableClassName,
+  columnWidths,
 }: {
   headers: string[]
   children: ReactNode
+  tableClassName?: string
+  columnWidths?: string[]
 }) {
   return (
     <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
-      <table className="w-full min-w-[980px] text-left text-sm">
+      <table
+        className={`w-full text-left text-sm ${tableClassName ?? "min-w-[980px]"}`}
+      >
+        {columnWidths && (
+          <colgroup>
+            {columnWidths.map((width, index) => (
+              <col key={`${index}-${width}`} style={{ width }} />
+            ))}
+          </colgroup>
+        )}
         <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900">
           <tr>
             {headers.map((header) => (
@@ -2718,8 +3354,23 @@ function Cell({ children }: { children: ReactNode }) {
   )
 }
 function Price({ value }: { value: ModelHubPriceView }) {
+  const billingLabel =
+    value.billingMode === "token"
+      ? "中转站标注：按量计费"
+      : "中转站标注：按次计费"
+  const sourceLabel =
+    value.status === "manual"
+      ? "手动修正价格"
+      : value.isEstimated
+        ? "官方倍率估算价格"
+        : value.status === "exact"
+          ? "中转站模型目录价格"
+          : "价格未知"
+  const title = [sourceLabel, billingLabel, value.manualNote]
+    .filter(Boolean)
+    .join(" · ")
   return (
-    <span title={value.manualNote}>
+    <span title={title}>
       {value.primaryText ? `${value.primaryText}${value.unitText ?? ""}` : "--"}
       {value.isEstimated && (
         <span className="ml-1 text-xs text-gray-400">估</span>

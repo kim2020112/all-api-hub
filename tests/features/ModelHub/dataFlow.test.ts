@@ -14,6 +14,7 @@ import {
   getModelHubManualSources,
   normalizeManualSource,
   normalizeModelHubPreferences,
+  normalizeModelHubSourceUrl,
   removeModelHubManualSource,
   saveModelHubManualOverride,
   saveModelHubManualSource,
@@ -143,6 +144,36 @@ describe("Model Hub data flow", () => {
       { modelName: "Flux Pro", normalizedName: "flux pro", type: "image" },
     ])
     expect(preferences.sortMode).toBe("multiplier-asc")
+    expect(preferences.excludedSourceUrls).toEqual([])
+    expect(preferences.selectedTokenIds).toEqual({})
+  })
+
+  it("normalizes and de-duplicates excluded source URLs", () => {
+    expect(normalizeModelHubSourceUrl(" HTTPS://Relay.Example.com/// ")).toBe(
+      "https://relay.example.com",
+    )
+    expect(
+      normalizeModelHubPreferences({
+        excludedSourceUrls: [
+          "https://relay.example.com/",
+          " HTTPS://RELAY.EXAMPLE.COM ",
+          "",
+        ],
+      }).excludedSourceUrls,
+    ).toEqual(["https://relay.example.com"])
+  })
+
+  it("preserves only valid selected token ids", () => {
+    expect(
+      normalizeModelHubPreferences({
+        selectedTokenIds: {
+          "account:a:default:gpt-5": 12,
+          invalid: -1,
+          decimal: 1.5,
+          text: "3",
+        },
+      }).selectedTokenIds,
+    ).toEqual({ "account:a:default:gpt-5": 12 })
   })
 
   it("preserves multiplier sorting and zero-valued manual multipliers", async () => {
