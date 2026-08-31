@@ -2,6 +2,15 @@
 
 ## Agent skills
 
+### Upstream upgrade workflow
+
+When synchronizing the fork with official All API Hub changes, follow
+[`docs/agents/upstream-upgrade-workflow.md`](docs/agents/upstream-upgrade-workflow.md).
+Always use an isolated upgrade branch, preserve uncommitted user changes, run
+focused tests and a development build, and merge into `feature/model-hub` only
+after verification. Do not overwrite the upstream `main` baseline or push
+without explicit authorization.
+
 ### Issue tracker
 
 Issues and specs for this repo live as local Markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
