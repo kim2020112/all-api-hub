@@ -17,6 +17,7 @@ import {
   PRODUCT_ANALYTICS_SETTING_IDS,
   PRODUCT_ANALYTICS_SOURCE_KINDS,
   PRODUCT_ANALYTICS_SURFACE_IDS,
+  PRODUCT_ANALYTICS_TARGET_KINDS,
 } from "~/services/productAnalytics/contracts"
 import {
   registerProductAnalyticsBackgroundHandler,
@@ -320,17 +321,27 @@ describe("product analytics event enums", () => {
 
     expect(PRODUCT_ANALYTICS_ACTION_IDS).toMatchObject({
       OpenAutoCheckinAccountSetup: "open_auto_checkin_account_setup",
+      SelectAutoCheckinDataView: "select_auto_checkin_data_view",
       OpenOptionsOverviewTarget: "open_options_overview_target",
       RefreshOptionsOverviewData: "refresh_options_overview_data",
     })
 
     expect(PRODUCT_ANALYTICS_SURFACE_IDS).toMatchObject({
       OptionsAutoCheckinEmptyState: "options_auto_checkin_empty_state",
+      OptionsAutoCheckinDataWorkspace: "options_auto_checkin_data_workspace",
       OptionsOverviewActionCenter: "options_overview_action_center",
       OptionsOverviewAttentionList: "options_overview_attention_list",
       OptionsOverviewAutomationOverview: "options_overview_automation_overview",
       OptionsOverviewRecentUsage: "options_overview_recent_usage",
       OptionsOverviewStatusSummary: "options_overview_status_summary",
+    })
+
+    expect(PRODUCT_ANALYTICS_MODE_IDS).toMatchObject({
+      AutoCheckinResultsView: "auto_checkin_results_view",
+      AutoCheckinReadinessView: "auto_checkin_readiness_view",
+    })
+    expect(PRODUCT_ANALYTICS_TARGET_KINDS).toMatchObject({
+      AutoCheckinDataView: "auto_checkin_data_view",
     })
   })
 
@@ -345,11 +356,22 @@ describe("product analytics event enums", () => {
       Retry: "retry",
     })
     expect(PRODUCT_ANALYTICS_AUTO_CHECKIN_SKIP_REASONS).toMatchObject({
+      AccountDataMissing: "account_data_missing",
       AccountDisabled: "account_disabled",
+      AuthenticationRequired: "authentication_required",
+      CredentialsMissing: "credentials_missing",
       DetectionDisabled: "detection_disabled",
+      MethodDisabled: "method_disabled",
+      MethodNotMatched: "method_not_matched",
+      MethodUnavailable: "method_unavailable",
+      MethodUnsupported: "method_unsupported",
       AutoCheckinDisabled: "auto_checkin_disabled",
+      NetworkError: "network_error",
+      NoSelectedMethod: "no_selected_method",
       NoProvider: "no_provider",
-      ProviderNotReady: "provider_not_ready",
+      PermissionDenied: "permission_denied",
+      SourceUnavailable: "source_unavailable",
+      Timeout: "timeout",
     })
   })
 

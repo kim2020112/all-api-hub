@@ -2,10 +2,20 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { AUTO_CHECKIN_METHOD_IDS } from "~/constants/checkIn"
 import { SITE_TYPES } from "~/constants/siteType"
 import SiteInfo from "~/features/AccountManagement/components/AccountList/SiteInfo"
-import { TEMP_WINDOW_HEALTH_STATUS_CODES } from "~/types"
+import { ACCOUNT_MANAGEMENT_TEST_IDS } from "~/features/AccountManagement/testIds"
+import { createCompatibilityCheckInConfig } from "~/services/checkin/autoCheckin/compatibilityConfig"
+import { mergeCompatibilityCheckInStatus } from "~/services/checkin/autoCheckin/state"
+import type { CheckInConfig, DisplaySiteData } from "~/types"
+import {
+  AuthTypeEnum,
+  SiteHealthStatus,
+  TEMP_WINDOW_HEALTH_STATUS_CODES,
+} from "~/types"
 import { formatLocaleDateTime } from "~/utils/core/formatters"
+import { buildDisplaySiteData } from "~~/tests/test-utils/factories"
 import { render, screen, waitFor } from "~~/tests/test-utils/render"
 
 const createDeferred = <T,>() => {
@@ -17,6 +27,29 @@ const createDeferred = <T,>() => {
   })
 
   return { promise, reject, resolve }
+}
+
+const createCheckIn = (input?: {
+  checked?: boolean
+  observedAt?: number
+  customCheckIn?: CheckInConfig["customCheckIn"]
+  supported?: boolean
+}) => {
+  const config = createCompatibilityCheckInConfig({
+    siteType: SITE_TYPES.NEW_API,
+    supported: input?.supported ?? typeof input?.checked === "boolean",
+    automaticExecutionEnabled: true,
+    customCheckIn: input?.customCheckIn,
+  })
+
+  return typeof input?.checked === "boolean"
+    ? mergeCompatibilityCheckInStatus({
+        config,
+        methodId: AUTO_CHECKIN_METHOD_IDS.NewApiDailyCheckIn,
+        isCheckedInToday: input.checked,
+        observedAt: input.observedAt ?? Date.now(),
+      })
+    : config
 }
 
 vi.mock("~/contexts/UserPreferencesContext", async (importOriginal) => {
@@ -79,20 +112,29 @@ vi.mock("react-hot-toast", () => ({
   },
 }))
 
-vi.mock("~/components/Tooltip", () => ({
-  default: ({
-    children,
-    content,
-  }: {
-    children: ReactNode
-    content: ReactNode
-  }) => (
-    <div data-tooltip-content={typeof content === "string" ? content : ""}>
-      {children}
-      {typeof content === "string" ? null : content}
-    </div>
-  ),
-}))
+vi.mock("~/components/Tooltip", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/components/Tooltip")>()
+
+  return {
+    ...actual,
+    default: ({
+      children,
+      content,
+    }: {
+      children: ReactNode
+      content: ReactNode
+    }) => (
+      <div
+        role={typeof content === "string" ? "img" : undefined}
+        aria-label={typeof content === "string" ? content : undefined}
+        data-tooltip-content={typeof content === "string" ? content : ""}
+      >
+        {children}
+        {typeof content === "string" ? null : content}
+      </div>
+    ),
+  }
+})
 
 vi.mock("~/features/AccountManagement/hooks/AccountDataContext", () => ({
   useAccountDataContext: () => ({
@@ -135,25 +177,25 @@ vi.mock("~/utils/navigation", () => ({
   openSettingsTab: mockOpenSettingsTab,
 }))
 
-const buildSite = (overrides: Record<string, unknown> = {}) =>
-  ({
+const buildSite = (overrides: Partial<DisplaySiteData> = {}) =>
+  buildDisplaySiteData({
     id: "acc-1",
     disabled: false,
     name: "Site",
     username: "user",
     baseUrl: "https://example.com",
-    siteType: SITE_TYPES.UNKNOWN,
+    siteType: SITE_TYPES.NEW_API,
     token: "token",
     userId: "1",
-    authType: "access_token",
+    authType: AuthTypeEnum.AccessToken,
     balance: { USD: 0, CNY: 0 },
     todayConsumption: { USD: 0, CNY: 0 },
     todayIncome: { USD: 0, CNY: 0 },
     todayTokens: { upload: 0, download: 0 },
-    health: { status: "healthy" },
-    checkIn: { enableDetection: false },
+    health: { status: SiteHealthStatus.Healthy },
+    checkIn: createCheckIn({ supported: false }),
     ...overrides,
-  }) as any
+  })
 
 describe("SiteInfo", () => {
   beforeEach(() => {
@@ -204,10 +246,21 @@ describe("SiteInfo", () => {
     )
   })
 
+  it("renders plain tags without search highlights", () => {
+    render(<SiteInfo site={buildSite({ tags: ["team", "backup"] })} />)
+
+    const tags = screen.getByTitle("team, backup")
+
+    expect(tags).toHaveTextContent("team, backup")
+    expect(tags.querySelector("mark")).toBeNull()
+  })
+
   it("renders the neutral health indicator for an unknown health status", () => {
     render(
       <SiteInfo
-        site={buildSite({ health: { status: "unexpected-status" } })}
+        site={buildSite({
+          health: { status: "unexpected-status" as SiteHealthStatus },
+        })}
       />,
     )
 
@@ -269,13 +322,10 @@ describe("SiteInfo", () => {
       render(
         <SiteInfo
           site={buildSite({
-            checkIn: {
-              enableDetection: true,
-              siteStatus: {
-                isCheckedInToday: true,
-                lastDetectedAt: new Date(2026, 0, 1, 12, 0, 0).getTime(),
-              },
-            },
+            checkIn: createCheckIn({
+              checked: true,
+              observedAt: new Date(2026, 0, 1, 12, 0, 0).getTime(),
+            }),
           })}
         />,
       )
@@ -302,6 +352,27 @@ describe("SiteInfo", () => {
     }
   })
 
+  it("does not label a selected check-in method without readback status as unsupported", () => {
+    render(
+      <SiteInfo
+        site={buildSite({
+          checkIn: createCheckIn({ supported: true }),
+        })}
+      />,
+    )
+
+    expect(
+      screen.getByRole("img", {
+        name: "account:list.site.checkInStatusUnavailable",
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("img", {
+        name: "account:list.site.checkInUnsupported",
+      }),
+    ).not.toBeInTheDocument()
+  })
+
   it("shows the normal check-in indicator when status was detected today", async () => {
     const dateNowSpy = vi
       .spyOn(Date, "now")
@@ -311,13 +382,10 @@ describe("SiteInfo", () => {
       render(
         <SiteInfo
           site={buildSite({
-            checkIn: {
-              enableDetection: true,
-              siteStatus: {
-                isCheckedInToday: false,
-                lastDetectedAt: new Date(2026, 0, 2, 9, 0, 0).getTime(),
-              },
-            },
+            checkIn: createCheckIn({
+              checked: false,
+              observedAt: new Date(2026, 0, 2, 9, 0, 0).getTime(),
+            }),
           })}
         />,
       )
@@ -332,6 +400,54 @@ describe("SiteInfo", () => {
           name: "account:list.site.checkInStatusOutdated",
         }),
       ).not.toBeInTheDocument()
+    } finally {
+      dateNowSpy.mockRestore()
+    }
+  })
+
+  it("keeps provider and custom check-in actions independently actionable", async () => {
+    const user = userEvent.setup()
+    const dateNowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(new Date(2026, 0, 2, 10, 0, 0).getTime())
+
+    try {
+      render(
+        <SiteInfo
+          site={buildSite({
+            checkIn: createCheckIn({
+              checked: true,
+              observedAt: new Date(2026, 0, 2, 9, 0, 0).getTime(),
+              customCheckIn: {
+                url: "https://check-in.example.invalid",
+                isCheckedInToday: true,
+                openRedeemWithCheckIn: false,
+              },
+            }),
+          })}
+        />,
+      )
+
+      const siteCheckInAction = await screen.findByTestId(
+        ACCOUNT_MANAGEMENT_TEST_IDS.siteCheckInStatusButton,
+      )
+      const customCheckInAction = await screen.findByTestId(
+        ACCOUNT_MANAGEMENT_TEST_IDS.customCheckInStatusButton,
+      )
+
+      await user.click(siteCheckInAction)
+      expect(mockOpenCheckInPage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "acc-1" }),
+      )
+      expect(mockHandleMarkCustomCheckInAsCheckedIn).not.toHaveBeenCalled()
+
+      await user.click(customCheckInAction)
+      expect(mockHandleMarkCustomCheckInAsCheckedIn).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "acc-1" }),
+      )
+      expect(mockOpenCustomCheckInPage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "acc-1" }),
+      )
     } finally {
       dateNowSpy.mockRestore()
     }
@@ -369,7 +485,7 @@ describe("SiteInfo", () => {
       <SiteInfo
         site={buildSite({
           health: {
-            status: "warning",
+            status: SiteHealthStatus.Warning,
             code: TEMP_WINDOW_HEALTH_STATUS_CODES.PERMISSION_REQUIRED,
             reason: "Permission required",
           },
@@ -401,7 +517,7 @@ describe("SiteInfo", () => {
       <SiteInfo
         site={buildSite({
           health: {
-            status: "warning",
+            status: SiteHealthStatus.Warning,
             code: TEMP_WINDOW_HEALTH_STATUS_CODES.DISABLED,
             reason: "Temp window fallback disabled",
           },
@@ -435,7 +551,7 @@ describe("SiteInfo", () => {
       <SiteInfo
         site={buildSite({
           health: {
-            status: "warning",
+            status: SiteHealthStatus.Warning,
             code: TEMP_WINDOW_HEALTH_STATUS_CODES.PERMISSION_REQUIRED,
             reason: "Permission required",
           },
@@ -476,13 +592,13 @@ describe("SiteInfo", () => {
           username: "alice",
           notes: "Remember this account",
           tags: ["vip", "ops"],
-          checkIn: {
-            enableDetection: false,
+          checkIn: createCheckIn({
+            supported: false,
             customCheckIn: {
               url: "https://example.com/checkin",
               redeemUrl: "https://example.com/redeem",
             },
-          },
+          }),
         })}
         highlights={{
           name: [
@@ -534,13 +650,10 @@ describe("SiteInfo", () => {
       render(
         <SiteInfo
           site={buildSite({
-            checkIn: {
-              enableDetection: true,
-              siteStatus: {
-                isCheckedInToday: true,
-                lastDetectedAt: new Date(2026, 0, 2, 8, 0, 0).getTime(),
-              },
-            },
+            checkIn: createCheckIn({
+              checked: true,
+              observedAt: new Date(2026, 0, 2, 8, 0, 0).getTime(),
+            }),
           })}
         />,
       )
@@ -565,13 +678,13 @@ describe("SiteInfo", () => {
     render(
       <SiteInfo
         site={buildSite({
-          checkIn: {
-            enableDetection: false,
+          checkIn: createCheckIn({
+            supported: false,
             customCheckIn: {
               url: "https://example.com/checkin",
               isCheckedInToday: true,
             },
-          },
+          }),
         })}
       />,
     )
@@ -597,14 +710,14 @@ describe("SiteInfo", () => {
     render(
       <SiteInfo
         site={buildSite({
-          checkIn: {
-            enableDetection: false,
+          checkIn: createCheckIn({
+            supported: false,
             customCheckIn: {
               url: "https://example.com/checkin",
               isCheckedInToday: false,
               openRedeemWithCheckIn: false,
             },
-          },
+          }),
         })}
       />,
     )
@@ -631,17 +744,14 @@ describe("SiteInfo", () => {
       <SiteInfo
         site={buildSite({
           disabled: true,
-          checkIn: {
-            enableDetection: true,
-            siteStatus: {
-              isCheckedInToday: true,
-              lastDetectedAt: new Date(2026, 0, 2, 8, 0, 0).getTime(),
-            },
+          checkIn: createCheckIn({
+            checked: true,
+            observedAt: new Date(2026, 0, 2, 8, 0, 0).getTime(),
             customCheckIn: {
               url: "https://example.com/checkin",
               isCheckedInToday: true,
             },
-          },
+          }),
         })}
       />,
     )
@@ -670,13 +780,7 @@ describe("SiteInfo", () => {
     render(
       <SiteInfo
         site={buildSite({
-          checkIn: {
-            enableDetection: true,
-            siteStatus: {
-              isCheckedInToday: true,
-              lastDetectedAt: 1,
-            },
-          },
+          checkIn: createCheckIn({ checked: true, observedAt: 1 }),
         })}
       />,
     )
@@ -716,13 +820,7 @@ describe("SiteInfo", () => {
     render(
       <SiteInfo
         site={buildSite({
-          checkIn: {
-            enableDetection: true,
-            siteStatus: {
-              isCheckedInToday: true,
-              lastDetectedAt: 1,
-            },
-          },
+          checkIn: createCheckIn({ checked: true, observedAt: 1 }),
         })}
       />,
     )
@@ -763,13 +861,7 @@ describe("SiteInfo", () => {
       <SiteInfo
         site={buildSite({
           id: "acc-refreshing",
-          checkIn: {
-            enableDetection: true,
-            siteStatus: {
-              isCheckedInToday: true,
-              lastDetectedAt: 1,
-            },
-          },
+          checkIn: createCheckIn({ checked: true, observedAt: 1 }),
         })}
       />,
     )

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { AUTO_CHECKIN_METHOD_IDS } from "~/constants/checkIn"
 import {
   buildAutoCheckinAccountGroupProperties,
   buildAutoCheckinConfigSnapshotProperties,
@@ -8,6 +9,7 @@ import {
   trackAutoCheckinConfigSnapshot,
 } from "~/services/productAnalytics/autoCheckin"
 import {
+  PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES,
   PRODUCT_ANALYTICS_ENTRYPOINTS,
   PRODUCT_ANALYTICS_ERROR_CATEGORIES,
   PRODUCT_ANALYTICS_EVENTS,
@@ -208,6 +210,8 @@ describe("auto-checkin product analytics", () => {
             accountId: "one",
             accountName: "One",
             status: CHECKIN_RESULT_STATUS.SUCCESS,
+            reconciliation: "checked",
+            accountStateDurability: "failed",
             timestamp: 1,
           },
         },
@@ -222,6 +226,7 @@ describe("auto-checkin product analytics", () => {
             accountId: "two",
             accountName: "Two",
             status: CHECKIN_RESULT_STATUS.FAILED,
+            retryable: true,
             timestamp: 1,
           },
         },
@@ -250,20 +255,42 @@ describe("auto-checkin product analytics", () => {
           providerAvailable: false,
           skipReason: AUTO_CHECKIN_SKIP_REASON.DETECTION_DISABLED,
         },
+        {
+          accountId: "five",
+          accountName: "Five",
+          siteType: "new-api",
+          detectionEnabled: true,
+          autoCheckinEnabled: true,
+          providerAvailable: true,
+          lastResult: {
+            accountId: "five",
+            accountName: "Five",
+            status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+            reconciliation: "unknown",
+            timestamp: 1,
+          },
+        },
       ],
     })
 
     expect(properties).toEqual({
       run_kind: "daily",
       entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
-      total_accounts: 4,
-      detection_enabled_accounts: 3,
-      auto_checkin_enabled_accounts: 3,
-      provider_available_accounts: 2,
-      runnable_accounts: 2,
+      total_accounts: 5,
+      detection_enabled_accounts: 4,
+      auto_checkin_enabled_accounts: 4,
+      provider_available_accounts: 3,
+      runnable_accounts: 3,
       success_count: 1,
       failed_count: 1,
       skipped_count: 2,
+      uncertain_count: 1,
+      retryable_failure_count: 1,
+      reconciliation_checked_count: 1,
+      reconciliation_not_checked_count: 0,
+      reconciliation_unknown_count: 1,
+      reconciliation_unavailable_count: 0,
+      account_state_durability_failure_count: 1,
       retry_enabled: true,
       retry_pending_before: 0,
       retry_attempted: 0,
@@ -341,6 +368,106 @@ describe("auto-checkin product analytics", () => {
         failed_count: 0,
         skipped_count: 1,
       },
+    ])
+  })
+
+  it("reports only an allow-listed method category for Sub2API Pro", () => {
+    const [group] = buildAutoCheckinAccountGroupProperties({
+      runKind: "daily",
+      entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
+      accountsById: new Map([
+        ["sub2api-account", { authType: AuthTypeEnum.AccessToken }],
+      ]),
+      snapshots: [
+        {
+          accountId: "sub2api-account",
+          accountName: "Private account name",
+          siteType: "sub2api",
+          detectionEnabled: true,
+          autoCheckinEnabled: true,
+          providerAvailable: true,
+          lastResult: {
+            accountId: "sub2api-account",
+            accountName: "Private account name",
+            methodId: AUTO_CHECKIN_METHOD_IDS.Sub2ApiProDailyCheckIn,
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 1,
+          },
+        },
+      ],
+    })
+
+    expect(group).toMatchObject({
+      method_category:
+        PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES.StrictReadback,
+    })
+    expect(JSON.stringify(group)).not.toContain("sub2api-pro:daily-checkin")
+    expect(JSON.stringify(group)).not.toContain("Private account name")
+  })
+
+  it("groups registered methods by privacy-reviewed category and omits unknown IDs", () => {
+    const groups = buildAutoCheckinAccountGroupProperties({
+      runKind: "daily",
+      entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
+      accountsById: new Map([
+        ["compatibility", { authType: AuthTypeEnum.AccessToken }],
+        ["strict", { authType: AuthTypeEnum.AccessToken }],
+        ["unknown", { authType: AuthTypeEnum.AccessToken }],
+      ]),
+      snapshots: [
+        {
+          accountId: "compatibility",
+          accountName: "Compatibility",
+          siteType: "sub2api",
+          detectionEnabled: true,
+          autoCheckinEnabled: true,
+          providerAvailable: true,
+          lastResult: {
+            accountId: "compatibility",
+            accountName: "Compatibility",
+            methodId: AUTO_CHECKIN_METHOD_IDS.NewApiDailyCheckIn,
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 1,
+          },
+        },
+        {
+          accountId: "strict",
+          accountName: "Strict",
+          siteType: "sub2api",
+          detectionEnabled: true,
+          autoCheckinEnabled: true,
+          providerAvailable: true,
+          lastResult: {
+            accountId: "strict",
+            accountName: "Strict",
+            methodId: AUTO_CHECKIN_METHOD_IDS.Sub2ApiProDailyCheckIn,
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 1,
+          },
+        },
+        {
+          accountId: "unknown",
+          accountName: "Unknown",
+          siteType: "sub2api",
+          detectionEnabled: true,
+          autoCheckinEnabled: true,
+          providerAvailable: true,
+          lastResult: {
+            accountId: "unknown",
+            accountName: "Unknown",
+            methodId: "future:daily-check-in",
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 1,
+          },
+        },
+      ],
+    })
+
+    expect(groups).toHaveLength(3)
+    expect(groups.map((group) => group.method_category)).toEqual([
+      PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES.Compatibility,
+      PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES.StrictReadback,
+      undefined,
     ])
   })
 

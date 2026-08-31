@@ -15,6 +15,7 @@ import {
 } from "~/services/productAnalytics/contracts"
 import { trackProductAnalyticsEvent } from "~/services/productAnalytics/dispatch"
 import { SiteHealthStatus } from "~/types"
+import { API_CREDENTIAL_TELEMETRY_FACT_UNITS } from "~/types/apiCredentialProfiles"
 import { formatTelemetryMoney } from "~/utils/core/money"
 
 import { AnimatedStatValue } from "./AnimatedStatValue"
@@ -61,18 +62,35 @@ export default function ApiCredentialProfilesStatsSection() {
       (acc, profile) => {
         const snapshot = profile.telemetrySnapshot
         if (!snapshot) return acc
-        acc.profileTelemetryCount += 1
         if (snapshot.health.status === SiteHealthStatus.Healthy) {
           acc.healthyCount += 1
         } else {
           acc.unhealthyTelemetryCount += 1
         }
-        if (typeof snapshot.balanceUsd === "number") {
-          acc.balanceUsd += snapshot.balanceUsd
+        const usdCashBalances = snapshot.facts?.balances?.filter(
+          (balance) =>
+            balance.unit.kind ===
+              API_CREDENTIAL_TELEMETRY_FACT_UNITS.kinds.Money &&
+            balance.unit.currency ===
+              API_CREDENTIAL_TELEMETRY_FACT_UNITS.currencies.Usd &&
+            balance.semantics ===
+              API_CREDENTIAL_TELEMETRY_FACT_UNITS.semantics.Cash,
+        )
+        if (usdCashBalances && usdCashBalances.length > 0) {
+          acc.balanceUsd += usdCashBalances.reduce(
+            (total, balance) => total + balance.amount,
+            0,
+          )
           acc.balanceSources += 1
         }
-        if (typeof snapshot.todayCostUsd === "number") {
-          acc.todayUsageUsd += snapshot.todayCostUsd
+        const todayCost = snapshot.facts?.usage?.todayCost
+        if (
+          todayCost?.unit.kind ===
+            API_CREDENTIAL_TELEMETRY_FACT_UNITS.kinds.Money &&
+          todayCost.unit.currency ===
+            API_CREDENTIAL_TELEMETRY_FACT_UNITS.currencies.Usd
+        ) {
+          acc.todayUsageUsd += todayCost.value
           acc.todayUsageSources += 1
         }
         return acc
@@ -81,7 +99,6 @@ export default function ApiCredentialProfilesStatsSection() {
         healthyCount: 0,
         balanceUsd: 0,
         balanceSources: 0,
-        profileTelemetryCount: 0,
         unhealthyTelemetryCount: 0,
         todayUsageSources: 0,
         todayUsageUsd: 0,

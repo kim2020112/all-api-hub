@@ -35,6 +35,7 @@ import { MODEL_VENDOR_FILTER_VALUES } from "~/services/models/modelVendor"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import { AuthTypeEnum, SiteHealthStatus, type DisplaySiteData } from "~/types"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { renderHook, waitFor } from "~~/tests/test-utils/render"
 
 const createDisplayAccount = (
@@ -54,7 +55,7 @@ const createDisplayAccount = (
   token: "token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
   ...overrides,
 })
 
@@ -1980,7 +1981,7 @@ describe("useFilteredModels", () => {
     })
   })
 
-  it("uses code-point order when equal-price groups tie", async () => {
+  it("uses code-point order without marking equal-price groups as optimal", async () => {
     const account = createDisplayAccount({
       id: "account-equal-group-price",
       balance: { USD: 10, CNY: 70 },
@@ -2008,7 +2009,10 @@ describe("useFilteredModels", () => {
       expect(result.current.filteredModels).toHaveLength(1)
     })
 
-    expect(result.current.filteredModels[0]?.effectiveGroup).toBe("B")
+    expect(result.current.filteredModels[0]).toMatchObject({
+      effectiveGroup: "B",
+      hasUniquelyOptimalGroup: false,
+    })
   })
 
   it("falls back to model-name ordering when prices and groups tie", async () => {
@@ -2375,6 +2379,10 @@ describe("useFilteredModels", () => {
         ["account-default-only", "default", 1.2, false],
       ])
     })
+    expect(result.current.filteredModels[0]).toMatchObject({
+      effectiveGroup: "vip",
+      hasUniquelyOptimalGroup: true,
+    })
 
     rerender({
       pricingContexts,
@@ -2581,7 +2589,6 @@ describe("useFilteredModels", () => {
                 supportsRuntimeModelList: false,
                 supportsPricing: true,
                 actionPolicy: {
-                  supportsRatioDisplay: false,
                   supportsGroupFiltering: false,
                   supportsAccountSummary: false,
                   supportsTokenCompatibility: false,
@@ -2619,7 +2626,6 @@ describe("useFilteredModels", () => {
     ).toEqual([[ordinaryAccount.id, 1]])
     expect(result.current.filteredModels[0]?.source.capabilities).toMatchObject(
       {
-        supportsRatioDisplay: false,
         supportsGroupFiltering: false,
         supportsAccountSummary: false,
         supportsTokenCompatibility: false,

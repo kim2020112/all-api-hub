@@ -1,3 +1,4 @@
+import { SITE_TYPES } from "~/constants/siteType"
 import type {
   AccountData,
   ApiServiceAccountRequest,
@@ -8,17 +9,19 @@ import {
   fetchAccountQuota,
   fetchTodayIncome,
   fetchTodayUsage,
-  resolveCheckInSiteStatus,
 } from "~/services/apiService/newApiFamily/default/accountData"
 import { getTodayTimestampRange } from "~/services/apiService/newApiFamily/default/accountDataUtils"
 import { ApiError } from "~/services/apiTransport/errors"
 import { fetchApiData } from "~/services/apiTransport/request"
 import type { ApiServiceRequest } from "~/services/apiTransport/type"
+import { refreshSelectedStatus } from "~/services/checkin/autoCheckin/refresh"
 import { SiteHealthStatus, type CheckInConfig } from "~/types"
 import { createLogger } from "~/utils/core/logger"
 import { t } from "~/utils/i18n/core"
 
 const logger = createLogger("NewApiFamily.Veloera")
+
+export { fetchSupportCheckIn } from "./veloeraCheckIn"
 
 /**
  * Fetch Veloera check-in capability for the user.
@@ -65,11 +68,13 @@ export async function fetchAccountData(
     undefined,
     timestampRange,
   )
-  const checkInPromise = resolvedCheckIn?.enableDetection
-    ? fetchCheckInStatus(request)
-    : Promise.resolve<boolean | undefined>(undefined)
+  const checkInPromise = refreshSelectedStatus({
+    config: resolvedCheckIn,
+    siteType: request.siteType ?? SITE_TYPES.VELOERA,
+    request,
+  })
 
-  const [quota, todayUsage, todayIncome, canCheckIn] = await Promise.all([
+  const [quota, todayUsage, todayIncome, checkIn] = await Promise.all([
     quotaPromise,
     todayUsagePromise,
     todayIncomePromise,
@@ -84,10 +89,7 @@ export async function fetchAccountData(
       ...todayUsage.todayStatsAvailability,
       ...todayIncome.todayStatsAvailability,
     },
-    checkIn: {
-      ...resolvedCheckIn,
-      siteStatus: resolveCheckInSiteStatus(resolvedCheckIn, canCheckIn),
-    },
+    checkIn,
   }
 }
 

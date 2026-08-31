@@ -19,6 +19,8 @@ import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
 
 import {
   API_CREDENTIAL_PROFILES_VIEW_VARIANTS,
+  type ApiCredentialProfileAssociatedKeyStateByProfileId,
+  type ApiCredentialProfileAssociationAvailability,
   type ApiCredentialProfilesViewVariant,
 } from "../contracts"
 import type { ApiCredentialProfilesController } from "../hooks/useApiCredentialProfilesController"
@@ -37,6 +39,15 @@ interface ApiCredentialProfilesListProps {
     profileId: string
     request: number
   }
+  targetProfile?: {
+    profileId: string
+    request: number
+  }
+  associatedKeyStateByProfileId?: ApiCredentialProfileAssociatedKeyStateByProfileId
+  associationAvailability: ApiCredentialProfileAssociationAvailability
+  onOpenAssociatedKey?: (associationId: string) => void
+  onConfirmAssociatedKey?: (associationId: string) => void
+  onUnlinkAssociatedKey?: (associationId: string) => void
 }
 
 type ApiCredentialEndpointGroup = {
@@ -63,6 +74,12 @@ interface EndpointProfileListProps {
   profiles: ApiCredentialProfile[]
   controller: ApiCredentialProfilesController
   guidedImportEntry?: ApiCredentialProfilesListProps["guidedImportEntry"]
+  targetProfile?: ApiCredentialProfilesListProps["targetProfile"]
+  associatedKeyStateByProfileId?: ApiCredentialProfileAssociatedKeyStateByProfileId
+  associationAvailability: ApiCredentialProfileAssociationAvailability
+  onOpenAssociatedKey?: (associationId: string) => void
+  onConfirmAssociatedKey?: (associationId: string) => void
+  onUnlinkAssociatedKey?: (associationId: string) => void
 }
 
 const API_CREDENTIAL_ENDPOINT_SELECT_ID = "api-credential-endpoint-select"
@@ -309,6 +326,12 @@ function EndpointProfileList({
   profiles,
   controller,
   guidedImportEntry,
+  targetProfile,
+  associatedKeyStateByProfileId,
+  associationAvailability,
+  onOpenAssociatedKey,
+  onConfirmAssociatedKey,
+  onUnlinkAssociatedKey,
 }: EndpointProfileListProps) {
   return profiles.map((profile) => (
     <ApiCredentialProfileListItem
@@ -335,6 +358,16 @@ function EndpointProfileList({
           ? guidedImportEntry.request
           : undefined
       }
+      focusRequest={
+        targetProfile?.profileId === profile.id
+          ? targetProfile.request
+          : undefined
+      }
+      associatedKeyState={associatedKeyStateByProfileId?.[profile.id]}
+      associationAvailability={associationAvailability}
+      onOpenAssociatedKey={onOpenAssociatedKey}
+      onConfirmAssociatedKey={onConfirmAssociatedKey}
+      onUnlinkAssociatedKey={onUnlinkAssociatedKey}
       onVerify={controller.setVerifyingProfile}
       onVerifyCliSupport={controller.setCliVerifyingProfile}
       onEdit={controller.openEditDialog}
@@ -352,6 +385,12 @@ export function ApiCredentialProfilesList({
   variant = API_CREDENTIAL_PROFILES_VIEW_VARIANTS.Options,
   isFiltering = false,
   guidedImportEntry,
+  targetProfile,
+  associatedKeyStateByProfileId,
+  associationAvailability,
+  onOpenAssociatedKey,
+  onConfirmAssociatedKey,
+  onUnlinkAssociatedKey,
 }: ApiCredentialProfilesListProps) {
   const { t } = useTranslation(["apiCredentialProfiles"])
   const isDesktop = useIsDesktop()
@@ -360,6 +399,7 @@ export function ApiCredentialProfilesList({
     () => groups[0]?.baseUrl ?? "",
   )
   const handledGuidedImportRequestRef = useRef<number | null>(null)
+  const handledTargetRequestRef = useRef<number | null>(null)
   const selectedGroup =
     groups.find((group) => group.baseUrl === selectedBaseUrl) ?? groups[0]
   const guidedGroup = guidedImportEntry
@@ -369,11 +409,30 @@ export function ApiCredentialProfilesList({
         ),
       )
     : undefined
+  const targetGroup = targetProfile
+    ? groups.find((group) =>
+        group.profiles.some(
+          (profile) => profile.id === targetProfile.profileId,
+        ),
+      )
+    : undefined
   const handleAddCredential = (baseUrl: string) => {
     controller.openAddDialog({ baseUrl })
   }
 
   useEffect(() => {
+    if (
+      targetProfile &&
+      targetGroup &&
+      handledTargetRequestRef.current !== targetProfile.request
+    ) {
+      handledTargetRequestRef.current = targetProfile.request
+      if (targetGroup.baseUrl !== selectedBaseUrl) {
+        setSelectedBaseUrl(targetGroup.baseUrl)
+      }
+      return
+    }
+
     if (
       guidedImportEntry &&
       guidedGroup &&
@@ -389,7 +448,14 @@ export function ApiCredentialProfilesList({
     if (selectedGroup && selectedGroup.baseUrl !== selectedBaseUrl) {
       setSelectedBaseUrl(selectedGroup.baseUrl)
     }
-  }, [guidedGroup, guidedImportEntry, selectedBaseUrl, selectedGroup])
+  }, [
+    guidedGroup,
+    guidedImportEntry,
+    selectedBaseUrl,
+    selectedGroup,
+    targetGroup,
+    targetProfile,
+  ])
 
   if (!selectedGroup) {
     return null
@@ -417,6 +483,12 @@ export function ApiCredentialProfilesList({
                 profiles={group.profiles}
                 controller={controller}
                 guidedImportEntry={guidedImportEntry}
+                targetProfile={targetProfile}
+                associatedKeyStateByProfileId={associatedKeyStateByProfileId}
+                associationAvailability={associationAvailability}
+                onOpenAssociatedKey={onOpenAssociatedKey}
+                onConfirmAssociatedKey={onConfirmAssociatedKey}
+                onUnlinkAssociatedKey={onUnlinkAssociatedKey}
               />
             </div>
           </section>
@@ -471,6 +543,12 @@ export function ApiCredentialProfilesList({
             profiles={selectedGroup.profiles}
             controller={controller}
             guidedImportEntry={guidedImportEntry}
+            targetProfile={targetProfile}
+            associatedKeyStateByProfileId={associatedKeyStateByProfileId}
+            associationAvailability={associationAvailability}
+            onOpenAssociatedKey={onOpenAssociatedKey}
+            onConfirmAssociatedKey={onConfirmAssociatedKey}
+            onUnlinkAssociatedKey={onUnlinkAssociatedKey}
           />
         </div>
       </section>

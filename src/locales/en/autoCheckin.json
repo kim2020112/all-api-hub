@@ -7,7 +7,8 @@
       "openFailedManual": "Open check-in pages for all accounts with failed auto check-ins",
       "openManual": "Manual sign-in",
       "openSite": "Open site",
-      "retryAccount": "Retry"
+      "retryAccount": "Retry",
+      "verifyStatus": "Verify status"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "Dev: Evaluate if 'Pre-trigger today's check-in when UI opens' conditions are met",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "All",
+      "clearAll": "Clear filters",
+      "countFiltered": "Showing {{filtered}} of {{total}}",
+      "countTotal": "{{total}} total",
       "failed": "Failed",
-      "searchPlaceholder": "Search by account name or message...",
+      "failedOrSkipped": "Failed or skipped",
+      "searchLabel": "Search execution results",
+      "searchPlaceholder": "Search by account name, ID, or message...",
       "skipped": "Skipped",
+      "statusLabel": "Filter by execution status",
       "success": "Success"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "Open the site check-in page for every account whose latest auto check-in failed. Shift-click to open them in a new window.",
       "siteTypeCheckinUnsupported": "Solution: In 'Account Management → Edit Account', first verify that the selected site type matches the real site. If the type was auto-detected before, log back into the target site and run detection again. If the site type is correct but this message still appears, the site likely does not support automatic check-in yet, so use 'Open site' or 'Manual sign-in' instead."
     },
+    "pagination": {
+      "next": "Next page",
+      "previous": "Previous page",
+      "rowsPerPage": "Rows per page",
+      "summary": "Showing {{start}}–{{end}} of {{total}}"
+    },
     "refresh": "Refresh",
     "runNow": "Run now",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "Already checked in",
       "failed": "Failed",
       "skipped": "Skipped",
-      "success": "Success"
+      "success": "Success",
+      "uncertain": "Pending confirmation"
     },
     "table": {
       "accountName": "Account Name",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "Failed to trigger retry alarm: {{error}}",
       "retryFailed": "Retry failed: {{error}}",
       "runFailed": "Failed to run auto check-in: {{error}}",
+      "statusVerificationFailed": "We couldn't verify the selected check-in status. Try again or open the account site.",
       "uiOpenPretriggerDidNotStart": "UI-open pre-trigger did not start: {{reason}}",
       "uiOpenPretriggerEvaluationFailed": "Failed to evaluate UI-open pre-trigger: {{error}}",
       "uiOpenPretriggerIneligible": "UI-open pre-trigger is not eligible: {{reason}}",
@@ -111,6 +126,7 @@
       "retryCompleted": "Retry completed.",
       "runCompleted": "Auto check-in completed.",
       "settingsSaved": "Auto check-in settings have been saved.",
+      "statusVerified": "The selected check-in status was verified.",
       "uiOpenPretriggerEligible": "UI-open pre-trigger is eligible."
     }
   },
@@ -124,6 +140,7 @@
     "nativePageStatusUnconfirmed": "The page check-in action was clicked, but the target account status was not confirmed. Please open the check-in page and check manually: {{checkInUrl}}",
     "nativePageTargetNotFound": "The check-in button could not be found on the page. Please open the check-in page and complete check-in manually: {{checkInUrl}}",
     "nativePageTriggerFailed": "The page check-in action could not be triggered. Please open the check-in page and complete check-in manually: {{checkInUrl}}",
+    "resultPendingConfirmation": "Check-in result pending confirmation",
     "turnstileIncognitoAccessRequired": "The extension must be allowed to run in Incognito/Private windows to fetch the Turnstile token in a private temporary window (multi-account scenario). Please enable \"Allow in incognito\" for this extension and retry, or open the check-in page to complete verification: {{checkInUrl}}",
     "turnstileManualRequired": "Cloudflare Turnstile verification is required. Please open the check-in page to complete verification: {{checkInUrl}}",
     "unknownError": "Unknown error occurred"
@@ -160,29 +177,59 @@
     "windowStartDesc": "The earliest local time when the daily check-in can start."
   },
   "skipReasons": {
+    "account_data_missing": "Required account details are missing. Re-detect the account.",
     "account_disabled": "Account is disabled",
+    "account_unavailable": "The account changed or became unavailable before check-in",
     "already_checked_today": "Already checked today",
+    "authentication_required": "Sign-in has expired or is required. Sign in to the site, then try again.",
     "auto_checkin_disabled": "Auto check-in disabled",
+    "credentials_missing": "Saved credentials are missing. Re-detect the account or update its credentials.",
     "detection_disabled": "Detection disabled",
+    "method_disabled": "This site's check-in method is disabled",
+    "method_not_matched": "The selected check-in method no longer matches this site. Re-detect the check-in method.",
+    "method_unavailable": "The selected check-in method is no longer available. Re-detect the check-in method.",
+    "method_unsupported": "The selected check-in method is not supported by this site.",
+    "network_error": "A network connection problem prevented check-in. Check your connection and try again.",
     "no_provider": "The account's site type currently does not support check-in",
-    "provider_not_ready": "Account configuration currently does not support check-in"
+    "no_selected_method": "No check-in method is selected. Re-detect or select one in account settings.",
+    "permission_denied": "The site denied permission to check in. Sign in again or review the account permissions.",
+    "source_unavailable": "The source site is temporarily unavailable. Try again later.",
+    "status_unavailable": "The current check-in status could not be confirmed, so no check-in was attempted",
+    "timeout": "The connection timed out before check-in could complete. Try again."
   },
   "snapshot": {
     "badges": {
       "disabled": "Disabled",
       "enabled": "Enabled",
+      "methodNotSelected": "Not selected",
+      "methodSelected": "Selected",
       "pending": "Pending",
       "providerAvailable": "Available",
       "providerUnavailable": "Unavailable"
     },
-    "description": "Every detection-enabled account and its readiness are listed below. Pending accounts join check-in when you click \"Run now\" or when the scheduled time arrives.",
+    "description": "Shows the account readiness recorded by the latest run. Pending accounts join check-in when you click \"Run now\" or when the scheduled time arrives.",
+    "filters": {
+      "clearAll": "Clear filters",
+      "countFiltered": "Showing {{filtered}} of {{total}} accounts",
+      "countTotal": "{{total}} accounts",
+      "noMatches": "No matching accounts",
+      "noMatchesDescription": "Adjust the search or filters, or clear all filters.",
+      "readinessAll": "All readiness states",
+      "readinessDisabled": "Disabled",
+      "readinessLabel": "Filter by execution readiness",
+      "readinessReady": "Ready to run",
+      "readinessSetupRequired": "Setup required",
+      "readinessTemporarilyUnavailable": "Temporarily unavailable",
+      "readinessUnsupported": "Unsupported",
+      "searchLabel": "Search account readiness",
+      "searchPlaceholder": "Search account name, ID, or reason...",
+      "statusAll": "All latest statuses",
+      "statusLabel": "Filter by latest status"
+    },
     "table": {
       "autoCheckin": "Auto check-in",
-      "detection": "Detection",
-      "lastResult": "Last result",
-      "provider": "Provider",
-      "skipReason": "Skip reason",
-      "status": "Status"
+      "lastResult": "Updated",
+      "status": "Latest status"
     },
     "title": "Account readiness"
   },
@@ -197,6 +244,7 @@
     "result": {
       "failed": "Failed",
       "partial": "Partial",
+      "skipped": "Not executed",
       "success": "Success"
     },
     "retryDisabled": "Retry disabled",
@@ -214,5 +262,9 @@
     "dialogDescription": "Today's scheduled daily run was triggered early when the UI opened.",
     "dialogTitle": "Auto check-in finished",
     "viewDetails": "View details"
+  },
+  "workspace": {
+    "label": "Auto check-in data",
+    "resultsTab": "Execution results"
   }
 }

@@ -1,14 +1,54 @@
+import type { AccountRuntimeKeyLocator } from "~/services/accounts/accountRuntimeKeys"
 import type { ApiVerificationApiType } from "~/services/verification/aiApiVerification"
-import type { HealthStatus, TokenUsage } from "~/types"
+import type { HealthStatus } from "~/types"
 
 /**
  * Current schema version for the API credential profiles storage payload.
  */
-export const API_CREDENTIAL_PROFILES_CONFIG_VERSION = 4
+export const API_CREDENTIAL_PROFILES_CONFIG_VERSION = 6
+
+export const API_CREDENTIAL_PROFILE_LINK_STATES = {
+  Active: "active",
+  NeedsConfirmation: "needs-confirmation",
+} as const
+
+export type ApiCredentialProfileLinkState =
+  (typeof API_CREDENTIAL_PROFILE_LINK_STATES)[keyof typeof API_CREDENTIAL_PROFILE_LINK_STATES]
+
+export const API_CREDENTIAL_PROFILE_LINK_SOURCES = {
+  CreationResponse: "creation-response",
+  ResolvedRuntimeKey: "resolved-runtime-key",
+  User: "user",
+} as const
+
+export type ApiCredentialProfileLinkSource =
+  (typeof API_CREDENTIAL_PROFILE_LINK_SOURCES)[keyof typeof API_CREDENTIAL_PROFILE_LINK_SOURCES]
+
+/** Explicit local association between one credential and one account runtime key. */
+export type ApiCredentialProfileLink = {
+  id: string
+  profileId: string
+  locator: AccountRuntimeKeyLocator
+  state: ApiCredentialProfileLinkState
+  linkedBy: ApiCredentialProfileLinkSource
+  createdAt: number
+  updatedAt: number
+}
+
+/** Merge-safe deletion marker for a credential association. */
+export type ApiCredentialProfileLinkTombstone = {
+  id: string
+  deletedAt: number
+}
 
 export const API_CREDENTIAL_TELEMETRY_MODES = {
   Disabled: "disabled",
   Auto: "auto",
+  DeepSeekBalance: "deepSeekBalance",
+  GlmQuota: "glmQuota",
+  KimiQuota: "kimiQuota",
+  KimiOpenPlatformBalance: "kimiOpenPlatformBalance",
+  OpenCodeGoUsage: "openCodeGoUsage",
   OpenAiBilling: "openaiBilling",
   NewApiTokenUsage: "newApiTokenUsage",
   Sub2ApiUsage: "sub2apiUsage",
@@ -19,8 +59,16 @@ export type ApiCredentialTelemetryCapabilityMode =
   (typeof API_CREDENTIAL_TELEMETRY_MODES)[keyof typeof API_CREDENTIAL_TELEMETRY_MODES]
 
 export const API_CREDENTIAL_TELEMETRY_SOURCES = {
-  ...API_CREDENTIAL_TELEMETRY_MODES,
   Models: "models",
+  DeepSeekBalance: "deepSeekBalance",
+  GlmQuota: "glmQuota",
+  KimiQuota: "kimiQuota",
+  KimiOpenPlatformBalance: "kimiOpenPlatformBalance",
+  OpenCodeGoUsage: "openCodeGoUsage",
+  OpenAiBilling: "openaiBilling",
+  NewApiTokenUsage: "newApiTokenUsage",
+  Sub2ApiUsage: "sub2apiUsage",
+  CustomReadOnlyEndpoint: "customReadOnlyEndpoint",
 } as const
 
 export type ApiCredentialTelemetrySource =
@@ -73,6 +121,44 @@ export const API_CREDENTIAL_TELEMETRY_ATTEMPT_STATUSES = {
   Error: "error",
 } as const
 
+/** Stable product-owned reasons for telemetry health warnings. */
+export const API_CREDENTIAL_TELEMETRY_HEALTH_REASONS = {
+  InsufficientBalance: "insufficient-balance",
+} as const
+
+/**
+ * Legacy English health-reason strings persisted by earlier telemetry builds.
+ * Kept as a shared constant so UI localization can still match old snapshots.
+ */
+export const LEGACY_INSUFFICIENT_BALANCE_REASONS: readonly string[] = [
+  "Provider account is unavailable",
+  "Provider balance is insufficient for API calls",
+]
+
+/** Runtime discriminators for normalized telemetry fact units and semantics. */
+export const API_CREDENTIAL_TELEMETRY_FACT_UNITS = {
+  kinds: { Money: "money", Quota: "quota", Count: "count", Percent: "percent" },
+  currencies: { Usd: "USD" },
+  codes: {
+    UsdEquivalent: "usd-equivalent",
+    GlmCredit: "glm-credit",
+    ProviderQuota: "provider-quota",
+    Requests: "requests",
+    Tokens: "tokens",
+  },
+  labels: {
+    UsdEquivalent: "USD-equivalent budget",
+    GlmCredit: "GLM credits",
+    ProviderQuota: "Provider quota",
+  },
+  semantics: {
+    Cash: "cash",
+    ProviderWallet: "provider-wallet",
+    BudgetEquivalent: "budget-equivalent",
+    Legacy: "legacy",
+  },
+} as const
+
 export type ApiCredentialTelemetryAttemptStatus =
   (typeof API_CREDENTIAL_TELEMETRY_ATTEMPT_STATUSES)[keyof typeof API_CREDENTIAL_TELEMETRY_ATTEMPT_STATUSES]
 
@@ -81,6 +167,119 @@ export type ApiCredentialTelemetryAttempt = {
   endpoint: string
   status: ApiCredentialTelemetryAttemptStatus
   message?: string
+}
+
+/** Provider-native balance facts whose currency is not necessarily USD. */
+export type ApiCredentialTelemetryBalance = {
+  amount: number
+  currency: string
+  grantedAmount?: number
+  toppedUpAmount?: number
+  isAvailable?: boolean
+}
+
+export const API_CREDENTIAL_TELEMETRY_QUOTA_WINDOW_TYPES = {
+  FiveHour: "fiveHour",
+  Weekly: "weekly",
+  Monthly: "monthly",
+  Total: "total",
+} as const
+
+export type ApiCredentialTelemetryQuotaWindowType =
+  (typeof API_CREDENTIAL_TELEMETRY_QUOTA_WINDOW_TYPES)[keyof typeof API_CREDENTIAL_TELEMETRY_QUOTA_WINDOW_TYPES]
+
+/** Provider-native quota window normalized to remaining-capacity semantics. */
+export type ApiCredentialTelemetryQuotaWindow = {
+  type: ApiCredentialTelemetryQuotaWindowType
+  /** @deprecated Transient provider unit hint used while adapting v5 payloads. */
+  unit?: "percent" | "provider"
+  used: number
+  limit: number
+  remaining: number
+  percentRemaining: number
+  resetTime?: number
+}
+
+/** Time-window quota facts shared by GLM and Kimi providers. */
+export type ApiCredentialTelemetryQuota = {
+  windows: ApiCredentialTelemetryQuotaWindow[]
+  membershipLevel?: string
+}
+
+export type ApiCredentialTelemetryUnit =
+  | {
+      kind: "money"
+      currency: string
+      decimalPlaces: number
+    }
+  | {
+      kind: "quota"
+      code: string
+      label: string
+    }
+  | {
+      kind: "count"
+      code: string
+    }
+  | {
+      kind: "percent"
+    }
+
+export type ApiCredentialTelemetryAmount = {
+  value: number
+  unit: ApiCredentialTelemetryUnit
+}
+
+export type ApiCredentialTelemetryBalanceFact = {
+  amount: number
+  unit: Extract<ApiCredentialTelemetryUnit, { kind: "money" | "quota" }>
+  semantics: "cash" | "provider-wallet" | "budget-equivalent" | "legacy"
+  grantedAmount?: number
+  toppedUpAmount?: number
+  isAvailable?: boolean
+}
+
+export type ApiCredentialTelemetryQuotaWindowFact = {
+  type: ApiCredentialTelemetryQuotaWindowType
+  unit: Extract<ApiCredentialTelemetryUnit, { kind: "quota" | "percent" }>
+  used?: number
+  limit?: number
+  remaining?: number
+  remainingPercent: number
+  resetTime?: number
+}
+
+/** Token counters normalized from provider telemetry payloads. */
+export type ApiCredentialTelemetryTokenUsage = {
+  upload?: number
+  download?: number
+  total?: number
+}
+
+export type ApiCredentialTelemetryUsageFacts = {
+  todayCost?: ApiCredentialTelemetryAmount
+  todayRequests?: ApiCredentialTelemetryAmount
+  todayTokens?: {
+    upload?: number
+    download?: number
+    total?: number
+    unit: Extract<ApiCredentialTelemetryUnit, { kind: "count" }>
+  }
+  totalUsed?: ApiCredentialTelemetryAmount
+  totalGranted?: ApiCredentialTelemetryAmount
+  totalAvailable?: ApiCredentialTelemetryAmount
+  expiresAt?: number
+  unlimited?: boolean
+}
+
+export type ApiCredentialTelemetryFacts = {
+  balances?: ApiCredentialTelemetryBalanceFact[]
+  quota?: {
+    windows: ApiCredentialTelemetryQuotaWindowFact[]
+    membershipLevel?: string
+  }
+  usage?: ApiCredentialTelemetryUsageFacts
+  models?: ApiCredentialModelTelemetry
 }
 
 export type ApiCredentialModelTelemetry = {
@@ -94,16 +293,8 @@ export type ApiCredentialTelemetrySnapshot = {
   lastSuccessTime?: number
   lastError?: string
   source?: ApiCredentialTelemetrySource
-  balanceUsd?: number
-  todayCostUsd?: number
-  todayRequests?: number
-  todayTokens?: TokenUsage
-  unlimitedQuota?: boolean
-  totalUsedUsd?: number
-  totalGrantedUsd?: number
-  totalAvailableUsd?: number
-  expiresAt?: number
-  models?: ApiCredentialModelTelemetry
+  /** Canonical unit-aware product facts. */
+  facts?: ApiCredentialTelemetryFacts
   attempts: ApiCredentialTelemetryAttempt[]
 }
 
@@ -148,5 +339,7 @@ export type ApiCredentialProfile = {
 export type ApiCredentialProfilesConfig = {
   version: number
   profiles: ApiCredentialProfile[]
+  links: ApiCredentialProfileLink[]
+  linkTombstones: ApiCredentialProfileLinkTombstone[]
   lastUpdated: number
 }

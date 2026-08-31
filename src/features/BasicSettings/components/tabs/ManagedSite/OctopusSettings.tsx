@@ -5,8 +5,10 @@ import { useTranslation } from "react-i18next"
 import { SettingSection } from "~/components/SettingSection"
 import { Button, Card, CardItem, CardList, Input } from "~/components/ui"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
+import { blurInputOnEnter } from "~/hooks/useDeferredPreferenceField"
 import { usePreferenceDraft } from "~/hooks/usePreferenceDraft"
-import { octopusAuthManager } from "~/services/apiService/octopus/auth"
+import { validateOctopusConfig } from "~/services/apiService/octopus"
+import { PROTECTION_BYPASS_SURFACES } from "~/services/protectionBypass/contracts"
 import {
   createVersionedPreferenceSaveOptions,
   getPreferenceWriteFailureMessage,
@@ -101,11 +103,14 @@ export default function OctopusSettings() {
 
     setIsValidating(true)
     try {
-      const result = await octopusAuthManager.validateConfig({
-        baseUrl: trimmedUrl,
-        username: trimmedUsername,
-        password: trimmedPassword,
-      })
+      const result = await validateOctopusConfig(
+        {
+          baseUrl: trimmedUrl,
+          username: trimmedUsername,
+          password: trimmedPassword,
+        },
+        PROTECTION_BYPASS_SURFACES.Options,
+      )
 
       if (result.success) {
         const saveResult = await updateOctopusConfig(
@@ -160,6 +165,7 @@ export default function OctopusSettings() {
                   }))
                 }
                 onBlur={(e) => handleBaseUrlChange(e.target.value)}
+                onKeyDown={blurInputOnEnter}
                 placeholder={t("octopus.fields.baseUrlPlaceholder")}
               />
             }
@@ -180,6 +186,7 @@ export default function OctopusSettings() {
                   }))
                 }
                 onBlur={(e) => handleUsernameChange(e.target.value)}
+                onKeyDown={blurInputOnEnter}
                 placeholder={t("octopus.fields.usernamePlaceholder")}
               />
             }
@@ -206,6 +213,7 @@ export default function OctopusSettings() {
                     }))
                   }
                   onBlur={(e) => handlePasswordChange(e.target.value)}
+                  onKeyDown={blurInputOnEnter}
                   placeholder={t("octopus.fields.passwordPlaceholder")}
                 />
               </div>

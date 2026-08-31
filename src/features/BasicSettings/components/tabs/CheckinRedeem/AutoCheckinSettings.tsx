@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
 
@@ -14,6 +14,7 @@ import {
 } from "~/components/ui"
 import { MENU_ITEM_IDS } from "~/constants/optionsMenuIds"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
+import { useDeferredPreferenceField } from "~/hooks/useDeferredPreferenceField"
 import { DEFAULT_PREFERENCES } from "~/services/preferences/userPreferences"
 import { trackProductAnalyticsActionStarted } from "~/services/productAnalytics/actions"
 import {
@@ -29,6 +30,8 @@ import {
 import { createLogger } from "~/utils/core/logger"
 import { getPreferenceWriteFailureMessage } from "~/utils/core/toastHelpers"
 import { pushWithinOptionsPage } from "~/utils/navigation"
+
+import { AUTO_CHECKIN_TARGET_IDS } from "./searchTargets"
 
 /**
  * Unified logger scoped to the Basic Settings auto check-in section.
@@ -54,15 +57,13 @@ export default function AutoCheckinSettings() {
     updateAutoCheckin,
     resetAutoCheckinConfig,
   } = useUserPreferencesContext()
-  const [isSaving, setIsSaving] = useState(false)
-
   const preferences = userPrefs?.autoCheckin ?? DEFAULT_PREFERENCES.autoCheckin!
+  const savedVersion = userPrefs?.lastUpdated ?? 0
   const retryPreferences = preferences.retryStrategy ?? {
     enabled: false,
     intervalMinutes: 30,
     maxAttemptsPerDay: 3,
   }
-
   const scheduleModes = useMemo(
     () => [
       {
@@ -79,23 +80,23 @@ export default function AutoCheckinSettings() {
 
   const savePreferences = async (updates: Partial<AutoCheckinPreferences>) => {
     try {
-      setIsSaving(true)
       const writeResult = await updateAutoCheckin(updates)
 
       if (writeResult.ok) {
         toast.success(t("autoCheckin:messages.success.settingsSaved"))
+        return true
       } else {
         toast.error(
           getPreferenceWriteFailureMessage(writeResult.reason, {
             fallback: t("settings:messages.saveSettingsFailed"),
           }),
         )
+        return false
       }
     } catch (error) {
       logger.error("Failed to save preferences", error)
       toast.error(t("settings:messages.saveSettingsFailed"))
-    } finally {
-      setIsSaving(false)
+      return false
     }
   }
 
@@ -160,7 +161,7 @@ export default function AutoCheckinSettings() {
   const saveRetryPreferences = async (
     updates: Partial<AutoCheckinPreferences["retryStrategy"]>,
   ) => {
-    await savePreferences({
+    return savePreferences({
       retryStrategy: {
         ...retryPreferences,
         ...updates,
@@ -168,24 +169,112 @@ export default function AutoCheckinSettings() {
     })
   }
 
+  const windowStartField = useDeferredPreferenceField({
+    savedValue: preferences.windowStart,
+    savedVersion,
+    onCommit: async (nextValue) => {
+      if (
+        !validateTimeFormat(nextValue) ||
+        !validateTimeWindow(nextValue, preferences.windowEnd)
+      ) {
+        toast.error(t("autoCheckin:messages.error.invalidTimeWindow"))
+        return { ok: false }
+      }
+
+      const saved = await savePreferences({ windowStart: nextValue })
+      return { ok: saved, value: nextValue }
+    },
+  })
+
+  const windowEndField = useDeferredPreferenceField({
+    savedValue: preferences.windowEnd,
+    savedVersion,
+    onCommit: async (nextValue) => {
+      if (
+        !validateTimeFormat(nextValue) ||
+        !validateTimeWindow(preferences.windowStart, nextValue)
+      ) {
+        toast.error(t("autoCheckin:messages.error.invalidTimeWindow"))
+        return { ok: false }
+      }
+
+      const saved = await savePreferences({ windowEnd: nextValue })
+      return { ok: saved, value: nextValue }
+    },
+  })
+
+  const deterministicTimeField = useDeferredPreferenceField({
+    savedValue: preferences.deterministicTime ?? preferences.windowStart,
+    savedVersion,
+    onCommit: async (nextValue) => {
+      if (!validateTimeFormat(nextValue)) {
+        toast.error(t("autoCheckin:messages.error.invalidDeterministicTime"))
+        return { ok: false }
+      }
+      if (
+        !isTimeWithinWindow(
+          nextValue,
+          preferences.windowStart,
+          preferences.windowEnd,
+        )
+      ) {
+        toast.error(
+          t("autoCheckin:messages.error.deterministicTimeOutsideWindow"),
+        )
+        return { ok: false }
+      }
+
+      const saved = await savePreferences({ deterministicTime: nextValue })
+      return { ok: saved, value: nextValue }
+    },
+  })
+
+  const commitRetryNumber = async (
+    draft: string,
+    update: (
+      nextValue: number,
+    ) => { intervalMinutes: number } | { maxAttemptsPerDay: number },
+  ) => {
+    const nextValue = Number(draft)
+    if (draft.trim() === "" || !Number.isInteger(nextValue) || nextValue <= 0) {
+      toast.error(t("autoCheckin:messages.error.invalidNumber"))
+      return { ok: false }
+    }
+
+    const saved = await saveRetryPreferences(update(nextValue))
+    return { ok: saved, value: String(nextValue) }
+  }
+
+  const retryIntervalField = useDeferredPreferenceField({
+    savedValue: String(retryPreferences.intervalMinutes),
+    savedVersion,
+    onCommit: (draft) =>
+      commitRetryNumber(draft, (intervalMinutes) => ({ intervalMinutes })),
+  })
+
+  const retryMaxAttemptsField = useDeferredPreferenceField({
+    savedValue: String(retryPreferences.maxAttemptsPerDay),
+    savedVersion,
+    onCommit: (draft) =>
+      commitRetryNumber(draft, (maxAttemptsPerDay) => ({
+        maxAttemptsPerDay,
+      })),
+  })
+
   return (
     <SettingSection
-      id="auto-checkin"
+      id={AUTO_CHECKIN_TARGET_IDS.section}
       title={t("autoCheckin:settings.title")}
       description={t("autoCheckin:description")}
       onReset={async () => {
-        const result = await resetAutoCheckinConfig()
-        if (result.ok) {
-          setIsSaving(false)
-        }
-        return result
+        return resetAutoCheckinConfig()
       }}
     >
       <Card padding="none">
         <CardList>
           {/* Enable Auto Check-in */}
           <CardItem
-            id="auto-checkin-enable"
+            id={AUTO_CHECKIN_TARGET_IDS.enable}
             title={t("autoCheckin:settings.enable")}
             description={t("autoCheckin:settings.enableDesc")}
             rightContent={
@@ -194,14 +283,13 @@ export default function AutoCheckinSettings() {
                 onChange={(checked) =>
                   savePreferences({ globalEnabled: checked })
                 }
-                disabled={isSaving}
               />
             }
           />
 
           {/* UI-open daily pre-trigger */}
           <CardItem
-            id="auto-checkin-pretrigger-ui-open"
+            id={AUTO_CHECKIN_TARGET_IDS.pretriggerUiOpen}
             title={t("autoCheckin:settings.pretriggerDailyOnUiOpen")}
             description={t("autoCheckin:settings.pretriggerDailyOnUiOpenDesc")}
             rightContent={
@@ -210,14 +298,13 @@ export default function AutoCheckinSettings() {
                 onChange={(checked) =>
                   savePreferences({ pretriggerDailyOnUiOpen: checked })
                 }
-                disabled={isSaving}
               />
             }
           />
 
           {/* Post-run UI refresh notification */}
           <CardItem
-            id="auto-checkin-notify-ui-on-completion"
+            id={AUTO_CHECKIN_TARGET_IDS.notifyUiOnCompletion}
             title={t("autoCheckin:settings.notifyUiOnCompletion")}
             description={t("autoCheckin:settings.notifyUiOnCompletionDesc")}
             rightContent={
@@ -226,31 +313,27 @@ export default function AutoCheckinSettings() {
                 onChange={(checked) =>
                   savePreferences({ notifyUiOnCompletion: checked })
                 }
-                disabled={isSaving}
               />
             }
           />
 
           {/* Time Window Start */}
           <CardItem
-            id="auto-checkin-window-start"
+            id={AUTO_CHECKIN_TARGET_IDS.windowStart}
             title={t("autoCheckin:settings.windowStart")}
             description={t("autoCheckin:settings.windowStartDesc")}
             rightContent={
               <Input
                 type="time"
-                value={preferences.windowStart}
-                onChange={(e) => {
-                  const newStart = e.target.value
-                  if (validateTimeWindow(newStart, preferences.windowEnd)) {
-                    savePreferences({ windowStart: newStart })
-                  } else {
-                    toast.error(
-                      t("autoCheckin:messages.error.invalidTimeWindow"),
-                    )
-                  }
-                }}
-                disabled={isSaving}
+                value={windowStartField.draft}
+                onChange={(event) =>
+                  windowStartField.setDraft(event.target.value)
+                }
+                onBlur={() => void windowStartField.commit()}
+                onKeyDown={windowStartField.handleKeyDown}
+                placeholder={DEFAULT_PREFERENCES.autoCheckin?.windowStart}
+                aria-label={t("autoCheckin:settings.windowStart")}
+                disabled={windowStartField.isCommitting}
                 className="w-32"
               />
             }
@@ -258,24 +341,21 @@ export default function AutoCheckinSettings() {
 
           {/* Time Window End */}
           <CardItem
-            id="auto-checkin-window-end"
+            id={AUTO_CHECKIN_TARGET_IDS.windowEnd}
             title={t("autoCheckin:settings.windowEnd")}
             description={t("autoCheckin:settings.windowEndDesc")}
             rightContent={
               <Input
                 type="time"
-                value={preferences.windowEnd}
-                onChange={(e) => {
-                  const newEnd = e.target.value
-                  if (validateTimeWindow(preferences.windowStart, newEnd)) {
-                    savePreferences({ windowEnd: newEnd })
-                  } else {
-                    toast.error(
-                      t("autoCheckin:messages.error.invalidTimeWindow"),
-                    )
-                  }
-                }}
-                disabled={isSaving}
+                value={windowEndField.draft}
+                onChange={(event) =>
+                  windowEndField.setDraft(event.target.value)
+                }
+                onBlur={() => void windowEndField.commit()}
+                onKeyDown={windowEndField.handleKeyDown}
+                placeholder={DEFAULT_PREFERENCES.autoCheckin?.windowEnd}
+                aria-label={t("autoCheckin:settings.windowEnd")}
+                disabled={windowEndField.isCommitting}
                 className="w-32"
               />
             }
@@ -283,7 +363,7 @@ export default function AutoCheckinSettings() {
 
           {/* Schedule Mode */}
           <CardItem
-            id="auto-checkin-schedule-mode"
+            id={AUTO_CHECKIN_TARGET_IDS.scheduleMode}
             title={t("autoCheckin:settings.scheduleModeTitle")}
             description={t("autoCheckin:settings.scheduleModeDesc")}
             rightContent={
@@ -297,7 +377,6 @@ export default function AutoCheckinSettings() {
                   value: mode.value,
                   label: mode.label,
                   ariaLabel: mode.label,
-                  disabled: isSaving,
                 }))}
               />
             }
@@ -307,42 +386,23 @@ export default function AutoCheckinSettings() {
           {preferences.scheduleMode ===
             AUTO_CHECKIN_SCHEDULE_MODE.DETERMINISTIC && (
             <CardItem
-              id="auto-checkin-deterministic-time"
+              id={AUTO_CHECKIN_TARGET_IDS.deterministicTime}
               title={t("autoCheckin:settings.deterministicTimeTitle")}
               description={t("autoCheckin:settings.deterministicTimeDesc")}
               rightContent={
                 <Input
                   type="time"
-                  value={
-                    preferences.deterministicTime ?? preferences.windowStart
+                  value={deterministicTimeField.draft}
+                  onChange={(event) =>
+                    deterministicTimeField.setDraft(event.target.value)
                   }
-                  onChange={(e) => {
-                    const newTime = e.target.value
-                    if (!validateTimeFormat(newTime)) {
-                      toast.error(
-                        t(
-                          "autoCheckin:messages.error.invalidDeterministicTime",
-                        ),
-                      )
-                      return
-                    }
-                    if (
-                      !isTimeWithinWindow(
-                        newTime,
-                        preferences.windowStart,
-                        preferences.windowEnd,
-                      )
-                    ) {
-                      toast.error(
-                        t(
-                          "autoCheckin:messages.error.deterministicTimeOutsideWindow",
-                        ),
-                      )
-                      return
-                    }
-                    void savePreferences({ deterministicTime: newTime })
-                  }}
-                  disabled={isSaving}
+                  onBlur={() => void deterministicTimeField.commit()}
+                  onKeyDown={deterministicTimeField.handleKeyDown}
+                  placeholder={
+                    DEFAULT_PREFERENCES.autoCheckin?.deterministicTime
+                  }
+                  aria-label={t("autoCheckin:settings.deterministicTimeTitle")}
+                  disabled={deterministicTimeField.isCommitting}
                   className="w-32"
                 />
               }
@@ -351,7 +411,7 @@ export default function AutoCheckinSettings() {
 
           {/* Retry Strategy */}
           <CardItem
-            id="auto-checkin-retry-enabled"
+            id={AUTO_CHECKIN_TARGET_IDS.retryEnabled}
             title={t("autoCheckin:settings.retryTitle")}
             description={t("autoCheckin:settings.retryDesc")}
             rightContent={
@@ -360,52 +420,54 @@ export default function AutoCheckinSettings() {
                 onChange={(checked) =>
                   saveRetryPreferences({ enabled: checked })
                 }
-                disabled={isSaving}
               />
             }
           />
 
           <CardItem
-            id="auto-checkin-retry-interval"
+            id={AUTO_CHECKIN_TARGET_IDS.retryInterval}
             title={t("autoCheckin:settings.retryInterval")}
             description={t("autoCheckin:settings.retryIntervalDesc")}
             rightContent={
               <Input
                 type="number"
                 min={1}
-                value={retryPreferences.intervalMinutes}
-                onChange={(e) => {
-                  const value = Number(e.target.value)
-                  if (Number.isNaN(value) || value <= 0) {
-                    toast.error(t("autoCheckin:messages.error.invalidNumber"))
-                    return
-                  }
-                  void saveRetryPreferences({ intervalMinutes: value })
-                }}
-                disabled={isSaving || !retryPreferences.enabled}
+                value={retryIntervalField.draft}
+                onChange={(event) =>
+                  retryIntervalField.setDraft(event.target.value)
+                }
+                onBlur={() => void retryIntervalField.commit()}
+                onKeyDown={retryIntervalField.handleKeyDown}
+                placeholder={String(retryPreferences.intervalMinutes)}
+                aria-label={t("autoCheckin:settings.retryInterval")}
+                disabled={
+                  retryIntervalField.isCommitting || !retryPreferences.enabled
+                }
                 className="w-32"
               />
             }
           />
 
           <CardItem
-            id="auto-checkin-retry-max-attempts"
+            id={AUTO_CHECKIN_TARGET_IDS.retryMaxAttempts}
             title={t("autoCheckin:settings.retryMaxAttempts")}
             description={t("autoCheckin:settings.retryMaxAttemptsDesc")}
             rightContent={
               <Input
                 type="number"
                 min={1}
-                value={retryPreferences.maxAttemptsPerDay}
-                onChange={(e) => {
-                  const value = Number(e.target.value)
-                  if (Number.isNaN(value) || value <= 0) {
-                    toast.error(t("autoCheckin:messages.error.invalidNumber"))
-                    return
-                  }
-                  void saveRetryPreferences({ maxAttemptsPerDay: value })
-                }}
-                disabled={isSaving || !retryPreferences.enabled}
+                value={retryMaxAttemptsField.draft}
+                onChange={(event) =>
+                  retryMaxAttemptsField.setDraft(event.target.value)
+                }
+                onBlur={() => void retryMaxAttemptsField.commit()}
+                onKeyDown={retryMaxAttemptsField.handleKeyDown}
+                placeholder={String(retryPreferences.maxAttemptsPerDay)}
+                aria-label={t("autoCheckin:settings.retryMaxAttempts")}
+                disabled={
+                  retryMaxAttemptsField.isCommitting ||
+                  !retryPreferences.enabled
+                }
                 className="w-32"
               />
             }
@@ -413,7 +475,7 @@ export default function AutoCheckinSettings() {
 
           {/* View Execution Button */}
           <CardItem
-            id="auto-checkin-view-execution"
+            id={AUTO_CHECKIN_TARGET_IDS.viewExecution}
             title={t("autoCheckin:settings.viewExecution")}
             description={t("autoCheckin:settings.viewExecutionDesc")}
             rightContent={

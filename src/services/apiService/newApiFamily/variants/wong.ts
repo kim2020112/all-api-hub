@@ -1,3 +1,4 @@
+import { SITE_TYPES } from "~/constants/siteType"
 import type {
   AccountData,
   ApiServiceAccountRequest,
@@ -12,11 +13,11 @@ import {
   fetchAccountQuota,
   fetchTodayIncome,
   fetchTodayUsage,
-  resolveCheckInSiteStatus,
 } from "~/services/apiService/newApiFamily/default/accountData"
 import { getTodayTimestampRange } from "~/services/apiService/newApiFamily/default/accountDataUtils"
 import { fetchApi } from "~/services/apiTransport/request"
 import type { ApiServiceRequest } from "~/services/apiTransport/type"
+import { refreshSelectedStatus } from "~/services/checkin/autoCheckin/refresh"
 import {
   AuthTypeEnum,
   SiteHealthStatus,
@@ -101,25 +102,22 @@ export async function fetchCheckInStatus(
       false,
     )
 
-    const responseMessage = normalizeMessage(response.message)
-
-    if (responseMessage && isAlreadyCheckedMessage(responseMessage)) {
-      return false
-    }
-
     if (response.data?.enabled === false) {
       return undefined
     }
 
-    if (!response.success) {
-      if (response.data?.checked_in === true) {
-        return false
-      }
-      return undefined
+    if (typeof response.data?.checked_in === "boolean") {
+      if (response.data.checked_in) return false
+      return response.success ? true : undefined
     }
 
-    if (typeof response.data?.checked_in === "boolean") {
-      return !response.data.checked_in
+    const responseMessage = normalizeMessage(response.message)
+    if (responseMessage && isAlreadyCheckedMessage(responseMessage)) {
+      return false
+    }
+
+    if (!response.success) {
+      return undefined
     }
 
     return undefined
@@ -146,11 +144,13 @@ export async function fetchAccountData(
     undefined,
     timestampRange,
   )
-  const checkInPromise = checkIn?.enableDetection
-    ? fetchCheckInStatus(request)
-    : Promise.resolve<boolean | undefined>(undefined)
+  const checkInPromise = refreshSelectedStatus({
+    config: checkIn,
+    siteType: request.siteType ?? SITE_TYPES.WONG_GONGYI,
+    request,
+  })
 
-  const [quota, todayUsage, todayIncome, canCheckIn] = await Promise.all([
+  const [quota, todayUsage, todayIncome, refreshedCheckIn] = await Promise.all([
     quotaPromise,
     todayUsagePromise,
     todayIncomePromise,
@@ -165,10 +165,7 @@ export async function fetchAccountData(
       ...todayUsage.todayStatsAvailability,
       ...todayIncome.todayStatsAvailability,
     },
-    checkIn: {
-      ...checkIn,
-      siteStatus: resolveCheckInSiteStatus(checkIn, canCheckIn),
-    },
+    checkIn: refreshedCheckIn,
   }
 }
 

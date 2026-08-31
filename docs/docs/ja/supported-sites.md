@@ -12,7 +12,8 @@
 | New API | 統一された AI モデル集約および配布センター。 | [公式サイト](https://www.newapi.ai/) / [GitHub](https://github.com/QuantumNous/new-api) |
 | one-api | LLM API 管理および配布システム。OpenAI、Azure、Anthropic Claude、Google Gemini、DeepSeek などの主要モデルをサポートし、API を統一的にアダプトします。キー管理および二次配布に使用できます。 | [GitHub](https://github.com/songquanpeng/one-api) |
 | Sub2API | Sub2API-CRS2 ワンストップオープンソースプロキシサービス。Claude、OpenAI、Gemini、Antigravity のサブスクリプションを統一的に接続し、共同利用による効率的なコスト分担とネイティブツールのシームレスな利用に対応します。 | [GitHub](https://github.com/Wei-Shaw/sub2api) |
-| AnyRouter | Claude Code プロキシ · ゼロしきい値 · 無料 $50 | [ドキュメント](https://docs.anyrouter.top/) / [公式サイト](https://anyrouter.top) |
+| AnyRouter | Claude Code プロキシ · ゼロしきい値 · 無料 $50 | [ドキュメント](https://docs.anyrouter.top/) / [公式サイト](https://anyrouter.top/register?aff=tDKX) |
+| AgentRouter | AI API ルーティングおよびプロキシサービスプラットフォーム。 | [公式サイト](https://agentrouter.org/register?aff=TUX6) |
 | one-hub | OpenAI インターフェース管理および配布システム。songquanpeng/one-api から改変され、より多くのモデルをサポートし、統計ページを追加し、OpenAI 以外のモデルの関数呼び出しを改善しました。 | [公式サイト](https://one-hub.xiao5.info/) / [GitHub](https://github.com/MartialBE/one-hub) |
 | Veloera | このプロジェクトはメンテナンスを停止しました。 | [GitHub](https://github.com/Veloera/Veloera) |
 | VoAPI | 旧バージョンの互換デプロイのみ対応しています。新しい VoAPI バージョンは、現在の拡張機能の互換範囲外です。 | [GitHub](https://github.com/VoAPI/VoAPI) |
@@ -121,6 +122,17 @@
     </a>
     <p>
       モデル品質の低下、性能制限、料金の不透明さが気になりますか？<strong>Infistar.ai</strong> で提供するすべてのモデルは実際の API 呼び出しで検証済みです。供給元は公式 API と公式アカウントプールで、10,000 本を超える供給経路を負荷分散し、低遅延とピーク時の安定性を確保しています。ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax など国内外の主要モデルに対応し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能をカバーします。料金と利用量は明確に確認でき、モデルは公式価格の 10% から利用できます。All API Hub ユーザーは<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">専用リンク</a>から登録してお試しいただけます（<a href="./service-guides/infistar.md">設定ガイド</a>）。
+    </p>
+  </section>
+
+  <hr>
+
+  <section class="sponsor-item">
+    <a class="sponsor-logo" href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+    <p>
+      <strong>APIMart</strong> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は <strong>1 枚 $0.006</strong> から、1 ドルで 160 枚以上の画像を生成できます。画像と動画をひとつの非同期 API でカバーし、タスクを送信して ID を取得、ポーリングまたはコールバックで結果を取得できます。数万枚のバッチ処理もタイムアウトなしで実行でき、モデルを切り替えてもコードの変更は不要です。従量課金・月額料金なし。<a href="https://go.apimart.ai/gh-all-api-hub">こちらのリンク</a>から登録して利用を始められます。
     </p>
   </section>
 

@@ -27,6 +27,7 @@ import {
 } from "~/services/productAnalytics/contracts"
 import { PROTECTION_BYPASS_EXECUTION_VERSION } from "~/services/protectionBypass/contracts"
 import { AuthTypeEnum } from "~/types"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { buildSiteAccount } from "~~/tests/test-utils/factories"
 import { act, renderHook, waitFor } from "~~/tests/test-utils/render"
 
@@ -239,7 +240,7 @@ describe("useAccountDialog analytics", () => {
         exchangeRate: 7,
         siteName: "Detected Site",
         siteType: SITE_TYPES.NEW_API,
-        checkIn: { enableDetection: false },
+        checkIn: buildCheckInConfig(),
         autoDetectContext: {
           strategy: AUTO_DETECT_STRATEGIES.CurrentTab,
           fetchContextKind: AUTO_DETECT_FETCH_CONTEXT_KINDS.CurrentTab,
@@ -273,6 +274,10 @@ describe("useAccountDialog analytics", () => {
           fetchContextKind: AUTO_DETECT_FETCH_CONTEXT_KINDS.CurrentTab,
           incognitoContextUsed: true,
           currentTabMatched: true,
+          checkInDiscoveryTrigger: "initial_detection",
+          checkInDiscoveryDecision: "unknown",
+          checkInCandidateCount: 1,
+          checkInSelectionSource: "none",
         },
       },
     )
@@ -286,6 +291,10 @@ describe("useAccountDialog analytics", () => {
       fetchContextKind: AUTO_DETECT_FETCH_CONTEXT_KINDS.CurrentTab,
       incognitoContextUsed: true,
       currentTabMatched: true,
+      checkInDiscoveryTrigger: "initial_detection",
+      checkInDiscoveryDecision: "unknown",
+      checkInCandidateCount: 1,
+      checkInSelectionSource: "none",
     })
     expectNoSensitiveAnalyticsFields()
   })
@@ -301,7 +310,7 @@ describe("useAccountDialog analytics", () => {
         exchangeRate: 7,
         siteName: "Detected Site",
         siteType: SITE_TYPES.NEW_API,
-        checkIn: { enableDetection: false },
+        checkIn: buildCheckInConfig(),
       },
     })
 
@@ -336,7 +345,7 @@ describe("useAccountDialog analytics", () => {
         exchangeRate: 7,
         siteName: "Detected Site",
         siteType: SITE_TYPES.NEW_API,
-        checkIn: { enableDetection: false },
+        checkIn: buildCheckInConfig(),
       },
     })
 
@@ -743,7 +752,7 @@ describe("useAccountDialog analytics", () => {
         exchangeRate: 7,
         siteName: "Detected Site",
         siteType: SITE_TYPES.NEW_API,
-        checkIn: { enableDetection: false },
+        checkIn: buildCheckInConfig(),
       },
     })
     const storageGetSpy = vi
@@ -770,6 +779,10 @@ describe("useAccountDialog analytics", () => {
           fallbackUsed: false,
           requestedAuthMode: AuthTypeEnum.AccessToken,
           siteType: SITE_TYPES.NEW_API,
+          checkInDiscoveryTrigger: "initial_detection",
+          checkInDiscoveryDecision: "unknown",
+          checkInCandidateCount: 1,
+          checkInSelectionSource: "none",
         },
       },
     )

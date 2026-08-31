@@ -33,11 +33,11 @@ features:
   - title: "💰 跨站模型价格比对"
     details: "计算各站点模型的折合单价，直观找出更具性价比的模型与分组。"
   - title: "✅ 多站点自动签到"
-    details: "一键或定时完成多站点每日签到，自动领取奖励，免去每天逐站登录。"
+    details: "一键或定时处理受支持账号的每日签到，自动领取奖励，免去每天逐站登录。"
   - title: "🧪 API、模型与 CLI 验证"
     details: "一键测试 API 连通性、模型可用性与 CLI 接入状态，快速排查配置问题。"
   - title: "🔔 公告与任务提醒"
-    details: "集中展示已添加站点的各类公告，维护、模型、价格等动态及时提醒；自动签到、WebDAV 自动同步和模型同步的结果也能及时收到。"
+    details: "集中展示已添加站点的各类公告，维护、模型、价格等动态及时提醒；自动签到、WebDAV 自动同步和模型同步的后台计划结果也能及时收到。"
   - title: "🚀 网页录入与一键导出"
     details: "从网页快速识别 Base URL 或 API Key，并一键导出至常用 AI 客户端。"
   - title: "🛠️ 主流 AI 网关支持"
@@ -59,7 +59,7 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
 ### 👤 我是普通 AI 用户 (新手推荐)
 - **我该怎么用？**：[下载并安装扩展](./get-started.md) -> [添加第一个账号](./get-started.md#add-site)
 - **我想省钱**：[自动签到获取额度](./auto-checkin.md) -> [跨站模型价格比对](./model-list.md)
-- **我想更省事**：[资产变动一眼看清](./balance-history.md) -> [同步账号到其它 AI 工具](./get-started.md#quick-export-sites)
+- **我想更省事**：[资产变动一眼看清](./balance-history.md) -> [同步账号到其它 AI 工具](./get-started.md#quick-export-sites) -> [接收后台任务通知](./task-notifications.md)
 
 ### 🛠️ 我是进阶玩家 (Key 收藏家)
 - **密钥管理**：[将独立 URL+Key 保存到 API 凭据库](./api-credential-profiles.md)
@@ -75,7 +75,7 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
 
 不论你用的是哪种架构，我们基本都支持：
 - **账号站点兼容架构**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub 等。
-- **特色账号平台与兼容实现**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
+- **特色账号平台与兼容实现**：[OpenRouter](https://openrouter.ai/)、[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API 等。
 - **自建管理后台**：New API, Sub2API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于后台管理、迁移和部分模型同步。
 
 > 如果你在 macOS 上使用 Safari，请先查看 [Safari 安装指南](./safari-install.md)。
@@ -219,6 +219,19 @@ footer: "AGPL-3.0 Licensed | Copyright 2025-present All API Hub"
   </div>
   <p class="readme-sponsor-copy">
     担心模型掺水、降智或价格不透明？Infistar.ai 在售模型均经过真实调用验真，供给来自官方 API 与官方号池，超 10000 条供应链路进行负载均衡，保证时延和峰时稳定性。覆盖 ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax 等国内外主流模型，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明清晰可查，模型低至官方价的 10%。All API Hub 用户可通过<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">专属入口</a>注册体验（<a href="./service-guides/infistar.md">使用教程</a>）。
+  </p>
+</div>
+
+<hr class="readme-sponsor-divider">
+
+<div class="readme-sponsor">
+  <div class="readme-sponsor-logo">
+    <a href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+  </div>
+  <p class="readme-sponsor-copy">
+    <strong>APIMart</strong> 专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 <strong>$0.006/张</strong>，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码，按量付费、无月费。欢迎通过<a href="https://go.apimart.ai/gh-all-api-hub">此链接</a>注册使用。
   </p>
 </div>
 

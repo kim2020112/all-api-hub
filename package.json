@@ -3,7 +3,7 @@
   "displayName": "All API Hub - 你的全能 AI 资产管家",
   "private": true,
   "type": "module",
-  "version": "3.56.0",
+  "version": "3.59.0",
   "description": "一站式聚合管理所有AI中转站账号的余额、模型和密钥，告别繁琐登录。",
   "engines": {
     "node": ">=24",
@@ -44,6 +44,7 @@
     "e2e": "playwright test",
     "e2e:default": "playwright test",
     "e2e:dnr-required": "playwright test e2e/dnrRequired --project=chromium --workers=1 --timeout=120000",
+    "e2e:bookmarks-required": "playwright test e2e/accountBookmarkImportBrowserFlow --project=chromium",
     "e2e:real-site": "node scripts/real-site-e2e-cli.mjs all",
     "e2e:real-site:account": "node scripts/real-site-e2e-cli.mjs account",
     "e2e:real-site:category": "node scripts/real-site-e2e-cli.mjs",

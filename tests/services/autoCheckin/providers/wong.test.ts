@@ -6,6 +6,8 @@ import { PROTECTION_BYPASS_USER_COMMANDS } from "~/services/protectionBypass/con
 import { AuthTypeEnum, SiteHealthStatus, type SiteAccount } from "~/types"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { createAutoCheckinMutationLifecycle } from "~~/tests/test-utils/autoCheckin"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: vi.fn(),
@@ -23,7 +25,7 @@ const mockAccount: SiteAccount = {
   disabled: false,
   excludeFromTotalBalance: false,
   excludeFromTodayIncome: false,
-  checkIn: { enableDetection: true },
+  checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
   health: { status: SiteHealthStatus.Healthy },
   account_info: {
     id: "123",
@@ -61,22 +63,30 @@ describe("wongGongyiProvider", () => {
     vi.clearAllMocks()
   })
 
-  describe("canCheckIn", () => {
-    it("returns true for valid account", () => {
-      expect(wongGongyiProvider.canCheckIn(mockAccount)).toBe(true)
+  describe("getReadiness", () => {
+    it("returns ready for a valid account", () => {
+      expect(wongGongyiProvider.getReadiness(mockAccount)).toEqual({
+        ready: true,
+      })
     })
 
-    it("returns false when enableDetection is false", () => {
-      const account = { ...mockAccount, checkIn: { enableDetection: false } }
-      expect(wongGongyiProvider.canCheckIn(account)).toBe(false)
+    it("leaves automatic-execution intent to the Module", () => {
+      const account = {
+        ...mockAccount,
+        checkIn: buildCheckInConfig(),
+      }
+      expect(wongGongyiProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
-    it("returns false when authType is token but token is missing", () => {
+    it("explains when saved credentials are missing", () => {
       const account = {
         ...mockAccount,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(wongGongyiProvider.canCheckIn(account)).toBe(false)
+      expect(wongGongyiProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
     })
 
     it("treats missing authType as access-token auth", () => {
@@ -84,7 +94,7 @@ describe("wongGongyiProvider", () => {
         ...mockAccount,
         authType: undefined as any,
       }
-      expect(wongGongyiProvider.canCheckIn(account)).toBe(true)
+      expect(wongGongyiProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
     it("requires an access token when authType is missing", () => {
@@ -93,7 +103,51 @@ describe("wongGongyiProvider", () => {
         authType: undefined as any,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(wongGongyiProvider.canCheckIn(account)).toBe(false)
+      expect(wongGongyiProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
+    })
+  })
+
+  it("uses a strict GET status envelope and never probes with POST", async () => {
+    const { fetchApi } = await import("~/services/apiTransport/request")
+    vi.mocked(fetchApi)
+      .mockResolvedValueOnce({
+        success: true,
+        message: "",
+        data: { enabled: false, checked_in: false },
+      })
+      .mockResolvedValueOnce({ success: true, message: "", data: {} })
+      .mockResolvedValueOnce({
+        success: false,
+        message: "backend rejected the request",
+        data: { enabled: true, checked_in: false },
+      })
+
+    await expect(
+      wongGongyiProvider.detect!({ account: mockAccount, observedAt: 220 }),
+    ).resolves.toMatchObject({
+      detection: { outcome: "matched" },
+      status: { availability: "disabled", today: "not_checked" },
+    })
+    await expect(
+      wongGongyiProvider.detect!({ account: mockAccount, observedAt: 221 }),
+    ).resolves.toEqual({
+      outcome: "unknown",
+      reason: "invalid_response",
+      attemptedAt: 221,
+    })
+    await expect(
+      wongGongyiProvider.detect!({ account: mockAccount, observedAt: 222 }),
+    ).resolves.toEqual({
+      outcome: "unknown",
+      reason: "invalid_response",
+      attemptedAt: 222,
+    })
+    expect(vi.mocked(fetchApi).mock.calls[0]?.[1]).toMatchObject({
+      endpoint: "/api/user/checkin",
+      options: { method: "GET" },
     })
   })
 
@@ -173,6 +227,20 @@ describe("wongGongyiProvider", () => {
       )
     })
 
+    it("does not let ambiguous copy override an explicit unchecked status", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        success: true,
+        message: "User was not already checked in",
+        data: { enabled: true, checked_in: false },
+      })
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "success",
+        rawMessage: "User was not already checked in",
+      })
+    })
+
     it("returns failed when POST returns success=false without already-checked signal", async () => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(fetchApi)
@@ -208,11 +276,34 @@ describe("wongGongyiProvider", () => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(fetchApi)
 
-      mockedFetchApi.mockRejectedValueOnce(new Error("Network error"))
+      mockedFetchApi.mockRejectedValueOnce(new TypeError("Failed to fetch"))
 
       const result = await checkInForTest(mockAccount)
       expect(result.status).toBe("failed")
-      expect(result.rawMessage).toBe("Network error")
+      expect(result).toMatchObject({
+        reasonCode: "network_error",
+        messageKey: "autoCheckin:skipReasons.network_error",
+      })
+      expect(result.rawMessage).toBeUndefined()
+    })
+
+    it("marks a lost response after POST dispatch as uncertain", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      const mutationLifecycle = createAutoCheckinMutationLifecycle()
+      vi.mocked(fetchApi).mockImplementationOnce(async (request) => {
+        request.observer?.onDispatch()
+        throw new TypeError("Failed to fetch")
+      })
+
+      await expect(
+        checkInForTest(mockAccount, {
+          ...DEFAULT_PROVIDER_CONTEXT,
+          mutationLifecycle,
+        }),
+      ).resolves.toMatchObject({
+        status: "uncertain",
+        reasonCode: "network_error",
+      })
     })
 
     it("returns endpointNotSupported when API returns 404", async () => {

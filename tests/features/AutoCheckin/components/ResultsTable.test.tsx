@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react"
+import { fireEvent, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import ResultsTable from "~/features/AutoCheckin/components/ResultsTable"
@@ -77,7 +78,337 @@ const failedResult: CheckinAccountResult = {
 }
 
 describe("AutoCheckin ResultsTable", () => {
-  it("does not attach automatic analytics metadata to explicit-tracked row action buttons", () => {
+  it("sorts results from the account column header", async () => {
+    const user = userEvent.setup()
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "beta",
+            accountName: "Beta Account",
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 2,
+          },
+          {
+            accountId: "alpha",
+            accountName: "Alpha Account",
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 1,
+          },
+        ]}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    const table = screen.getByRole("table")
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Beta Account",
+    )
+
+    const accountSort = screen.getByRole("button", {
+      name: "autoCheckin:execution.table.accountName",
+    })
+    await user.click(accountSort)
+
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Alpha Account",
+    )
+    expect(accountSort.closest("th")).toHaveAttribute("aria-sort", "ascending")
+  })
+
+  it("paginates long result lists so later accounts stay reachable", () => {
+    const results = Array.from({ length: 26 }, (_, index) => ({
+      accountId: `account-${index + 1}`,
+      accountName: `Account ${index + 1}`,
+      status: CHECKIN_RESULT_STATUS.SUCCESS,
+      timestamp: 1,
+    }))
+
+    render(<ResultsTable results={results} />, {
+      withReleaseUpdateStatusProvider: false,
+      withThemeProvider: false,
+      withUserPreferencesProvider: false,
+    })
+
+    expect(screen.getByRole("button", { name: "Account 1" })).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "Account 26" }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "autoCheckin:execution.pagination.next",
+      }),
+    )
+
+    expect(screen.getByRole("button", { name: "Account 26" })).toBeVisible()
+    expect(
+      screen.getByText("autoCheckin:execution.pagination.summary"),
+    ).toBeVisible()
+  })
+
+  it("changes page size and clamps the current page when results shrink", () => {
+    const createResults = (length: number) =>
+      Array.from({ length }, (_, index) => ({
+        accountId: `account-${index + 1}`,
+        accountName: `Account ${index + 1}`,
+        status: CHECKIN_RESULT_STATUS.SUCCESS,
+        timestamp: 1,
+      }))
+    const view = render(<ResultsTable results={createResults(26)} />, {
+      withReleaseUpdateStatusProvider: false,
+      withThemeProvider: false,
+      withUserPreferencesProvider: false,
+    })
+
+    fireEvent.click(
+      screen.getByRole("combobox", {
+        name: "autoCheckin:execution.pagination.rowsPerPage",
+      }),
+    )
+    const pageSizeOptions = screen
+      .getAllByRole("option")
+      .map((option) => option.textContent)
+    expect(pageSizeOptions).toEqual(expect.arrayContaining(["10", "25"]))
+    fireEvent.click(screen.getByRole("option", { name: "10" }))
+
+    expect(screen.getByRole("button", { name: "Account 10" })).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "Account 11" }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "autoCheckin:execution.pagination.next",
+      }),
+    )
+    expect(screen.getByRole("button", { name: "Account 11" })).toBeVisible()
+
+    view.rerender(<ResultsTable results={createResults(5)} />)
+
+    expect(screen.getByRole("button", { name: "Account 1" })).toBeVisible()
+    expect(
+      screen.queryByText("autoCheckin:execution.pagination.summary"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("shows a localized structured reason when a skipped row has no message key", async () => {
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "skipped-account",
+            accountName: "Skipped Account",
+            status: CHECKIN_RESULT_STATUS.SKIPPED,
+            reasonCode: "status_unavailable",
+            timestamp: 1,
+          },
+        ]}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    expect(
+      await screen.findByText("autoCheckin:skipReasons.status_unavailable"),
+    ).toBeVisible()
+  })
+
+  it("shows an explicit uncertain outcome and pending-confirmation guidance", async () => {
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "uncertain-account",
+            accountName: "Uncertain Account",
+            status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+            reconciliation: "unknown",
+            timestamp: 1,
+          },
+        ]}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    expect(
+      await screen.findByText("autoCheckin:execution.status.uncertain"),
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        "autoCheckin:providerFallback.resultPendingConfirmation",
+      ),
+    ).toBeVisible()
+  })
+
+  it("offers a retry when status discovery was temporarily unavailable", async () => {
+    const user = userEvent.setup()
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "status-unavailable",
+            accountName: "Status Unavailable",
+            status: CHECKIN_RESULT_STATUS.SKIPPED,
+            reasonCode: "status_unavailable",
+            timestamp: 1,
+          },
+        ]}
+        onRetryAccount={vi.fn()}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    expect(
+      await screen.findByRole("button", {
+        name: "autoCheckin:execution.actions.retryAccount",
+      }),
+    ).toBeVisible()
+
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.more" }),
+    )
+
+    expect(
+      screen.getByRole("menuitem", {
+        name: "autoCheckin:execution.actions.retryAccount",
+      }),
+    ).toBeVisible()
+  })
+
+  it("offers status verification for uncertain results without a retry", async () => {
+    const user = userEvent.setup()
+    const onVerifyAccountStatus = vi.fn()
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "uncertain-account",
+            accountName: "Uncertain Account",
+            status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+            reconciliation: "unknown",
+            timestamp: 1,
+          },
+        ]}
+        onRetryAccount={vi.fn()}
+        onVerifyAccountStatus={onVerifyAccountStatus}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    expect(
+      await screen.findByRole("button", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole("button", {
+        name: "autoCheckin:execution.actions.retryAccount",
+      }),
+    ).not.toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    )
+    expect(onVerifyAccountStatus).toHaveBeenCalledWith("uncertain-account")
+  })
+
+  it("exposes verification in the row menu and shows its pending state", async () => {
+    const user = userEvent.setup()
+    const onVerifyAccountStatus = vi.fn()
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "uncertain-account",
+            accountName: "Uncertain Account",
+            status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+            reconciliation: "unknown",
+            timestamp: 1,
+          },
+        ]}
+        onVerifyAccountStatus={onVerifyAccountStatus}
+        verifyingAccountId="uncertain-account"
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    expect(
+      await screen.findByRole("button", {
+        name: "common:status.refreshing",
+      }),
+    ).toBeVisible()
+
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.more" }),
+    )
+    expect(
+      screen.getByRole("menuitem", {
+        name: "common:status.refreshing",
+      }),
+    ).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("invokes verification from the row menu", async () => {
+    const user = userEvent.setup()
+    const onVerifyAccountStatus = vi.fn()
+    render(
+      <ResultsTable
+        results={[
+          {
+            accountId: "uncertain-account",
+            accountName: "Uncertain Account",
+            status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+            reconciliation: "unknown",
+            timestamp: 1,
+          },
+        ]}
+        onVerifyAccountStatus={onVerifyAccountStatus}
+      />,
+      {
+        withReleaseUpdateStatusProvider: false,
+        withThemeProvider: false,
+        withUserPreferencesProvider: false,
+      },
+    )
+
+    await user.click(
+      await screen.findByRole("button", { name: "common:actions.more" }),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    )
+    expect(onVerifyAccountStatus).toHaveBeenCalledWith("uncertain-account")
+  })
+
+  it("does not attach automatic analytics metadata to explicit-tracked row actions", async () => {
+    const user = userEvent.setup()
     render(
       <ResultsTable
         results={[failedResult]}
@@ -99,23 +430,27 @@ describe("AutoCheckin ResultsTable", () => {
         name: "autoCheckin:execution.actions.retryAccount",
       }),
     ).not.toHaveAttribute("data-analytics-action")
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.more" }),
+    )
+
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("menuitem", {
         name: "autoCheckin:execution.actions.openManual",
       }),
     ).not.toHaveAttribute("data-analytics-action")
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("menuitem", {
         name: "account:actions.disableAccount",
       }),
     ).not.toHaveAttribute("data-analytics-action")
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("menuitem", {
         name: "account:actions.delete",
       }),
     ).not.toHaveAttribute("data-analytics-action")
     expect(
-      screen.getByRole("button", {
+      screen.getByRole("menuitem", {
         name: "autoCheckin:execution.actions.openSite",
       }),
     ).not.toHaveAttribute("data-analytics-action")

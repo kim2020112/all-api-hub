@@ -3,6 +3,7 @@ import type { BrowserContext, Page, Route, Worker } from "@playwright/test"
 import { ChannelType } from "~/constants"
 import { OPTIONS_PAGE_PATH } from "~/constants/extensionPages"
 import { SITE_TYPES } from "~/constants/siteType"
+import { createCompatibilityCheckInConfig } from "~/services/checkin/autoCheckin/compatibilityConfig"
 import { STORAGE_KEYS } from "~/services/core/storageKeys"
 import { DAILY_BALANCE_HISTORY_ALARM_NAME } from "~/services/history/dailyBalanceHistory/constants"
 import { getDayKeyFromUnixSeconds as getBalanceHistoryDayKeyFromUnixSeconds } from "~/services/history/dailyBalanceHistory/dayKeys"
@@ -1246,6 +1247,16 @@ test("runs auto-checkin retries when its MV3 alarm fires", async ({
   const today = getLocalDay()
   let checkinRequests = 0
 
+  await context.route(`${baseUrl}/api/user/checkin?month=*`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: { enabled: true, stats: { checked_in_today: false } },
+      }),
+    }),
+  )
   await context.route(`${baseUrl}/api/user/checkin`, (route) => {
     checkinRequests += 1
     return route.fulfill({
@@ -1270,13 +1281,11 @@ test("runs auto-checkin retries when its MV3 alarm fires", async ({
         username: "retry-alarm-user",
         access_token: "retry-alarm-token",
       },
-      checkIn: {
-        enableDetection: true,
-        autoCheckInEnabled: true,
-        siteStatus: {
-          isCheckedInToday: false,
-        },
-      },
+      checkIn: createCompatibilityCheckInConfig({
+        siteType: SITE_TYPES.NEW_API,
+        supported: true,
+        automaticExecutionEnabled: true,
+      }),
     }),
   ])
   await seedUserPreferences(serviceWorker, {
@@ -1430,13 +1439,11 @@ test("runs auto-checkin daily check-ins when its MV3 alarm fires", async ({
         username: "daily-alarm-user",
         access_token: "daily-alarm-token",
       },
-      checkIn: {
-        enableDetection: true,
-        autoCheckInEnabled: true,
-        siteStatus: {
-          isCheckedInToday: false,
-        },
-      },
+      checkIn: createCompatibilityCheckInConfig({
+        siteType: SITE_TYPES.NEW_API,
+        supported: true,
+        automaticExecutionEnabled: true,
+      }),
     }),
   ])
   await seedUserPreferences(serviceWorker, {

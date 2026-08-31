@@ -7,7 +7,8 @@
       "openFailedManual": "Abrir páginas de check-in de todas las cuentas con error",
       "openManual": "Inicio de sesión manual",
       "openSite": "Abrir sitio",
-      "retryAccount": "Reintentar"
+      "retryAccount": "Reintentar",
+      "verifyStatus": "Verificar estado"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "Dev: Evaluar si se cumplen las condiciones de 'Preactivar el check-in de hoy al abrir la UI'",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "Todos",
+      "clearAll": "Borrar filtros",
+      "countFiltered": "Mostrando {{filtered}} de {{total}}",
+      "countTotal": "{{total}} en total",
       "failed": "Fallidos",
-      "searchPlaceholder": "Buscar por nombre de cuenta o mensaje...",
+      "failedOrSkipped": "Fallidos u omitidos",
+      "searchLabel": "Buscar resultados de ejecución",
+      "searchPlaceholder": "Buscar por nombre de cuenta, ID o mensaje...",
       "skipped": "Omitidos",
+      "statusLabel": "Filtrar por estado de ejecución",
       "success": "Correctos"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "Abre la página de check-in del sitio para cada cuenta cuyo último check-in automático falló. Usa Mayús+clic para abrirlas en una ventana nueva.",
       "siteTypeCheckinUnsupported": "Solución: en 'Administración de cuentas → Editar cuenta', primero verifica que el tipo de sitio seleccionado coincida con el sitio real. Si el tipo se detectó automáticamente antes, vuelve a iniciar sesión en el sitio de destino y ejecuta la detección otra vez. Si el tipo de sitio es correcto pero este mensaje sigue apareciendo, probablemente el sitio aún no admita check-in automático, así que usa 'Abrir sitio' o 'Inicio de sesión manual' en su lugar."
     },
+    "pagination": {
+      "next": "Página siguiente",
+      "previous": "Página anterior",
+      "rowsPerPage": "Filas por página",
+      "summary": "Mostrando {{start}}–{{end}} de {{total}}"
+    },
     "refresh": "Actualizar",
     "runNow": "Ejecutar ahora",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "Ya hizo check-in",
       "failed": "Fallido",
       "skipped": "Omitido",
-      "success": "Correcto"
+      "success": "Correcto",
+      "uncertain": "Confirmación pendiente"
     },
     "table": {
       "accountName": "Nombre de cuenta",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "No se pudo activar la alarma de reintento: {{error}}",
       "retryFailed": "Falló el reintento: {{error}}",
       "runFailed": "No se pudo ejecutar el check-in automático: {{error}}",
+      "statusVerificationFailed": "No pudimos verificar el estado de check-in seleccionado. Inténtalo de nuevo o abre el sitio de la cuenta.",
       "uiOpenPretriggerDidNotStart": "La preactivación al abrir la UI no inició: {{reason}}",
       "uiOpenPretriggerEvaluationFailed": "No se pudo evaluar la preactivación al abrir la UI: {{error}}",
       "uiOpenPretriggerIneligible": "La preactivación al abrir la UI no es elegible: {{reason}}",
@@ -113,6 +128,7 @@
       "retryCompleted": "Reintento completado.",
       "runCompleted": "Check-in automático completado.",
       "settingsSaved": "La configuración de check-in automático se guardó.",
+      "statusVerified": "Se verificó el estado de check-in seleccionado.",
       "uiOpenPretriggerEligible": "La preactivación al abrir la UI es elegible."
     }
   },
@@ -126,6 +142,7 @@
     "nativePageStatusUnconfirmed": "Se hizo clic en la acción de check-in de la página, pero no se confirmó el estado de la cuenta de destino. Abre la página de check-in y revisa manualmente: {{checkInUrl}}",
     "nativePageTargetNotFound": "No se pudo encontrar el botón de check-in en la página. Abre la página de check-in y completa el check-in manualmente: {{checkInUrl}}",
     "nativePageTriggerFailed": "No se pudo activar la acción de check-in de la página. Abre la página de check-in y completa el check-in manualmente: {{checkInUrl}}",
+    "resultPendingConfirmation": "Resultado del check-in pendiente de confirmación",
     "turnstileIncognitoAccessRequired": "La extensión debe tener permiso para ejecutarse en ventanas de incógnito/privadas para obtener el token de Turnstile en una ventana temporal privada (escenario multi-cuenta). Habilita \"Permitir en incógnito\" para esta extensión y reintenta, o abre la página de check-in para completar la verificación: {{checkInUrl}}",
     "turnstileManualRequired": "Se requiere verificación de Cloudflare Turnstile. Abre la página de check-in para completar la verificación: {{checkInUrl}}",
     "unknownError": "Ocurrió un error desconocido"
@@ -162,29 +179,59 @@
     "windowStartDesc": "La hora local más temprana en la que puede iniciar el check-in diario."
   },
   "skipReasons": {
+    "account_data_missing": "Faltan datos obligatorios de la cuenta. Vuelve a detectarla.",
     "account_disabled": "La cuenta está deshabilitada",
+    "account_unavailable": "La cuenta cambió o dejó de estar disponible antes del check-in",
     "already_checked_today": "Ya hizo check-in hoy",
+    "authentication_required": "La sesión expiró o es necesario iniciar sesión. Inicia sesión en el sitio y vuelve a intentarlo.",
     "auto_checkin_disabled": "Check-in automático deshabilitado",
+    "credentials_missing": "Faltan las credenciales guardadas. Vuelve a detectar la cuenta o actualiza sus credenciales.",
     "detection_disabled": "Detección deshabilitada",
+    "method_disabled": "La función de check-in de este sitio está deshabilitada",
+    "method_not_matched": "El método de check-in seleccionado ya no coincide con este sitio. Vuelve a detectarlo.",
+    "method_unavailable": "El método de check-in seleccionado ya no está disponible. Vuelve a detectarlo.",
+    "method_unsupported": "Este sitio no admite el método de check-in seleccionado.",
+    "network_error": "Un problema de conexión de red impidió el check-in. Revisa tu conexión y vuelve a intentarlo.",
     "no_provider": "El tipo de sitio de la cuenta actualmente no admite check-in",
-    "provider_not_ready": "La configuración de la cuenta actualmente no admite check-in"
+    "no_selected_method": "No hay un método de check-in seleccionado. Vuelve a detectarlo o elige uno en la configuración de la cuenta.",
+    "permission_denied": "El sitio rechazó el permiso para hacer check-in. Inicia sesión de nuevo o revisa los permisos de la cuenta.",
+    "source_unavailable": "El sitio de origen no está disponible temporalmente. Inténtalo de nuevo más tarde.",
+    "status_unavailable": "No se pudo confirmar el estado actual, por lo que no se intentó el check-in",
+    "timeout": "La conexión agotó el tiempo de espera antes de completar el check-in. Vuelve a intentarlo."
   },
   "snapshot": {
     "badges": {
       "disabled": "Deshabilitada",
       "enabled": "Habilitada",
+      "methodNotSelected": "Sin seleccionar",
+      "methodSelected": "Seleccionado",
       "pending": "Pendiente",
       "providerAvailable": "Disponible",
       "providerUnavailable": "No disponible"
     },
-    "description": "Todas las cuentas con detección habilitada y su preparación se listan abajo. Las cuentas pendientes entran al check-in cuando haces clic en \"Ejecutar ahora\" o cuando llega la hora programada.",
+    "description": "Muestra la preparación de las cuentas registrada en la última ejecución. Las cuentas pendientes entran al check-in cuando haces clic en \"Ejecutar ahora\" o cuando llega la hora programada.",
+    "filters": {
+      "clearAll": "Borrar filtros",
+      "countFiltered": "Mostrando {{filtered}} de {{total}} cuentas",
+      "countTotal": "{{total}} cuentas",
+      "noMatches": "No hay cuentas coincidentes",
+      "noMatchesDescription": "Ajusta la búsqueda o los filtros, o borra todos los filtros.",
+      "readinessAll": "Todos los estados de preparación",
+      "readinessDisabled": "Deshabilitada",
+      "readinessLabel": "Filtrar por preparación de ejecución",
+      "readinessReady": "Lista para ejecutar",
+      "readinessSetupRequired": "Requiere configuración",
+      "readinessTemporarilyUnavailable": "No disponible temporalmente",
+      "readinessUnsupported": "No compatible",
+      "searchLabel": "Buscar preparación de cuentas",
+      "searchPlaceholder": "Buscar por nombre, ID o motivo...",
+      "statusAll": "Todos los estados recientes",
+      "statusLabel": "Filtrar por estado reciente"
+    },
     "table": {
       "autoCheckin": "Check-in automático",
-      "detection": "Detección",
-      "lastResult": "Último resultado",
-      "provider": "Proveedor",
-      "skipReason": "Motivo de omisión",
-      "status": "Estado"
+      "lastResult": "Actualizado",
+      "status": "Último estado"
     },
     "title": "Preparación de cuentas"
   },
@@ -199,6 +246,7 @@
     "result": {
       "failed": "Fallido",
       "partial": "Parcial",
+      "skipped": "No ejecutado",
       "success": "Correcto"
     },
     "retryDisabled": "Reintento deshabilitado",
@@ -216,5 +264,9 @@
     "dialogDescription": "La ejecución diaria programada de hoy se activó antes al abrir la UI.",
     "dialogTitle": "Check-in automático terminado",
     "viewDetails": "Ver detalles"
+  },
+  "workspace": {
+    "label": "Datos de registro automático",
+    "resultsTab": "Resultados de ejecución"
   }
 }

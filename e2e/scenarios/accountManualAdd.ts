@@ -118,7 +118,9 @@ export async function refreshAccountRowsAndReadStorage(params: {
     )
     await openAccountRowActionsMenu(row)
     await params.page
-      .getByTestId(ACCOUNT_MANAGEMENT_TEST_IDS.rowRefreshMenuItem)
+      .locator(
+        `[role="menu"][data-state="open"] [data-testid="${ACCOUNT_MANAGEMENT_TEST_IDS.rowRefreshMenuItem}"]:not([aria-disabled="true"])`,
+      )
       .click()
 
     await waitForStoredAccountQuota({
@@ -155,7 +157,9 @@ async function waitForStoredAccountQuota(params: {
 }
 
 async function openAccountRowActionsMenu(row: Locator) {
-  await row.hover()
+  // Hover near the row edge so transient centered toasts cannot intercept the
+  // pointer while the previous account refresh notification is still visible.
+  await row.hover({ position: { x: 8, y: 8 } })
   const moreActionsButton = row.getByTestId(
     ACCOUNT_MANAGEMENT_TEST_IDS.rowMoreActionsButton,
   )

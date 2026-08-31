@@ -1,3 +1,9 @@
+import {
+  CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES,
+  CHECK_IN_METHOD_STATUS_OUTCOMES,
+  CHECK_IN_METHOD_TODAY_STATUSES,
+  CHECK_IN_PROVIDER_READINESS_REASONS,
+} from "~/constants/checkIn"
 import { SITE_TYPES } from "~/constants/siteType"
 import { AccountUpdateUserTimestampMode } from "~/services/accounts/accountDefaults"
 import { accountStorage } from "~/services/accounts/accountStorage"
@@ -7,11 +13,13 @@ import {
 } from "~/services/apiService/voapiV2"
 import { isVoApiV2AuthExpiredError } from "~/services/apiService/voapiV2/parsing"
 import { resyncVoApiV2AuthToken } from "~/services/apiService/voapiV2/tokenResync"
+import { composeAbortSignals } from "~/services/apiTransport/abortableTask"
 import type { ApiServiceRequest } from "~/services/apiTransport/type"
 import type {
   AutoCheckinProvider,
   AutoCheckinProviderContext,
-} from "~/services/checkin/autoCheckin/providers"
+} from "~/services/checkin/autoCheckin/providers/contracts"
+import { detectWithStatusReadback } from "~/services/checkin/autoCheckin/providers/detection"
 import {
   AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS,
   resolveProviderErrorResult,
@@ -24,8 +32,9 @@ import { normalizeTempWindowRequestSource } from "~/utils/browser/tempWindowRequ
 
 const createRequest = (
   account: SiteAccount,
-  tempWindowRequestSource: TempWindowRequestSource,
+  tempWindowRequestSource?: TempWindowRequestSource,
   protectionBypassExecution?: AutoCheckinProviderContext["protectionBypassExecution"],
+  mutationLifecycle?: AutoCheckinProviderContext["mutationLifecycle"],
 ): ApiServiceRequest => ({
   baseUrl: account.site_url,
   accountId: account.id,
@@ -34,12 +43,16 @@ const createRequest = (
     accessToken: account.account_info.access_token,
     userId: account.account_info.id,
   },
-  tempWindowRequestSource,
+  ...(tempWindowRequestSource ? { tempWindowRequestSource } : {}),
   ...(protectionBypassExecution ? { protectionBypassExecution } : {}),
+  ...(mutationLifecycle ? { observer: mutationLifecycle } : {}),
 })
 
 const isVoApiV2Account = (account: SiteAccount): boolean =>
   account.site_type === SITE_TYPES.VO_API_V2
+
+// https://github.com/VoAPI/VoAPI — the stats endpoint is read-only; the
+// separate submit endpoint remains exclusive to checkIn execution.
 
 const updateAccountAuthFromResync = async (
   account: SiteAccount,
@@ -70,17 +83,19 @@ const runCheckIn = async (
 ): Promise<AutoCheckinProviderResult> => {
   const submitResult = await submitVoApiV2CheckIn(request)
   const stats = await fetchVoApiV2CheckInStats(request)
+  const signed = stats.todaySigned === true
 
   if ("alreadySigned" in submitResult) {
     return {
-      status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
-      messageKey:
-        AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.alreadyCheckedToday,
+      status: signed
+        ? CHECKIN_RESULT_STATUS.ALREADY_CHECKED
+        : CHECKIN_RESULT_STATUS.FAILED,
+      messageKey: signed
+        ? AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.alreadyCheckedToday
+        : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.checkinFailed,
       data: stats,
     }
   }
-
-  const signed = stats.todaySigned === true
 
   return {
     status: signed
@@ -93,15 +108,58 @@ const runCheckIn = async (
   }
 }
 
+const getStatus: NonNullable<AutoCheckinProvider["getStatus"]> = async ({
+  account,
+  request,
+  observedAt,
+  signal,
+}) => {
+  const statusRequest =
+    request ?? (account ? createRequest(account, undefined) : undefined)
+  if (!statusRequest) return undefined
+  const composedSignal = composeAbortSignals([
+    statusRequest.abortSignal,
+    signal,
+  ])
+  let stats: Awaited<ReturnType<typeof fetchVoApiV2CheckInStats>>
+  try {
+    stats = await fetchVoApiV2CheckInStats({
+      ...statusRequest,
+      ...(composedSignal.signal ? { abortSignal: composedSignal.signal } : {}),
+    })
+  } finally {
+    composedSignal.dispose()
+  }
+  if (typeof stats.todaySigned !== "boolean") return undefined
+  return {
+    outcome: CHECK_IN_METHOD_STATUS_OUTCOMES.Known,
+    today: stats.todaySigned
+      ? CHECK_IN_METHOD_TODAY_STATUSES.Checked
+      : CHECK_IN_METHOD_TODAY_STATUSES.NotChecked,
+    evidence: {
+      source: CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES.Probe,
+      observedAt,
+    },
+  }
+}
+
 export const voApiV2Provider: AutoCheckinProvider = {
-  canCheckIn(account) {
-    return Boolean(
-      isVoApiV2Account(account) &&
-        account.checkIn?.enableDetection &&
-        account.checkIn?.autoCheckInEnabled !== false &&
-        account.account_info?.access_token,
-    )
+  getReadiness(account) {
+    if (!isVoApiV2Account(account)) {
+      return {
+        ready: false,
+        reason: CHECK_IN_PROVIDER_READINESS_REASONS.AccountDataMissing,
+      }
+    }
+    return account.account_info?.access_token
+      ? { ready: true }
+      : {
+          ready: false,
+          reason: CHECK_IN_PROVIDER_READINESS_REASONS.CredentialsMissing,
+        }
   },
+  detect: (context) => detectWithStatusReadback(context, getStatus),
+  getStatus,
   async checkIn(
     account,
     context: AutoCheckinProviderContext,
@@ -110,24 +168,25 @@ export const voApiV2Provider: AutoCheckinProvider = {
       context.tempWindowRequestSource,
     )
     try {
-      if (!this.canCheckIn(account as SiteAccount)) {
-        return {
-          status: CHECKIN_RESULT_STATUS.FAILED,
-          messageKey: AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.checkinFailed,
-        }
-      }
-
       const siteAccount = account as SiteAccount
       const request = createRequest(
         siteAccount,
         tempWindowRequestSource,
         context.protectionBypassExecution,
+        context.mutationLifecycle,
       )
       try {
         return await runCheckIn(request)
       } catch (error) {
         if (!isVoApiV2AuthExpiredError(error)) {
           throw error
+        }
+
+        // The authoritative 401 proves the first POST was not applied. Clear
+        // its lifecycle before any read-only recovery work can fail.
+        if (context.mutationLifecycle) {
+          context.mutationLifecycle.dispatched = false
+          context.mutationLifecycle.responseReceived = false
         }
 
         const resynced = await resyncVoApiV2AuthToken(
@@ -151,7 +210,10 @@ export const voApiV2Provider: AutoCheckinProvider = {
         })
       }
     } catch (error) {
-      return resolveProviderErrorResult({ error })
+      return resolveProviderErrorResult({
+        error,
+        mutationDispatched: context.mutationLifecycle?.dispatched,
+      })
     }
   },
 }

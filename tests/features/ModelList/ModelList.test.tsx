@@ -17,6 +17,7 @@ import {
 } from "~/features/ModelList/modelManagementSources"
 import { MODEL_LIST_TEST_IDS } from "~/features/ModelList/testIds"
 import { MODEL_VENDOR_FILTER_VALUES } from "~/services/models/modelVendor"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { testI18n } from "~~/tests/test-utils/i18n"
 
 const { mockUseModelListData, openKeysPageMock, replaceWithinOptionsPageMock } =
@@ -252,12 +253,11 @@ const ACCOUNT = {
   token: "account-token",
   userId: "1",
   authType: "access_token",
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
 } as any
 
 const CAPABILITIES = {
   supportsPricing: true,
-  supportsRatioDisplay: true,
   supportsGroupFiltering: true,
   supportsAccountSummary: false,
   supportsTokenCompatibility: true,
@@ -336,8 +336,6 @@ function createModelListData() {
     setAllAccountsExcludedGroupsByAccountId: vi.fn(),
     showRealPrice: false,
     setShowRealPrice: vi.fn(),
-    showRatioColumn: false,
-    setShowRatioColumn: vi.fn(),
     showEndpointTypes: false,
     setShowEndpointTypes: vi.fn(),
     pricingData: {

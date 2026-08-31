@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  AIHUBMIX_API_ORIGIN,
-  AIHUBMIX_WEB_ORIGIN,
-  SITE_TYPES,
-} from "~/constants/siteType"
-import {
   ACCOUNT_SITE_AUTH_SESSION_REFRESH_LOCK_SCOPES,
   ACCOUNT_SITE_CREATED_TOKEN_SECRET_HANDLING,
   ACCOUNT_SITE_MODEL_LIST_DASHBOARD_ESTIMATE_LOADERS,
@@ -34,6 +29,12 @@ import {
   shouldUseAccountSiteRuntimeKeyCatalogFallback,
 } from "~/services/accounts/accountSiteProfile"
 import * as accountSiteProfileApi from "~/services/accounts/accountSiteProfile"
+import {
+  AIHUBMIX_API_ORIGIN,
+  AIHUBMIX_WEB_ORIGIN,
+  SITE_TYPES,
+} from "~/services/accountSiteDefinitions"
+import { MODELFLARE_HOSTNAME } from "~/services/accountSiteDefinitions/identifiers"
 import { AuthTypeEnum } from "~/types"
 import {
   ACCOUNT_TODAY_METRIC_REASONS,
@@ -65,8 +66,8 @@ describe("accountSiteProfile", () => {
       AuthTypeEnum.Cookie,
     ])
     expect(profile.auth.defaultAuthType).toBe(AuthTypeEnum.AccessToken)
+    expect(profile.auth.defaultAuthHostnames).toEqual([])
     expect(profile.auth.supportsCookieAuth).toBe(true)
-    expect(profile.auth.supportsBuiltInCheckInDetection).toBe(true)
     expect(profile.supplementalAuth.kind).toBe(
       ACCOUNT_SITE_SUPPLEMENTAL_AUTH_KINDS.None,
     )
@@ -88,6 +89,15 @@ describe("accountSiteProfile", () => {
     )
   })
 
+  it("keeps ModelFlare cookie defaults in its own account profile", () => {
+    const profile = getAccountSiteProductProfile(SITE_TYPES.MODELFLARE)
+
+    expect(profile.siteType).toBe(SITE_TYPES.MODELFLARE)
+    expect(profile.auth.defaultAuthType).toBe(AuthTypeEnum.Cookie)
+    expect(profile.auth.defaultAuthHostnames).toEqual([MODELFLARE_HOSTNAME])
+    expect(profile.auth.supportsCookieAuth).toBe(true)
+  })
+
   it("keeps OpenRouter identity as ordinary optional account metadata", () => {
     expect(
       getAccountSiteProductProfile(SITE_TYPES.OPENROUTER).identity,
@@ -103,7 +113,6 @@ describe("accountSiteProfile", () => {
     expect(profile.identity.usernameRequired).toBe(false)
     expect(profile.auth.allowedAuthTypes).toEqual([AuthTypeEnum.AccessToken])
     expect(profile.auth.supportsCookieAuth).toBe(false)
-    expect(profile.auth.supportsBuiltInCheckInDetection).toBe(false)
     expect(profile.supplementalAuth.kind).toBe(
       ACCOUNT_SITE_SUPPLEMENTAL_AUTH_KINDS.Sub2ApiRefreshToken,
     )
@@ -140,7 +149,6 @@ describe("accountSiteProfile", () => {
     expect(profile.auth.allowedAuthTypes).toEqual([AuthTypeEnum.AccessToken])
     expect(profile.auth.defaultAuthType).toBe(AuthTypeEnum.AccessToken)
     expect(profile.auth.supportsCookieAuth).toBe(false)
-    expect(profile.auth.supportsBuiltInCheckInDetection).toBe(true)
     expect(profile.modelList.directPricing).toBe(
       ACCOUNT_SITE_MODEL_LIST_DIRECT_PRICING.Unsupported,
     )
@@ -212,7 +220,6 @@ describe("accountSiteProfile", () => {
     )
     expect(profile.auth.allowedAuthTypes).toEqual([AuthTypeEnum.AccessToken])
     expect(profile.auth.supportsCookieAuth).toBe(false)
-    expect(profile.auth.supportsBuiltInCheckInDetection).toBe(false)
     expect(profile.modelList.displayCapabilitiesSource).toBe(
       ACCOUNT_SITE_MODEL_LIST_DISPLAY_CAPABILITY_SOURCES.Profile,
     )

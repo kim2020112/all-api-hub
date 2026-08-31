@@ -7,7 +7,8 @@
       "openFailedManual": "開啟全部失敗帳號的簽到頁",
       "openManual": "手動簽到",
       "openSite": "開啟網站",
-      "retryAccount": "重新嘗試"
+      "retryAccount": "重新嘗試",
+      "verifyStatus": "驗證狀態"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "開發：解釋“開啟介面時提前觸發今日簽到”是否滿足條件",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "全部",
+      "clearAll": "清除篩選",
+      "countFiltered": "顯示 {{filtered}} / {{total}} 筆",
+      "countTotal": "共 {{total}} 筆",
       "failed": "失敗",
-      "searchPlaceholder": "搜尋帳號名稱或訊息...",
+      "failedOrSkipped": "失敗或未執行",
+      "searchLabel": "搜尋執行結果",
+      "searchPlaceholder": "搜尋帳號名稱、ID 或結果訊息...",
       "skipped": "已跳過",
+      "statusLabel": "依執行狀態篩選",
       "success": "成功"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "開啟最近一次自動簽到失敗的全部帳號所對應的站點簽到頁。按住 Shift 點擊可在新視窗中開啟。",
       "siteTypeCheckinUnsupported": "解決方案：先到「帳號管理 → 編輯帳號」檢查「站點型別」是否與實際站點一致；如果先前是自動識別出的結果，可在目標站點重新登入後再重新識別一次。若確認站點型別正確但仍顯示不支援，表示該站點目前可能尚未適配自動簽到，請改用「開啟網站」或「手動簽到」處理。"
     },
+    "pagination": {
+      "next": "下一頁",
+      "previous": "上一頁",
+      "rowsPerPage": "每頁顯示",
+      "summary": "顯示第 {{start}}–{{end}} 筆，共 {{total}} 筆"
+    },
     "refresh": "重新整理",
     "runNow": "立即執行",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "已簽到",
       "failed": "失敗",
       "skipped": "已跳過",
-      "success": "成功"
+      "success": "成功",
+      "uncertain": "待確認"
     },
     "table": {
       "accountName": "帳號名稱",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "觸發重試鬧鐘失敗：{{error}}",
       "retryFailed": "重新嘗試失敗：{{error}}",
       "runFailed": "執行自動簽到失敗：{{error}}",
+      "statusVerificationFailed": "無法驗證所選簽到狀態。請重試或開啟帳號網站。",
       "uiOpenPretriggerDidNotStart": "介面開啟預觸發未啟動：{{reason}}",
       "uiOpenPretriggerEvaluationFailed": "評估介面開啟預觸發失敗：{{error}}",
       "uiOpenPretriggerIneligible": "介面開啟預觸發條件不滿足：{{reason}}",
@@ -109,6 +124,7 @@
       "retryCompleted": "重新嘗試已完成。",
       "runCompleted": "自動簽到已完成。",
       "settingsSaved": "自動簽到設定已儲存。",
+      "statusVerified": "已驗證所選簽到狀態。",
       "uiOpenPretriggerEligible": "介面開啟預觸發條件滿足。"
     }
   },
@@ -122,6 +138,7 @@
     "nativePageStatusUnconfirmed": "已點擊頁面簽到操作，但未確認目標帳號完成簽到。請開啟簽到頁面手動確認：{{checkInUrl}}",
     "nativePageTargetNotFound": "未在頁面上找到簽到按鈕。請開啟簽到頁面手動完成簽到：{{checkInUrl}}",
     "nativePageTriggerFailed": "無法觸發頁面簽到操作。請開啟簽到頁面手動完成簽到：{{checkInUrl}}",
+    "resultPendingConfirmation": "簽到結果待確認",
     "turnstileIncognitoAccessRequired": "需要允許擴充套件在無痕模式執行，才能在無痕頁面獲取 Turnstile Token（多帳號場景）。請在擴充套件管理頁開啟“允許在無痕模式執行”後重試；或手動開啟簽到頁面完成驗證：{{checkInUrl}}",
     "turnstileManualRequired": "需要完成 Cloudflare Turnstile 驗證，請開啟簽到頁面完成驗證：{{checkInUrl}}",
     "unknownError": "發生未知錯誤"
@@ -158,31 +175,61 @@
     "windowStartDesc": "允許每日自動簽到開始的最早本地時間。"
   },
   "skipReasons": {
+    "account_data_missing": "帳號資料不完整，請重新識別此帳號。",
     "account_disabled": "帳號已禁用",
+    "account_unavailable": "簽到前帳號已變更或無法使用",
     "already_checked_today": "今日已簽到",
+    "authentication_required": "登入狀態已失效或需要登入。請先登入目標站點，再重試。",
     "auto_checkin_disabled": "自動簽到已關閉",
+    "credentials_missing": "缺少已儲存的帳號憑證，請重新識別帳號或更新憑證。",
     "detection_disabled": "檢測已關閉",
+    "method_disabled": "此站點的簽到功能已停用",
+    "method_not_matched": "已選簽到方式與目前站點不再相符，請重新偵測簽到方式。",
+    "method_unavailable": "已選簽到方式已無法使用，請重新偵測簽到方式。",
+    "method_unsupported": "目前站點不支援已選的簽到方式。",
+    "network_error": "網路連線問題導致無法簽到，請檢查網路後重試。",
     "no_provider": "帳號所屬站點型別暫不支援簽到",
-    "provider_not_ready": "帳號配置暫不支援簽到"
+    "no_selected_method": "尚未選擇簽到方式，請在帳號設定中重新偵測或選擇。",
+    "permission_denied": "目標站點拒絕了簽到請求，請重新登入或檢查帳號權限。",
+    "source_unavailable": "目標站點暫時無法使用，請稍後重試。",
+    "status_unavailable": "暫時無法確認目前簽到狀態，因此未執行簽到",
+    "timeout": "連線逾時，簽到未能完成，請重試。"
   },
   "snapshot": {
     "badges": {
       "disabled": "未啟用",
       "enabled": "已啟用",
+      "methodNotSelected": "未選擇",
+      "methodSelected": "已選擇",
       "pending": "待執行",
       "providerAvailable": "可用",
       "providerUnavailable": "不可用"
     },
-    "description": "列出所有已啟用檢測的帳號及其準備狀態。處於待執行狀態的帳號會在點擊「立即執行」或到達計劃時間後參與簽到。",
+    "description": "顯示最近一次執行記錄的帳號準備狀態。處於待執行狀態的帳號會在點擊「立即執行」或到達計劃時間後參與簽到。",
+    "filters": {
+      "clearAll": "清除篩選",
+      "countFiltered": "顯示 {{filtered}} / {{total}} 個帳號",
+      "countTotal": "共 {{total}} 個帳號",
+      "noMatches": "沒有符合條件的帳號",
+      "noMatchesDescription": "調整搜尋或篩選條件，或清除全部篩選。",
+      "readinessAll": "全部準備狀態",
+      "readinessDisabled": "已關閉",
+      "readinessLabel": "依執行準備狀態篩選",
+      "readinessReady": "可執行",
+      "readinessSetupRequired": "需要設定",
+      "readinessTemporarilyUnavailable": "暫時無法使用",
+      "readinessUnsupported": "不支援",
+      "searchLabel": "搜尋帳號準備狀態",
+      "searchPlaceholder": "搜尋帳號名稱、ID 或未執行原因...",
+      "statusAll": "全部最近狀態",
+      "statusLabel": "依最近狀態篩選"
+    },
     "table": {
       "autoCheckin": "自動簽到",
-      "detection": "檢測",
-      "lastResult": "最近結果",
-      "provider": "提供方",
-      "skipReason": "跳過原因",
-      "status": "狀態"
+      "lastResult": "更新時間",
+      "status": "最近狀態"
     },
-    "title": "帳號檢測狀態"
+    "title": "帳號準備狀態"
   },
   "status": {
     "disabled": "已禁用",
@@ -195,6 +242,7 @@
     "result": {
       "failed": "失敗",
       "partial": "部分成功",
+      "skipped": "未執行",
       "success": "成功"
     },
     "retryDisabled": "重試未啟用",
@@ -212,5 +260,9 @@
     "dialogDescription": "開啟擴充套件介面時觸發了今日計劃的自動簽到。",
     "dialogTitle": "自動簽到已完成",
     "viewDetails": "檢視詳情"
+  },
+  "workspace": {
+    "label": "自動簽到資料",
+    "resultsTab": "執行結果"
   }
 }

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 
 import { AppLayout } from "~/components/AppLayout"
 import PopupInterruptionHintBanner from "~/components/PopupInterruptionHintBanner"
+import { SelectViewportResizeProvider } from "~/components/ui/select"
 import { UI_CONSTANTS } from "~/constants/ui"
 import { ProductAnalyticsScope } from "~/contexts/ProductAnalyticsScopeContext"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
@@ -31,7 +32,7 @@ import HeaderSection from "./components/HeaderSection"
 import PopupViewSwitchTabs, {
   type PopupViewType,
 } from "./components/PopupViewSwitchTabs"
-import { getPopupViewTestId } from "./testIds"
+import { getPopupViewTestId, POPUP_TEST_IDS } from "./testIds"
 import { usePopupViewRegistry } from "./viewRegistry"
 
 /**
@@ -82,12 +83,17 @@ function mapPopupViewToAnalyticsAction(view: PopupViewType): {
  * Popup body content for the extension popup and side panel.
  * Handles device-aware layout sizing, header/actions, and account list rendering.
  */
-function PopupContent() {
+function PopupContent({ inPopup }: { inPopup: boolean }) {
   const { t } = useTranslation(["bookmark", "apiCredentialProfiles"])
   const { isLoading } = useUserPreferencesContext()
   const inSidePanel = isExtensionSidePanel()
+  const onMobile = isMobileDevice()
   const [activeView, setActiveView] = useState<PopupViewType>("accounts")
-  const viewConfig = usePopupViewRegistry()
+  const [scrollParent, setScrollParent] = useState<HTMLDivElement | null>(null)
+  const viewConfig = usePopupViewRegistry({
+    isPopup: inPopup,
+    scrollParent: inPopup && !onMobile ? scrollParent : null,
+  })
 
   const activeViewConfig = viewConfig[activeView]
   const entrypoint = inSidePanel
@@ -103,7 +109,7 @@ function PopupContent() {
   })
 
   useEffect(() => {
-    if (!isExtensionPopup()) {
+    if (!inPopup) {
       return
     }
 
@@ -115,15 +121,15 @@ function PopupContent() {
     return () => {
       window.removeEventListener("pagehide", handlePageHide)
     }
-  }, [])
+  }, [inPopup])
 
-  const popupWidthClass = isMobileDevice()
+  const popupWidthClass = onMobile
     ? "w-full"
     : inSidePanel
       ? ""
       : UI_CONSTANTS.POPUP.WIDTH
 
-  const popupHeightClass = isMobileDevice()
+  const popupHeightClass = onMobile
     ? ""
     : inSidePanel
       ? ""
@@ -131,6 +137,8 @@ function PopupContent() {
 
   return (
     <div
+      ref={setScrollParent}
+      data-testid={POPUP_TEST_IDS.scrollContainer}
       className={cn(
         "dark:bg-dark-bg-primary flex flex-col overflow-y-auto bg-white",
         popupWidthClass,
@@ -199,11 +207,15 @@ function PopupContent() {
  * @returns Popup component tree rendered inside AppLayout.
  */
 function App() {
+  const [inPopup] = useState(isExtensionPopup)
+
   return (
     <AppLayout>
-      <AccountManagementProvider>
-        <PopupContent />
-      </AccountManagementProvider>
+      <SelectViewportResizeProvider preserveOpen={inPopup}>
+        <AccountManagementProvider>
+          <PopupContent inPopup={inPopup} />
+        </AccountManagementProvider>
+      </SelectViewportResizeProvider>
     </AppLayout>
   )
 }

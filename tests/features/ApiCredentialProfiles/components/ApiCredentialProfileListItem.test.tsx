@@ -1,4 +1,5 @@
 import userEvent from "@testing-library/user-event"
+import { forwardRef } from "react"
 import {
   afterAll,
   afterEach,
@@ -11,8 +12,16 @@ import {
 } from "vitest"
 
 import { ApiCredentialProfileListItem } from "~/features/ApiCredentialProfiles/components/ApiCredentialProfileListItem"
-import type { ApiCredentialProfileExportAction } from "~/features/ApiCredentialProfiles/contracts"
-import { API_CREDENTIAL_PROFILES_TEST_IDS } from "~/features/ApiCredentialProfiles/testIds"
+import {
+  API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY,
+  type ApiCredentialProfileAssociatedKeyState,
+  type ApiCredentialProfileExportAction,
+} from "~/features/ApiCredentialProfiles/contracts"
+import {
+  API_CREDENTIAL_PROFILES_TEST_IDS,
+  getApiCredentialProfileRowTargetId,
+  getApiCredentialProfileRowTestId,
+} from "~/features/ApiCredentialProfiles/testIds"
 import enApiCredentialProfiles from "~/locales/en/apiCredentialProfiles.json"
 import {
   PRODUCT_ANALYTICS_ACTION_IDS,
@@ -23,7 +32,7 @@ import {
 import { SiteHealthStatus } from "~/types"
 import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
 import { testI18n } from "~~/tests/test-utils/i18n"
-import { fireEvent, render, screen } from "~~/tests/test-utils/render"
+import { fireEvent, render, screen, within } from "~~/tests/test-utils/render"
 
 vi.mock(
   "~/components/dialogs/VerifyApiDialog/VerificationHistorySummary",
@@ -72,9 +81,13 @@ vi.mock("~/components/ui", async (importOriginal) => {
     Badge: ({ children, variant: _variant, size: _size, ...props }: any) => (
       <span {...props}>{children}</span>
     ),
-    Card: ({ children }: any) => <div>{children}</div>,
+    Card: forwardRef<HTMLDivElement, any>(({ children, ...props }, ref) => (
+      <div ref={ref} {...props}>
+        {children}
+      </div>
+    )),
     CardContent: ({ children }: any) => <div>{children}</div>,
-    Heading6: ({ children }: any) => <h6>{children}</h6>,
+    Heading6: ({ children, ...props }: any) => <h6 {...props}>{children}</h6>,
     IconButton: ({ analyticsAction, children, ...props }: any) => {
       const scope = useProductAnalyticsScope()
       const resolvedAction = resolveProductAnalyticsActionContext(
@@ -136,8 +149,19 @@ function buildProfile(
       lastSuccessTime: 1,
       lastSyncTime: 1,
       source: "newApiTokenUsage",
-      totalUsedUsd: 1.88131,
-      unlimitedQuota: true,
+      facts: {
+        usage: {
+          totalUsed: {
+            value: 1.88131,
+            unit: {
+              kind: "quota",
+              code: "usd-equivalent",
+              label: "USD-equivalent budget",
+            },
+          },
+          unlimited: true,
+        },
+      },
     },
     ...overrides,
   }
@@ -150,10 +174,17 @@ function renderListItem(
     onRefreshTelemetry?: (profile: ApiCredentialProfile) => void
     visibleKeys?: Set<string>
     toggleKeyVisibility?: (profileId: string) => void
+    onCopyBundle?: (profile: ApiCredentialProfile) => void
+    onVerify?: (profile: ApiCredentialProfile) => void
     onExport?: (
       profile: ApiCredentialProfile,
       action: ApiCredentialProfileExportAction,
     ) => void
+    focusRequest?: number
+    associatedKeyState?: ApiCredentialProfileAssociatedKeyState
+    onOpenAssociatedKey?: (associationId: string) => void
+    onConfirmAssociatedKey?: (associationId: string) => void
+    onUnlinkAssociatedKey?: (associationId: string) => void
   } = {},
 ) {
   const onRefreshTelemetry = overrides.onRefreshTelemetry ?? vi.fn()
@@ -165,9 +196,9 @@ function renderListItem(
       visibleKeys={overrides.visibleKeys ?? new Set()}
       toggleKeyVisibility={overrides.toggleKeyVisibility ?? vi.fn()}
       onCopyApiKey={vi.fn()}
-      onCopyBundle={vi.fn()}
+      onCopyBundle={overrides.onCopyBundle ?? vi.fn()}
       onOpenModelManagement={vi.fn()}
-      onVerify={vi.fn()}
+      onVerify={overrides.onVerify ?? vi.fn()}
       onVerifyCliSupport={vi.fn()}
       onRefreshTelemetry={onRefreshTelemetry}
       onEdit={vi.fn()}
@@ -176,6 +207,14 @@ function renderListItem(
       isTelemetryRefreshing={overrides.isTelemetryRefreshing ?? false}
       managedSiteType="new-api"
       managedSiteLabel="New API"
+      focusRequest={overrides.focusRequest}
+      associatedKeyState={overrides.associatedKeyState}
+      associationAvailability={
+        API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY.Known
+      }
+      onOpenAssociatedKey={overrides.onOpenAssociatedKey}
+      onConfirmAssociatedKey={overrides.onConfirmAssociatedKey}
+      onUnlinkAssociatedKey={overrides.onUnlinkAssociatedKey}
     />,
     {
       withReleaseUpdateStatusProvider: false,
@@ -235,6 +274,75 @@ describe("ApiCredentialProfileListItem", () => {
       screen.queryByRole("button", {
         name: "apiCredentialProfiles:actions.copyBaseUrl",
       }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("focuses and scrolls the exact profile card for a deep-link request", () => {
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus")
+    const scrollIntoViewSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {})
+    const profile = buildProfile({ id: "profile / 1" })
+
+    renderListItem(profile, { focusRequest: 1 })
+
+    const row = screen.getByTestId(getApiCredentialProfileRowTestId(profile.id))
+    expect(row).toHaveAttribute(
+      "id",
+      getApiCredentialProfileRowTargetId(profile.id),
+    )
+    expect(row).toHaveAttribute("tabindex", "-1")
+    expect(row).toHaveFocus()
+    expect(scrollIntoViewSpy).toHaveBeenCalledWith({
+      block: "center",
+      inline: "nearest",
+    })
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+  })
+
+  it("opens the single active Account Runtime Key association", async () => {
+    const user = userEvent.setup()
+    const onOpenAssociatedKey = vi.fn()
+
+    renderListItem(buildProfile(), {
+      associatedKeyState: {
+        status: "linked",
+        items: [
+          {
+            associationId: "association-1",
+            locator: {
+              source: "account_token",
+              accountId: "account-example",
+              siteType: "new-api",
+              tokenId: 1,
+            },
+            state: "active",
+          },
+        ],
+      },
+      onOpenAssociatedKey,
+    })
+
+    const viewKeyButton = screen.getByRole("button", {
+      name: "apiCredentialProfiles:association.linked",
+    })
+    await user.click(viewKeyButton)
+    await user.click(
+      screen.getByRole("button", {
+        name: "apiCredentialProfiles:association.viewKey",
+      }),
+    )
+    expect(onOpenAssociatedKey).toHaveBeenCalledWith("association-1")
+  })
+
+  it("keeps an older unlinked credential visually quiet", () => {
+    renderListItem(buildProfile())
+
+    expect(
+      screen.queryByText("apiCredentialProfiles:association.notLinked"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("apiCredentialProfiles:association.sectionTitle"),
     ).not.toBeInTheDocument()
   })
 
@@ -302,6 +410,79 @@ describe("ApiCredentialProfileListItem", () => {
     )
   })
 
+  it("organizes profile actions into quick, integration, diagnostics, and management groups", () => {
+    renderListItem(buildProfile())
+
+    const toolbar = screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.toolbar)
+    const quickActionsGroup = within(toolbar).getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.toolbarQuickActionsGroup,
+    )
+    const integrationsGroup = within(toolbar).getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.toolbarIntegrationsGroup,
+    )
+    const diagnosticsGroup = within(toolbar).getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.toolbarDiagnosticsGroup,
+    )
+    const managementGroup = within(toolbar).getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.toolbarManagementGroup,
+    )
+
+    expect(toolbar).toHaveRole("toolbar")
+    expect(toolbar).toHaveAccessibleName("keyManagement:actionToolbar.label")
+    expect(quickActionsGroup).toHaveRole("group")
+    expect(quickActionsGroup).toHaveAccessibleName(
+      "keyManagement:actionToolbar.quickActions",
+    )
+    expect(integrationsGroup).toHaveRole("group")
+    expect(integrationsGroup).toHaveAccessibleName(
+      "keyManagement:actionToolbar.integrationsAndExport",
+    )
+    expect(diagnosticsGroup).toHaveRole("group")
+    expect(diagnosticsGroup).toHaveAccessibleName(
+      "keyManagement:actionToolbar.diagnostics",
+    )
+    expect(managementGroup).toHaveRole("group")
+    expect(managementGroup).toHaveAccessibleName(
+      "keyManagement:actionToolbar.management",
+    )
+
+    expect(
+      within(quickActionsGroup).getByRole("button", {
+        name: "apiCredentialProfiles:actions.copyBundle",
+      }),
+    ).toBeVisible()
+    expect(
+      within(integrationsGroup).getByRole("button", {
+        name: "keyManagement:actions.importToManagedSite",
+      }),
+    ).toBeVisible()
+    expect(
+      within(integrationsGroup).getByRole("button", {
+        name: "common:actions.export",
+      }),
+    ).toBeVisible()
+    expect(
+      within(diagnosticsGroup).getByRole("button", {
+        name: "apiCredentialProfiles:actions.verifyApi",
+      }),
+    ).toBeVisible()
+    expect(
+      within(diagnosticsGroup).getByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.verifyCliSupportButton,
+      ),
+    ).toHaveAccessibleName("apiCredentialProfiles:actions.verifyCliSupport")
+    expect(
+      within(managementGroup).getByRole("button", {
+        name: "common:actions.edit",
+      }),
+    ).toBeVisible()
+    expect(
+      within(managementGroup).getByRole("button", {
+        name: "common:actions.delete",
+      }),
+    ).toBeVisible()
+  })
+
   it("offers Kelivo import-code copying from the export menu", async () => {
     const profile = buildProfile()
     const onExport = vi.fn()
@@ -330,6 +511,47 @@ describe("ApiCredentialProfileListItem", () => {
     )
 
     expect(onExport).toHaveBeenCalledWith(profile, "cursorPlus")
+  })
+
+  it("routes bundle, provider export, gateway export, and verification actions", async () => {
+    const user = userEvent.setup()
+    const profile = buildProfile()
+    const onCopyBundle = vi.fn()
+    const onExport = vi.fn()
+    const onVerify = vi.fn()
+    renderListItem(profile, { onCopyBundle, onExport, onVerify })
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "apiCredentialProfiles:actions.copyBundle",
+      }),
+    )
+    await user.click(
+      screen.getByRole("button", {
+        name: "keyManagement:actions.useInCherry",
+      }),
+    )
+    await user.click(
+      screen.getByRole("button", {
+        name: "keyManagement:actions.importToCliProxy",
+      }),
+    )
+    await user.click(
+      screen.getByRole("button", {
+        name: "keyManagement:actions.importToClaudeCodeRouter",
+      }),
+    )
+    await user.click(
+      screen.getByRole("button", {
+        name: "apiCredentialProfiles:actions.verifyApi",
+      }),
+    )
+
+    expect(onCopyBundle).toHaveBeenCalledWith(profile)
+    expect(onExport).toHaveBeenCalledWith(profile, "cherryStudio")
+    expect(onExport).toHaveBeenCalledWith(profile, "cliProxy")
+    expect(onExport).toHaveBeenCalledWith(profile, "claudeCodeRouter")
+    expect(onVerify).toHaveBeenCalledWith(profile)
   })
 
   it("keeps managed-site import as a direct prioritized action", async () => {
@@ -488,6 +710,9 @@ describe("ApiCredentialProfileListItem", () => {
         isTelemetryRefreshing={false}
         managedSiteType="new-api"
         managedSiteLabel="New API"
+        associationAvailability={
+          API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY.Known
+        }
       />,
     )
 
@@ -505,7 +730,14 @@ describe("ApiCredentialProfileListItem", () => {
           lastSuccessTime: 1,
           lastSyncTime: 1,
           source: "customReadOnlyEndpoint",
-          todayRequests: 42,
+          facts: {
+            usage: {
+              todayRequests: {
+                value: 42,
+                unit: { kind: "count", code: "requests" },
+              },
+            },
+          },
         },
       }),
     )
@@ -515,6 +747,118 @@ describe("ApiCredentialProfileListItem", () => {
     ).toHaveTextContent("apiCredentialProfiles:telemetry.notProvided")
   })
 
+  it("shows provider-native currency balances without converting them to USD", () => {
+    renderListItem(
+      buildProfile({
+        telemetrySnapshot: {
+          attempts: [],
+          health: { status: SiteHealthStatus.Healthy },
+          lastSyncTime: 1,
+          lastSuccessTime: 1,
+          source: "deepSeekBalance",
+          facts: {
+            balances: [
+              {
+                amount: 12.34,
+                unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+                semantics: "cash",
+                grantedAmount: 2,
+                toppedUpAmount: 10.34,
+                isAvailable: true,
+              },
+            ],
+          },
+        },
+      }),
+    )
+
+    expect(
+      screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.telemetryBalance),
+    ).toHaveTextContent(/12\.34/)
+  })
+
+  it("shows provider quota windows in the shared telemetry card", () => {
+    renderListItem(
+      buildProfile({
+        telemetrySnapshot: {
+          attempts: [],
+          health: { status: SiteHealthStatus.Healthy },
+          lastSyncTime: 1,
+          lastSuccessTime: 1,
+          source: "kimiQuota",
+          facts: {
+            quota: {
+              membershipLevel: "LEVEL_PRO",
+              windows: [
+                {
+                  type: "fiveHour",
+                  used: 25,
+                  limit: 100,
+                  remaining: 75,
+                  remainingPercent: 75,
+                  unit: {
+                    kind: "quota",
+                    code: "provider-quota",
+                    label: "Provider quota",
+                  },
+                },
+                {
+                  type: "weekly",
+                  used: 200,
+                  limit: 1000,
+                  remaining: 800,
+                  remainingPercent: 80,
+                  unit: {
+                    kind: "quota",
+                    code: "provider-quota",
+                    label: "Provider quota",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    )
+
+    expect(
+      screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.telemetryQuota),
+    ).toHaveTextContent(/75%.*80%/)
+  })
+
+  it("shows a provider quota window reset time when available", () => {
+    const resetTime = new Date("2026-08-27T00:00:00.000Z").getTime()
+    renderListItem(
+      buildProfile({
+        telemetrySnapshot: {
+          attempts: [],
+          health: { status: SiteHealthStatus.Healthy },
+          lastSyncTime: 1,
+          source: "openCodeGoUsage",
+          facts: {
+            quota: {
+              windows: [
+                {
+                  type: "fiveHour",
+                  remainingPercent: 75,
+                  resetTime,
+                  unit: { kind: "percent" },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    )
+
+    expect(
+      screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.telemetryQuota),
+    ).toHaveTextContent("apiCredentialProfiles:telemetry.quotaWindows.resetAt")
+    expect(
+      screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.telemetryQuota),
+    ).toHaveTextContent("2026")
+  })
+
   it("keeps explicit zero telemetry expanded", () => {
     renderListItem(
       buildProfile({
@@ -522,7 +866,14 @@ describe("ApiCredentialProfileListItem", () => {
           attempts: [],
           health: { status: SiteHealthStatus.Healthy },
           lastSyncTime: 1,
-          todayRequests: 0,
+          facts: {
+            usage: {
+              todayRequests: {
+                value: 0,
+                unit: { kind: "count", code: "requests" },
+              },
+            },
+          },
         },
       }),
     )
@@ -537,6 +888,33 @@ describe("ApiCredentialProfileListItem", () => {
         API_CREDENTIAL_PROFILES_TEST_IDS.telemetryTodayRequests,
       ),
     ).toHaveTextContent("0")
+  })
+
+  it("shows a provider total token count when split counters are unavailable", () => {
+    renderListItem(
+      buildProfile({
+        telemetrySnapshot: {
+          attempts: [],
+          health: { status: SiteHealthStatus.Healthy },
+          lastSyncTime: 1,
+          facts: {
+            usage: {
+              todayTokens: {
+                total: 12_000,
+                unit: { kind: "count", code: "tokens" },
+              },
+            },
+          },
+        },
+      }),
+    )
+
+    expect(
+      screen.getByText(/apiCredentialProfiles:telemetry\.todayTokens/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.telemetryPanel),
+    ).toHaveTextContent("12.0K")
   })
 
   it("keeps a telemetry error visible when no metrics were collected", () => {
@@ -567,7 +945,9 @@ describe("ApiCredentialProfileListItem", () => {
           health: { status: SiteHealthStatus.Healthy },
           lastSuccessTime: 1,
           lastSyncTime: 1,
-          models: { count: 2, preview: ["gpt-4o", "o3"] },
+          facts: {
+            models: { count: 2, preview: ["gpt-4o", "o3"] },
+          },
         },
       }),
     )
@@ -644,7 +1024,19 @@ describe("ApiCredentialProfileListItem", () => {
             attempts: [],
             health: { status: SiteHealthStatus.Healthy },
             lastSyncTime: 2,
-            balanceUsd: 7.5,
+            facts: {
+              balances: [
+                {
+                  amount: 7.5,
+                  unit: {
+                    kind: "quota",
+                    code: "usd-equivalent",
+                    label: "USD-equivalent budget",
+                  },
+                  semantics: "budget-equivalent",
+                },
+              ],
+            },
           },
         })}
         verificationSummary={null}
@@ -663,6 +1055,9 @@ describe("ApiCredentialProfileListItem", () => {
         isTelemetryRefreshing={false}
         managedSiteType="new-api"
         managedSiteLabel="New API"
+        associationAvailability={
+          API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY.Known
+        }
       />,
     )
 
@@ -695,6 +1090,34 @@ describe("ApiCredentialProfileListItem", () => {
         "apiCredentialProfiles:telemetry.health: account:healthStatus.warning: quota is low",
       ),
     ).toHaveAttribute("role", "img")
+  })
+
+  it("localizes the known insufficient-balance health reason", () => {
+    renderListItem(
+      buildProfile({
+        telemetrySnapshot: {
+          attempts: [],
+          health: {
+            reason: "insufficient-balance",
+            status: SiteHealthStatus.Warning,
+          },
+          lastSyncTime: 1,
+        },
+      }),
+    )
+
+    expect(
+      screen.getByRole("img", {
+        name: /apiCredentialProfiles:telemetry\.health: account:healthStatus.warning:/,
+      }),
+    ).toHaveAttribute(
+      "aria-label",
+      expect.stringContaining(
+        testI18n.t(
+          "apiCredentialProfiles:telemetry.healthReasons.insufficientBalance",
+        ),
+      ),
+    )
   })
 
   it("wires the telemetry refresh button and reflects the refreshing state", () => {
@@ -731,6 +1154,9 @@ describe("ApiCredentialProfileListItem", () => {
         isTelemetryRefreshing
         managedSiteType="new-api"
         managedSiteLabel="New API"
+        associationAvailability={
+          API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY.Known
+        }
       />,
     )
 
@@ -784,6 +1210,9 @@ describe("ApiCredentialProfileListItem", () => {
         isTelemetryRefreshing={false}
         managedSiteType="new-api"
         managedSiteLabel="New API"
+        associationAvailability={
+          API_CREDENTIAL_PROFILE_ASSOCIATION_AVAILABILITY.Known
+        }
       />,
     )
 

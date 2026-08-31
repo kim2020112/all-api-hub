@@ -116,15 +116,18 @@ vi.mock("~/components/ui", () => ({
     checked,
     onChange,
     disabled,
+    "aria-label": ariaLabel,
   }: {
     checked?: boolean
     onChange?: (checked: boolean) => void
     disabled?: boolean
+    "aria-label"?: string
   }) => (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       disabled={disabled}
       onClick={() => onChange?.(!checked)}
     >
@@ -214,10 +217,21 @@ describe("WebAiApiCheckSettings", () => {
 
     render(<WebAiApiCheckSettings />)
 
-    const switches = screen.getAllByRole("switch")
-    expect(switches[0]).toHaveAttribute("aria-checked", "true")
-    expect(switches[1]).toHaveAttribute("aria-checked", "true")
-    expect(switches[2]).toHaveAttribute("aria-checked", "true")
+    expect(
+      screen.getByRole("switch", {
+        name: "webAiApiCheck:settings.contextMenu.enable",
+      }),
+    ).toHaveAttribute("aria-checked", "true")
+    expect(
+      screen.getByRole("switch", {
+        name: "webAiApiCheck:settings.autoDetect.enable",
+      }),
+    ).toHaveAttribute("aria-checked", "true")
+    expect(
+      screen.getByRole("switch", {
+        name: "webAiApiCheck:settings.autoDetect.enhanced.enable",
+      }),
+    ).toHaveAttribute("aria-checked", "true")
 
     const textarea = screen.getByLabelText(
       "webAiApiCheck:settings.autoDetect.whitelist.patternsPlaceholder",
@@ -241,8 +255,6 @@ describe("WebAiApiCheckSettings", () => {
     await waitFor(() => {
       expect(mockUpdateWebAiApiCheck).toHaveBeenCalledWith({
         autoDetect: {
-          enabled: true,
-          enhanced: { enabled: true },
           urlWhitelist: {
             patterns: [
               "^https://one\\.example\\.com",
@@ -301,20 +313,34 @@ describe("WebAiApiCheckSettings", () => {
   it("toggles enhanced auto-detect without changing whitelist patterns", async () => {
     render(<WebAiApiCheckSettings />)
 
-    const switches = screen.getAllByRole("switch")
-    expect(switches[2]).toHaveAttribute("aria-checked", "true")
+    const enhancedAutoDetectSwitch = screen.getByRole("switch", {
+      name: "webAiApiCheck:settings.autoDetect.enhanced.enable",
+    })
+    expect(enhancedAutoDetectSwitch).toHaveAttribute("aria-checked", "true")
 
-    fireEvent.click(switches[2])
+    fireEvent.click(enhancedAutoDetectSwitch)
 
     await waitFor(() => {
       expect(mockUpdateWebAiApiCheck).toHaveBeenCalledWith({
         autoDetect: {
-          enabled: true,
           enhanced: { enabled: false },
-          urlWhitelist: {
-            patterns: ["^https://stored\\.example\\.com"],
-          },
         },
+      })
+    })
+  })
+
+  it("toggles auto-detect through its accessible label", async () => {
+    render(<WebAiApiCheckSettings />)
+
+    fireEvent.click(
+      screen.getByRole("switch", {
+        name: "webAiApiCheck:settings.autoDetect.enable",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockUpdateWebAiApiCheck).toHaveBeenCalledWith({
+        autoDetect: { enabled: false },
       })
     })
   })
@@ -368,6 +394,39 @@ describe("WebAiApiCheckSettings", () => {
     expect(screen.getAllByText("broken-[")).toHaveLength(2)
   })
 
+  it("warns about unsafe cleanup regexes and omits them when saving", async () => {
+    render(<WebAiApiCheckSettings />)
+
+    const textarea = screen.getByLabelText(
+      "webAiApiCheck:settings.keyCleanup.patternsPlaceholder",
+    )
+    fireEvent.change(textarea, {
+      target: {
+        value: "safe-prefix\n(a+)+$",
+      },
+    })
+
+    expect(
+      screen.getByText("webAiApiCheck:settings.keyCleanup.invalidTitle"),
+    ).toBeInTheDocument()
+    expect(textarea).toHaveValue("safe-prefix\n(a+)+$")
+    expect(screen.getByText("(a+)+$")).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "webAiApiCheck:settings.keyCleanup.save",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockUpdateWebAiApiCheck).toHaveBeenCalledWith({
+        keyCleanup: {
+          removalPatterns: ["safe-prefix"],
+        },
+      })
+    })
+  })
+
   it("disables enhanced auto-detect control when auto-detect is disabled", () => {
     mockedUseUserPreferencesContext.mockReturnValue(
       createContextValue({
@@ -387,37 +446,51 @@ describe("WebAiApiCheckSettings", () => {
 
     render(<WebAiApiCheckSettings />)
 
-    const switches = screen.getAllByRole("switch")
-    expect(switches[2]).toBeDisabled()
+    expect(
+      screen.getByRole("switch", {
+        name: "webAiApiCheck:settings.autoDetect.enhanced.enable",
+      }),
+    ).toBeDisabled()
   })
 
-  it("disables controls while a switch save is in flight and shows an error toast when persistence fails", async () => {
+  it("keeps unrelated controls active while a switch save is in flight and shows an error toast when persistence fails", async () => {
     const deferredSave = createDeferred<PreferenceWriteResult>()
     mockUpdateWebAiApiCheck.mockReturnValue(deferredSave.promise)
 
     render(<WebAiApiCheckSettings />)
 
-    const switches = screen.getAllByRole("switch")
+    const contextMenuSwitch = screen.getByRole("switch", {
+      name: "webAiApiCheck:settings.contextMenu.enable",
+    })
+    const autoDetectSwitch = screen.getByRole("switch", {
+      name: "webAiApiCheck:settings.autoDetect.enable",
+    })
+    const enhancedAutoDetectSwitch = screen.getByRole("switch", {
+      name: "webAiApiCheck:settings.autoDetect.enhanced.enable",
+    })
     const textarea = screen.getByLabelText(
       "webAiApiCheck:settings.autoDetect.whitelist.patternsPlaceholder",
     )
     const saveButton = screen.getByRole("button", {
       name: "common:actions.save",
     })
+    fireEvent.change(textarea, {
+      target: { value: "^https://draft.example.invalid" },
+    })
 
-    fireEvent.click(switches[0])
+    fireEvent.click(contextMenuSwitch)
 
     await waitFor(() => {
-      expect(switches[0]).toBeDisabled()
-      expect(switches[1]).toBeDisabled()
-      expect(switches[2]).toBeDisabled()
-      expect(textarea).toBeDisabled()
+      expect(contextMenuSwitch).toBeDisabled()
+      expect(autoDetectSwitch).toBeEnabled()
+      expect(enhancedAutoDetectSwitch).toBeEnabled()
+      expect(textarea).toBeEnabled()
       expect(
         screen.getByLabelText(
           "webAiApiCheck:settings.keyCleanup.patternsPlaceholder",
         ),
-      ).toBeDisabled()
-      expect(saveButton).toBeDisabled()
+      ).toBeEnabled()
+      expect(saveButton).toBeEnabled()
     })
 
     deferredSave.resolve({
@@ -435,7 +508,7 @@ describe("WebAiApiCheckSettings", () => {
     })
 
     await waitFor(() => {
-      expect(switches[0]).not.toBeDisabled()
+      expect(contextMenuSwitch).not.toBeDisabled()
       expect(textarea).not.toBeDisabled()
       expect(saveButton).not.toBeDisabled()
     })
@@ -501,6 +574,18 @@ describe("WebAiApiCheckSettings", () => {
       const siblingButton = screen.getByRole("button", {
         name: siblingName,
       })
+      fireEvent.change(
+        screen.getByLabelText(
+          "webAiApiCheck:settings.autoDetect.whitelist.patternsPlaceholder",
+        ),
+        { target: { value: "^https://draft.example.invalid" } },
+      )
+      fireEvent.change(
+        screen.getByLabelText(
+          "webAiApiCheck:settings.keyCleanup.patternsPlaceholder",
+        ),
+        { target: { value: "draft-cleanup" } },
+      )
 
       fireEvent.click(initiatingButton)
 
@@ -509,11 +594,11 @@ describe("WebAiApiCheckSettings", () => {
       })
       expect(initiatingButton).toBeDisabled()
       expect(initiatingButton).toHaveAttribute("aria-busy", "true")
-      expect(siblingButton).toBeDisabled()
+      expect(siblingButton).toBeEnabled()
       expect(siblingButton).toHaveAccessibleName(siblingName)
       expect(siblingButton).not.toHaveAttribute("aria-busy")
       for (const control of screen.getAllByRole("switch")) {
-        expect(control).toBeDisabled()
+        expect(control).toBeEnabled()
         expect(control).not.toHaveAttribute("aria-busy")
       }
 
@@ -535,7 +620,7 @@ describe("WebAiApiCheckSettings", () => {
       await waitFor(() => {
         expect(mockUpdateWebAiApiCheck).toHaveBeenCalledTimes(2)
         expect(initiatingButton).toHaveAccessibleName(buttonName)
-        expect(initiatingButton).toBeEnabled()
+        expect(initiatingButton).toBeDisabled()
         expect(initiatingButton).not.toHaveAttribute("aria-busy")
         expect(toast.success).toHaveBeenCalledWith(
           "webAiApiCheck:messages.success.settingsSaved",
@@ -544,7 +629,7 @@ describe("WebAiApiCheckSettings", () => {
     },
   )
 
-  it("resyncs the whitelist draft when stored preferences change", async () => {
+  it("preserves a dirty whitelist draft while clean sibling drafts resync", async () => {
     let contextValue = createContextValue()
     mockedUseUserPreferencesContext.mockImplementation(() => contextValue)
 
@@ -583,9 +668,7 @@ describe("WebAiApiCheckSettings", () => {
     rerender(<WebAiApiCheckSettings />)
 
     await waitFor(() => {
-      expect(textarea).toHaveValue(
-        "^https://server\\.example\\.com\n^https://next\\.example\\.com",
-      )
+      expect(textarea).toHaveValue("^https://draft-only\\.example\\.com")
     })
     expect(
       screen.getByLabelText(

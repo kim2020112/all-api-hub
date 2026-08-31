@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import AutoCheckinSettings from "~/features/BasicSettings/components/tabs/CheckinRedeem/AutoCheckinSettings"
@@ -122,16 +123,32 @@ describe("AutoCheckinSettings", () => {
     })
   })
 
-  it("validates time inputs before saving and reports invalid values", () => {
+  it("validates time inputs before saving and reports invalid values", async () => {
     render(<AutoCheckinSettings />, {
       withUserPreferencesProvider: false,
       withThemeProvider: false,
     })
 
-    const timeInputs = screen.getAllByDisplayValue(/^\d{2}:\d{2}$/)
-    fireEvent.change(timeInputs[0], { target: { value: "10:00" } })
-    fireEvent.change(timeInputs[2], { target: { value: "25:00" } })
-    fireEvent.change(timeInputs[2], { target: { value: "07:30" } })
+    const windowStartInput = screen.getByLabelText(
+      "autoCheckin:settings.windowStart",
+    )
+    const deterministicTimeInput = screen.getByLabelText(
+      "autoCheckin:settings.deterministicTimeTitle",
+    )
+    fireEvent.change(windowStartInput, { target: { value: "10:00" } })
+    expect(updateAutoCheckin).not.toHaveBeenCalled()
+    expect(toastMocks.error).not.toHaveBeenCalled()
+    fireEvent.blur(windowStartInput)
+    await waitFor(() => expect(windowStartInput).toHaveValue("08:00"))
+
+    fireEvent.change(deterministicTimeInput, { target: { value: "25:00" } })
+    expect(toastMocks.error).toHaveBeenCalledTimes(1)
+    fireEvent.blur(deterministicTimeInput)
+    await waitFor(() => expect(deterministicTimeInput).toHaveValue("09:00"))
+
+    fireEvent.change(deterministicTimeInput, { target: { value: "07:30" } })
+    fireEvent.blur(deterministicTimeInput)
+    await waitFor(() => expect(deterministicTimeInput).toHaveValue("09:00"))
 
     expect(toastMocks.error).toHaveBeenNthCalledWith(
       1,
@@ -149,17 +166,54 @@ describe("AutoCheckinSettings", () => {
   })
 
   it("saves valid schedule and retry changes and navigates to the execution view", async () => {
+    const user = userEvent.setup()
     render(<AutoCheckinSettings />, {
       withUserPreferencesProvider: false,
       withThemeProvider: false,
     })
 
-    const timeInputs = screen.getAllByDisplayValue(/^\d{2}:\d{2}$/)
-    const numberInputs = screen.getAllByRole("spinbutton")
+    const deterministicTimeInput = screen.getByLabelText(
+      "autoCheckin:settings.deterministicTimeTitle",
+    )
+    const retryIntervalInput = screen.getByRole("spinbutton", {
+      name: "autoCheckin:settings.retryInterval",
+    })
+    const retryMaxAttemptsInput = screen.getByRole("spinbutton", {
+      name: "autoCheckin:settings.retryMaxAttempts",
+    })
 
-    fireEvent.change(timeInputs[2], { target: { value: "09:30" } })
-    fireEvent.change(numberInputs[0], { target: { value: "45" } })
-    fireEvent.change(numberInputs[1], { target: { value: "4" } })
+    await user.click(deterministicTimeInput)
+    fireEvent.change(deterministicTimeInput, { target: { value: "09:30" } })
+    expect(updateAutoCheckin).not.toHaveBeenCalled()
+    await user.keyboard("{Enter}")
+
+    await waitFor(() => {
+      expect(updateAutoCheckin).toHaveBeenCalledWith({
+        deterministicTime: "09:30",
+      })
+    })
+
+    fireEvent.change(retryIntervalInput, { target: { value: "45" } })
+    expect(updateAutoCheckin).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        retryStrategy: expect.objectContaining({ intervalMinutes: 45 }),
+      }),
+    )
+    fireEvent.blur(retryIntervalInput)
+
+    await waitFor(() => {
+      expect(updateAutoCheckin).toHaveBeenCalledWith({
+        retryStrategy: {
+          enabled: true,
+          intervalMinutes: 45,
+          maxAttemptsPerDay: 3,
+        },
+      })
+    })
+
+    await user.click(retryMaxAttemptsInput)
+    fireEvent.change(retryMaxAttemptsInput, { target: { value: "4" } })
+    await user.keyboard("{Enter}")
     fireEvent.click(
       screen.getByRole("button", {
         name: "autoCheckin:settings.viewExecutionButton",
@@ -168,23 +222,15 @@ describe("AutoCheckinSettings", () => {
 
     await waitFor(() => {
       expect(updateAutoCheckin).toHaveBeenCalledWith({
-        deterministicTime: "09:30",
+        retryStrategy: {
+          enabled: true,
+          intervalMinutes: 30,
+          maxAttemptsPerDay: 4,
+        },
       })
     })
-    expect(updateAutoCheckin).toHaveBeenCalledWith({
-      retryStrategy: {
-        enabled: true,
-        intervalMinutes: 45,
-        maxAttemptsPerDay: 3,
-      },
-    })
-    expect(updateAutoCheckin).toHaveBeenCalledWith({
-      retryStrategy: {
-        enabled: true,
-        intervalMinutes: 30,
-        maxAttemptsPerDay: 4,
-      },
-    })
+    expect(retryIntervalInput).toHaveAttribute("placeholder", "30")
+    expect(retryMaxAttemptsInput).toHaveAttribute("placeholder", "3")
     expect(toastMocks.success).toHaveBeenCalled()
     expect(pushWithinOptionsPageMock).toHaveBeenCalledWith("#autoCheckin")
     expect(trackProductAnalyticsActionStartedMock).toHaveBeenCalledWith(
@@ -194,6 +240,86 @@ describe("AutoCheckinSettings", () => {
         entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
       }),
     )
+  })
+
+  it("saves changed time-window boundaries and skips unchanged values", async () => {
+    render(<AutoCheckinSettings />, {
+      withUserPreferencesProvider: false,
+      withThemeProvider: false,
+    })
+
+    const windowStartInput = screen.getByLabelText(
+      "autoCheckin:settings.windowStart",
+    )
+    const windowEndInput = screen.getByLabelText(
+      "autoCheckin:settings.windowEnd",
+    )
+
+    fireEvent.blur(windowStartInput)
+    fireEvent.blur(windowEndInput)
+    expect(updateAutoCheckin).not.toHaveBeenCalled()
+
+    fireEvent.change(windowStartInput, { target: { value: "07:30" } })
+    expect(updateAutoCheckin).not.toHaveBeenCalled()
+    fireEvent.blur(windowStartInput)
+
+    await waitFor(() => {
+      expect(updateAutoCheckin).toHaveBeenCalledWith({ windowStart: "07:30" })
+    })
+
+    fireEvent.change(windowEndInput, { target: { value: "10:30" } })
+    expect(updateAutoCheckin).not.toHaveBeenCalledWith({ windowEnd: "10:30" })
+    fireEvent.blur(windowEndInput)
+
+    await waitFor(() => {
+      expect(updateAutoCheckin).toHaveBeenCalledWith({ windowEnd: "10:30" })
+    })
+  })
+
+  it("restores time-window drafts after invalid values or failed saves", async () => {
+    updateAutoCheckin
+      .mockRejectedValueOnce(new Error("write failed"))
+      .mockResolvedValueOnce(preferenceWriteFailure())
+
+    render(<AutoCheckinSettings />, {
+      withUserPreferencesProvider: false,
+      withThemeProvider: false,
+    })
+
+    const windowStartInput = screen.getByLabelText(
+      "autoCheckin:settings.windowStart",
+    )
+    const windowEndInput = screen.getByLabelText(
+      "autoCheckin:settings.windowEnd",
+    )
+
+    fireEvent.change(windowEndInput, { target: { value: "08:00" } })
+    fireEvent.blur(windowEndInput)
+    await waitFor(() => {
+      expect(windowEndInput).toHaveValue("10:00")
+    })
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "autoCheckin:messages.error.invalidTimeWindow",
+    )
+    expect(updateAutoCheckin).not.toHaveBeenCalled()
+
+    fireEvent.change(windowStartInput, { target: { value: "07:30" } })
+    fireEvent.blur(windowStartInput)
+
+    await waitFor(() => {
+      expect(windowStartInput).toHaveValue("08:00")
+    })
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "settings:messages.saveSettingsFailed",
+    )
+
+    fireEvent.change(windowEndInput, { target: { value: "10:30" } })
+    fireEvent.blur(windowEndInput)
+
+    await waitFor(() => {
+      expect(windowEndInput).toHaveValue("10:00")
+    })
+    expect(updateAutoCheckin).toHaveBeenCalledWith({ windowEnd: "10:30" })
   })
 
   it("lets schedule mode options wrap inside narrow settings cards", async () => {
@@ -228,7 +354,8 @@ describe("AutoCheckinSettings", () => {
     })
   })
 
-  it("disables schedule mode changes while preferences are saving", async () => {
+  it("keeps immediate controls active while another preference save is pending", async () => {
+    const user = userEvent.setup()
     let resolveSave: (value: ReturnType<typeof preferenceWriteSuccess>) => void
     updateAutoCheckin.mockReturnValueOnce(
       new Promise<ReturnType<typeof preferenceWriteSuccess>>((resolve) => {
@@ -241,34 +368,20 @@ describe("AutoCheckinSettings", () => {
       withThemeProvider: false,
     })
 
-    fireEvent.click(screen.getAllByRole("switch")[0])
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", {
-          name: "autoCheckin:settings.scheduleModeRandom",
-        }),
-      ).toBeDisabled()
+    await user.click(screen.getAllByRole("switch")[0])
+    const randomModeButton = screen.getByRole("button", {
+      name: "autoCheckin:settings.scheduleModeRandom",
     })
+    expect(randomModeButton).toBeEnabled()
+    await user.click(randomModeButton)
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "autoCheckin:settings.scheduleModeRandom",
-      }),
-    )
-
-    expect(updateAutoCheckin).toHaveBeenCalledTimes(1)
+    expect(updateAutoCheckin).toHaveBeenCalledTimes(2)
     expect(updateAutoCheckin).toHaveBeenCalledWith({ globalEnabled: false })
+    expect(updateAutoCheckin).toHaveBeenCalledWith({
+      scheduleMode: AUTO_CHECKIN_SCHEDULE_MODE.RANDOM,
+    })
 
     resolveSave!(preferenceWriteSuccess())
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", {
-          name: "autoCheckin:settings.scheduleModeRandom",
-        }),
-      ).toBeEnabled()
-    })
   })
 
   it("leaves settings snapshot tracking to the preferences context", async () => {
@@ -312,9 +425,20 @@ describe("AutoCheckinSettings", () => {
       withThemeProvider: false,
     })
 
-    const numberInputs = screen.getAllByRole("spinbutton")
-    fireEvent.change(numberInputs[0], { target: { value: "0" } })
-    fireEvent.change(numberInputs[1], { target: { value: "-1" } })
+    const retryIntervalInput = screen.getByRole("spinbutton", {
+      name: "autoCheckin:settings.retryInterval",
+    })
+    const retryMaxAttemptsInput = screen.getByRole("spinbutton", {
+      name: "autoCheckin:settings.retryMaxAttempts",
+    })
+    fireEvent.change(retryIntervalInput, { target: { value: "0" } })
+    expect(toastMocks.error).not.toHaveBeenCalled()
+    fireEvent.blur(retryIntervalInput)
+    await waitFor(() => expect(retryIntervalInput).toHaveValue(30))
+
+    fireEvent.change(retryMaxAttemptsInput, { target: { value: "-1" } })
+    fireEvent.blur(retryMaxAttemptsInput)
+    await waitFor(() => expect(retryMaxAttemptsInput).toHaveValue(3))
     fireEvent.click(screen.getAllByRole("switch")[0])
 
     expect(toastMocks.error).toHaveBeenNthCalledWith(

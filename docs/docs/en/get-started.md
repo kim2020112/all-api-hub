@@ -52,6 +52,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8): Official high-stability relay services for Claude Code / Codex / Gemini CLI. Register through this link to get 20% off your first top-up, and enterprise customers can get up to 25% off.
 - [Suixiang AI Relay](https://sui-xiang.com/): API relay services for Claude, Codex, Gemini, and more, with pay-as-you-go billing, daily check-in test credits, redundant routes, and automatic failover. [Setup guide](./service-guides/suixiang.md)
 - [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link): Every available model is verified through real calls, with load balancing across 10,000+ official API and account-pool supply routes, full-modal support for text, video, images, embeddings, and reranking, transparent pricing and usage, and prices from 10% of official rates. [Setup guide](./service-guides/infistar.md)
+- [APIMart](https://go.apimart.ai/gh-all-api-hub): A low-cost API platform for AI image & video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee.
 - [Dola Seed on BytePlus ModelArk](https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=all-api-hub&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=all-api-hub): Register through BytePlus ModelArk to get 500,000 free inference tokens per model.
 :::
 
@@ -60,7 +61,7 @@ If you are looking for stable, efficient, and highly compatible AI relay service
 <a id="manual-addition"></a>
 ### 2.2 Manual Addition (Alternative)
 
-If auto detection fails, click **"Manual Add"**, select the site type, and enter the account information yourself. See the [manual account addition guide](./account-management.md#manual-addition) for the required fields, where to find the Access Token, and important precautions.
+If auto-detection fails, click **"Manual Add"**, select the site type, and enter the account information yourself. See the [manual account addition guide](./add-account.md#manual-addition) for the required fields, where to find the Access Token, and important precautions.
 
 ---
 
@@ -68,7 +69,7 @@ If auto detection fails, click **"Manual Add"**, select the site type, and enter
 
 No matter which architecture you use, there is a good chance we support it:
 - **Account-site compatible architectures**: New API, One API, Sub2API, One-Hub, Veloera, Done-Hub, and more.
-- **Specialized account platforms and compatible implementations**: OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API, and more.
+- **Specialized account platforms and compatible implementations**: [OpenRouter](https://openrouter.ai/), [AnyRouter](https://anyrouter.top/register?aff=tDKX), [AgentRouter](https://agentrouter.org/register?aff=TUX6), [AIHubMix](https://aihubmix.com/?aff=W3DN), Super-API, v-api, Neo-API, and more.
 - **Self-hosted admin backends**: New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub, and more, for backend management, migration, and partial model sync.
 
 ::: tip Compatibility Tip
@@ -102,13 +103,13 @@ After adding an account, you can "push" these configurations to other AI tools w
 - **[Web API Sniffing](./web-ai-api-check.md)**: Quickly identify and test API configurations within a webpage.
 
 ### ⚡ Automation & Information Tracking
-- **[Auto Check-in Flow](./auto-checkin.md)**: Automatically complete check-ins for all sites daily.
+- **[Auto Check-in Flow](./auto-checkin.md)**: Schedule daily check-ins for detected, supported accounts, run them immediately, and review the latest results.
 - **[Site Announcements](./site-announcements.md)**: Fetch announcements from saved sites in the background and centrally review maintenance, model changes, pricing updates, and other messages.
 - **[Redemption Assistant](./redemption-assist.md)**: Automatically recognize redemption codes on webpages and claim them with one click.
 - **[Bookmark Management](./bookmark-management.md)**: Centrally collect console links, documentation, recharge portals, and more.
 
 ### 🛡️ Stability & Security Protection
-- **[Cloudflare Bypass Assistant](./cloudflare-helper.md)**: Assist in passing verification to ensure uninterrupted refreshes and check-ins.
+- **[Cloudflare Bypass Assistant](./cloudflare-helper.md)**: Helps a flow continue when webpage verification is required.
 - **[WebDAV Sync & Encryption](./webdav-sync.md)**: Supports cross-device encrypted backups, ensuring data is never lost.
 
 ### 🔔 Notification Channels

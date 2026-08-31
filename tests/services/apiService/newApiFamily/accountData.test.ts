@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { AUTO_CHECKIN_METHOD_IDS } from "~/constants/checkIn"
+import { SITE_TYPES } from "~/constants/siteType"
 import {
   defaultAccountDataImplementation,
   fetchAccountData,
@@ -7,16 +9,19 @@ import {
   fetchCheckInStatus,
   fetchTodayIncome,
   fetchTodayUsage,
-  resolveCheckInSiteStatus,
 } from "~/services/apiService/newApiFamily/default/accountData"
 import { fetchTodayUsage as fetchDoneHubTodayUsage } from "~/services/apiService/newApiFamily/variants/doneHub"
 import { ApiError } from "~/services/apiTransport/errors"
+import { getSelectedCheckInStatus } from "~/services/checkin/autoCheckin/inspection"
 import { LogType } from "~/services/history/usageHistory/usageLogModel"
 import {
   ACCOUNT_TODAY_METRIC_REASONS,
   ACCOUNT_TODAY_METRIC_STATUSES,
   AuthTypeEnum,
 } from "~/types"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
+
+import { createCheckInConfig } from "../../apiAdapters/checkInFixtures"
 
 const {
   mockAggregateIncomeData,
@@ -79,18 +84,15 @@ vi.mock("~/utils/core/logger", () => ({
 const baseRequest = {
   baseUrl: "https://data.example.invalid",
   accountId: "account-1",
+  siteType: SITE_TYPES.NEW_API,
   auth: {
     authType: AuthTypeEnum.AccessToken,
     userId: "user-1",
     accessToken: "access-token",
   },
-  checkIn: {
-    enableDetection: true,
-    autoCheckInEnabled: true,
-    siteStatus: {
-      isCheckedInToday: false,
-    },
-  },
+  checkIn: createCheckInConfig(SITE_TYPES.NEW_API, {
+    isCheckedInToday: false,
+  }),
 }
 
 const complete = { status: ACCOUNT_TODAY_METRIC_STATUSES.Complete } as const
@@ -635,7 +637,7 @@ describe("newApiFamily accountData", () => {
 
     await fetchAccountData({
       ...baseRequest,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     expect(mockGetTodayTimestampRange).toHaveBeenCalledTimes(1)
@@ -761,21 +763,18 @@ describe("newApiFamily accountData", () => {
     })
   })
 
-  it("fetchAccountData preserves existing siteStatus when detection is disabled", async () => {
+  it("fetchAccountData preserves check-in knowledge when no method is selected", async () => {
     mockFetchApiData.mockResolvedValueOnce({ quota: 321 })
 
     const implementation = defaultAccountDataImplementation
+    const checkIn = createCheckInConfig(SITE_TYPES.NEW_API, {
+      matched: false,
+    })
 
     const result = await implementation.fetchAccountData({
       ...baseRequest,
       includeTodayCashflow: false,
-      checkIn: {
-        enableDetection: false,
-        siteStatus: {
-          isCheckedInToday: true,
-          lastDetectedAt: 1234,
-        },
-      },
+      checkIn,
     })
 
     expect(result).toMatchObject({
@@ -785,17 +784,11 @@ describe("newApiFamily accountData", () => {
       today_prompt_tokens: 0,
       today_completion_tokens: 0,
       today_requests_count: 0,
-      checkIn: {
-        enableDetection: false,
-        siteStatus: {
-          isCheckedInToday: true,
-          lastDetectedAt: 1234,
-        },
-      },
+      checkIn,
     })
   })
 
-  it("fetchAccountData maps detection results into siteStatus and timestamps", async () => {
+  it("fetchAccountData maps refresh results into selected-method status", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-03-28T12:00:00.000Z"))
     mockFetchApiData.mockImplementation((_request, { endpoint }) => {
@@ -816,6 +809,7 @@ describe("newApiFamily accountData", () => {
 
       if (String(endpoint).startsWith("/api/user/checkin?")) {
         return Promise.resolve({
+          enabled: true,
           stats: {
             checked_in_today: false,
           },
@@ -826,34 +820,66 @@ describe("newApiFamily accountData", () => {
     })
     const result = await fetchAccountData({
       ...baseRequest,
-      checkIn: {
-        enableDetection: true,
-        siteStatus: {},
-      },
+      checkIn: createCheckInConfig(SITE_TYPES.NEW_API),
     })
 
-    expect(result.checkIn.siteStatus).toEqual({
-      isCheckedInToday: false,
-      lastDetectedAt: Date.parse("2026-03-28T12:00:00.000Z"),
+    expect(
+      getSelectedCheckInStatus({
+        config: result.checkIn,
+        siteType: SITE_TYPES.NEW_API,
+      }),
+    ).toEqual({
+      outcome: "known",
+      today: "not_checked",
+      availability: "enabled",
+      evidence: {
+        source: "probe",
+        observedAt: Date.parse("2026-03-28T12:00:00.000Z"),
+      },
     })
     vi.useRealTimers()
   })
 
-  it("resolveCheckInSiteStatus preserves the previous status after inconclusive detection", () => {
-    expect(
-      resolveCheckInSiteStatus(
-        {
-          enableDetection: true,
-          siteStatus: {
-            isCheckedInToday: true,
-            lastDetectedAt: 1234,
-          },
-        },
-        undefined,
-      ),
-    ).toEqual({
-      isCheckedInToday: true,
-      lastDetectedAt: 1234,
+  it("fetchAccountData marks only the selected method unsupported on 404", async () => {
+    mockFetchApiData.mockImplementation((_request, { endpoint }) => {
+      if (endpoint === "/api/user/self") {
+        return Promise.resolve({ quota: 99 })
+      }
+
+      if (String(endpoint).startsWith("/api/log/self/stat?")) {
+        return Promise.resolve({ quota: 0 })
+      }
+
+      if (String(endpoint).startsWith("/api/log/self?")) {
+        return Promise.resolve({ items: [], total: 0 })
+      }
+
+      if (String(endpoint).startsWith("/api/user/checkin?")) {
+        return Promise.reject(new ApiError("unsupported", 404))
+      }
+
+      return Promise.reject(new Error(`Unexpected endpoint: ${endpoint}`))
     })
+
+    const result = await fetchAccountData({
+      ...baseRequest,
+      checkIn: createCheckInConfig(SITE_TYPES.NEW_API),
+    })
+    const methodId = AUTO_CHECKIN_METHOD_IDS.NewApiDailyCheckIn
+
+    expect(result.checkIn?.methodKnowledge.methods[methodId]).toMatchObject({
+      detection: {
+        outcome: "unsupported",
+      },
+    })
+    expect(result.checkIn?.selection).toEqual({
+      mode: "automatic",
+      methodId,
+    })
+    expect(
+      mockFetchApiData.mock.calls.filter(([, options]) =>
+        String(options.endpoint).startsWith("/api/user/checkin?"),
+      ),
+    ).toHaveLength(1)
   })
 })

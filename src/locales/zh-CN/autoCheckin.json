@@ -7,7 +7,8 @@
       "openFailedManual": "打开全部失败账号的签到页",
       "openManual": "手动签到",
       "openSite": "打开网站",
-      "retryAccount": "重新尝试"
+      "retryAccount": "重新尝试",
+      "verifyStatus": "验证状态"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "开发：解释“打开界面时提前触发今日签到”是否满足条件",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "全部",
+      "clearAll": "清除筛选",
+      "countFiltered": "显示 {{filtered}} / {{total}} 条",
+      "countTotal": "共 {{total}} 条",
       "failed": "失败",
-      "searchPlaceholder": "搜索账号名称或消息...",
+      "failedOrSkipped": "失败或未执行",
+      "searchLabel": "搜索执行结果",
+      "searchPlaceholder": "搜索账号名称、ID 或结果信息...",
       "skipped": "已跳过",
+      "statusLabel": "按执行状态筛选",
       "success": "成功"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "打开最近一次自动签到失败的全部账号对应的站点签到页。按住 Shift 点击可在新窗口中打开。",
       "siteTypeCheckinUnsupported": "解决方案：先在「账号管理 → 编辑账号」中检查“站点类型”是否与实际站点一致；如果此前是自动识别得到的结果，可在目标站点重新登录后重新识别一次。若确认站点类型无误但仍提示不支持，说明该站点当前可能未适配自动签到，请改用“打开网站”或“手动签到”处理。"
     },
+    "pagination": {
+      "next": "下一页",
+      "previous": "上一页",
+      "rowsPerPage": "每页显示",
+      "summary": "显示第 {{start}}–{{end}} 条，共 {{total}} 条"
+    },
     "refresh": "刷新",
     "runNow": "立即执行",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "已签到",
       "failed": "失败",
       "skipped": "已跳过",
-      "success": "成功"
+      "success": "成功",
+      "uncertain": "待确认"
     },
     "table": {
       "accountName": "账号名称",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "触发重试闹钟失败：{{error}}",
       "retryFailed": "重新尝试失败：{{error}}",
       "runFailed": "执行自动签到失败：{{error}}",
+      "statusVerificationFailed": "无法验证所选签到状态。请重试或打开账号站点。",
       "uiOpenPretriggerDidNotStart": "界面打开预触发未启动：{{reason}}",
       "uiOpenPretriggerEvaluationFailed": "评估界面打开预触发失败：{{error}}",
       "uiOpenPretriggerIneligible": "界面打开预触发条件不满足：{{reason}}",
@@ -109,6 +124,7 @@
       "retryCompleted": "重新尝试已完成。",
       "runCompleted": "自动签到已完成。",
       "settingsSaved": "自动签到设置已保存。",
+      "statusVerified": "已验证所选签到状态。",
       "uiOpenPretriggerEligible": "界面打开预触发条件满足。"
     }
   },
@@ -122,6 +138,7 @@
     "nativePageStatusUnconfirmed": "已点击页面签到操作，但未确认目标账号完成签到。请打开签到页面手动确认：{{checkInUrl}}",
     "nativePageTargetNotFound": "未在页面上找到签到按钮。请打开签到页面手动完成签到：{{checkInUrl}}",
     "nativePageTriggerFailed": "无法触发页面签到操作。请打开签到页面手动完成签到：{{checkInUrl}}",
+    "resultPendingConfirmation": "签到结果待确认",
     "turnstileIncognitoAccessRequired": "需要允许扩展在无痕模式运行，才能在无痕页面获取 Turnstile Token（多账号场景）。请在扩展管理页开启“允许在无痕模式运行”后重试；或手动打开签到页面完成验证：{{checkInUrl}}",
     "turnstileManualRequired": "需要完成 Cloudflare Turnstile 验证，请打开签到页面完成验证：{{checkInUrl}}",
     "unknownError": "发生未知错误"
@@ -158,31 +175,61 @@
     "windowStartDesc": "允许每日自动签到开始的最早本地时间。"
   },
   "skipReasons": {
+    "account_data_missing": "账号资料不完整，请重新识别该账号。",
     "account_disabled": "账号已禁用",
+    "account_unavailable": "签到前账号已发生变化或不可用",
     "already_checked_today": "今日已签到",
+    "authentication_required": "登录状态已失效或需要登录。请先登录目标站点，再重试。",
     "auto_checkin_disabled": "自动签到已关闭",
+    "credentials_missing": "缺少已保存的账号凭据，请重新识别账号或更新凭据。",
     "detection_disabled": "检测已关闭",
+    "method_disabled": "该站点的签到功能已停用",
+    "method_not_matched": "已选签到方式与当前站点不再匹配，请重新检测签到方式。",
+    "method_unavailable": "已选签到方式已不可用，请重新检测签到方式。",
+    "method_unsupported": "当前站点不支持已选的签到方式。",
+    "network_error": "网络连接问题导致无法签到，请检查网络后重试。",
     "no_provider": "账号所属站点类型暂不支持签到",
-    "provider_not_ready": "账号配置暂不支持签到"
+    "no_selected_method": "尚未选择签到方式，请在账号设置中重新检测或选择。",
+    "permission_denied": "目标站点拒绝了签到请求，请重新登录或检查账号权限。",
+    "source_unavailable": "目标站点暂时不可用，请稍后重试。",
+    "status_unavailable": "暂时无法确认当前签到状态，因此未执行签到",
+    "timeout": "连接超时，签到未能完成，请重试。"
   },
   "snapshot": {
     "badges": {
       "disabled": "未启用",
       "enabled": "已启用",
+      "methodNotSelected": "未选择",
+      "methodSelected": "已选择",
       "pending": "待执行",
       "providerAvailable": "可用",
       "providerUnavailable": "不可用"
     },
-    "description": "列出所有已启用检测的账号及其准备状态。处于待执行状态的账号会在点击“立即执行”或到达计划时间后参与签到。",
+    "description": "展示最近一次运行记录的账号准备状态。处于待执行状态的账号会在点击“立即执行”或到达计划时间后参与签到。",
+    "filters": {
+      "clearAll": "清除筛选",
+      "countFiltered": "显示 {{filtered}} / {{total}} 个账号",
+      "countTotal": "共 {{total}} 个账号",
+      "noMatches": "没有匹配的账号",
+      "noMatchesDescription": "调整搜索或筛选条件，或清除全部筛选。",
+      "readinessAll": "全部准备状态",
+      "readinessDisabled": "已关闭",
+      "readinessLabel": "按执行准备状态筛选",
+      "readinessReady": "可执行",
+      "readinessSetupRequired": "需要设置",
+      "readinessTemporarilyUnavailable": "暂时不可用",
+      "readinessUnsupported": "不支持",
+      "searchLabel": "搜索账号准备状态",
+      "searchPlaceholder": "搜索账号名称、ID 或未执行原因...",
+      "statusAll": "全部最近状态",
+      "statusLabel": "按最近状态筛选"
+    },
     "table": {
       "autoCheckin": "自动签到",
-      "detection": "检测",
-      "lastResult": "最近结果",
-      "provider": "提供方",
-      "skipReason": "跳过原因",
-      "status": "状态"
+      "lastResult": "更新时间",
+      "status": "最近状态"
     },
-    "title": "账号检测状态"
+    "title": "账号准备状态"
   },
   "status": {
     "disabled": "已禁用",
@@ -195,6 +242,7 @@
     "result": {
       "failed": "失败",
       "partial": "部分成功",
+      "skipped": "未执行",
       "success": "成功"
     },
     "retryDisabled": "重试未启用",
@@ -212,5 +260,9 @@
     "dialogDescription": "打开扩展界面时触发了今日计划的自动签到。",
     "dialogTitle": "自动签到已完成",
     "viewDetails": "查看详情"
+  },
+  "workspace": {
+    "label": "自动签到数据",
+    "resultsTab": "执行结果"
   }
 }

@@ -467,6 +467,53 @@
       "fallbackHints": {
         "apiCredentialProfiles": true
       }
+    },
+    {
+      "id": "apimart",
+      "enabled": true,
+      "rank": 119,
+      "supportStatus": "supported",
+      "urls": {
+        "primaryAffiliate": "https://go.apimart.ai/gh-all-api-hub",
+        "website": "https://apimart.ai"
+      },
+      "locales": {
+        "zh-CN": {
+          "name": "APIMart",
+          "tagline": "APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费。",
+          "postClickNote": "通过此注册链接注册即可开用。"
+        },
+        "zh-TW": {
+          "name": "APIMart",
+          "tagline": "APIMart 是專注 AI 圖片/影片生成的低價 API 平台，GPT-Image-2 低至 $0.006/張，1 美元可出圖 160+ 張。圖片、影片一套非同步 API 通吃，提交任務拿 ID、回呼取結果，跑批萬張不逾時、換模型不改程式碼。按量付費、無月費。",
+          "postClickNote": "透過此註冊連結註冊即可開用。"
+        },
+        "en": {
+          "name": "APIMart",
+          "tagline": "APIMart is a low-cost API platform for AI image & video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee.",
+          "postClickNote": "Sign up through this link to get started."
+        },
+        "pt-BR": {
+          "name": "APIMart",
+          "tagline": "A APIMart é uma plataforma de API de baixo custo para geração de imagens e vídeos com IA — GPT-Image-2 a partir de US$ 0,006/imagem, mais de 160 imagens por dólar. Uma única API assíncrona cobre imagem e vídeo: envie uma tarefa, receba um ID e obtenha os resultados por polling ou callback. Processe dezenas de milhares de imagens em lote sem timeout e troque de modelo sem alterar o código. Pagamento por uso, sem mensalidade.",
+          "postClickNote": "Cadastre-se por este link para começar a usar."
+        },
+        "ja": {
+          "name": "APIMart",
+          "tagline": "APIMart は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画をひとつの非同期 API でカバーし、タスクを送信して ID を取得、ポーリングまたはコールバックで結果を取得します。数万枚のバッチ処理もタイムアウトなしで実行でき、モデルを切り替えてもコードの変更は不要です。従量課金で月額料金はありません。",
+          "postClickNote": "この登録リンクから登録してすぐに使い始められます。"
+        },
+        "vi": {
+          "name": "APIMart",
+          "tagline": "APIMart la nen tang API gia thap tap trung vao tao anh/video bang AI — GPT-Image-2 tu $0.006/anh, hon 160 anh moi mot dong. Mot API bat dong bo bao ham ca anh va video: gui nhiem vu, nhan ID, lay ket qua qua polling hoac callback. Chay hang ngan anh theo lo khong bi timeout, chuyen model khong can doi ma. Tra theo luong su dung, khong phi hang thang.",
+          "postClickNote": "Dang ky qua lien ket nay de bat dau su dung."
+        }
+      },
+      "accountPrefill": {
+        "siteType": "new-api",
+        "siteUrl": "https://apimart.ai",
+        "authType": "access_token"
+      }
     }
   ],
   "_examples": {

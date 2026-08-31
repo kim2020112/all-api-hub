@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { SITE_TYPES } from "~/constants/siteType"
+import { fetchSupportCheckIn } from "~/services/apiService/newApiFamily/variants/veloera"
 import {
   createChannel,
   deleteChannel,
@@ -15,7 +17,11 @@ import {
   updateChannelModels,
 } from "~/services/apiService/veloera"
 import { API_ERROR_CODES, ApiError } from "~/services/apiTransport/errors"
+import { getSelectedCheckInStatus } from "~/services/checkin/autoCheckin/inspection"
 import { AuthTypeEnum, SiteHealthStatus } from "~/types"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
+
+import { createCheckInConfig } from "../../apiAdapters/checkInFixtures"
 
 const {
   mockDetermineHealthStatus,
@@ -31,6 +37,10 @@ const {
 
 const { mockFetchApiData } = vi.hoisted(() => ({
   mockFetchApiData: vi.fn(),
+}))
+
+const { mockFetchSiteStatus } = vi.hoisted(() => ({
+  mockFetchSiteStatus: vi.fn(),
 }))
 
 const { mockFetchApi, mockLoggerError } = vi.hoisted(() => ({
@@ -52,6 +62,16 @@ vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: mockFetchApi,
 }))
 
+vi.mock(
+  "~/services/apiService/newApiFamily/default/accountBootstrap",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("~/services/apiService/newApiFamily/default/accountBootstrap")
+    >()),
+    fetchSiteStatus: mockFetchSiteStatus,
+  }),
+)
+
 vi.mock("~/services/accounts/accountHealth", () => ({
   determineHealthStatus: (...args: unknown[]) =>
     mockDetermineHealthStatus(...args),
@@ -61,18 +81,6 @@ vi.mock("~/services/apiService/newApiFamily/default/accountData", () => ({
   fetchAccountQuota: (...args: unknown[]) => mockFetchAccountQuota(...args),
   fetchTodayIncome: (...args: unknown[]) => mockFetchTodayIncome(...args),
   fetchTodayUsage: (...args: unknown[]) => mockFetchTodayUsage(...args),
-  resolveCheckInSiteStatus: (checkIn: any, canCheckIn: boolean | undefined) =>
-    typeof canCheckIn === "boolean"
-      ? {
-          ...(checkIn.siteStatus ?? {}),
-          isCheckedInToday: !canCheckIn,
-          lastDetectedAt: Date.now(),
-        }
-      : {
-          ...(checkIn.siteStatus ?? {}),
-          isCheckedInToday: checkIn.siteStatus?.isCheckedInToday,
-          lastDetectedAt: checkIn.siteStatus?.lastDetectedAt,
-        },
 }))
 
 /**
@@ -86,6 +94,7 @@ describe("apiService veloera channel APIs", () => {
     vi.clearAllMocks()
     mockFetchApiData.mockReset()
     mockFetchApi.mockReset()
+    mockFetchSiteStatus.mockReset()
     mockFetchAccountQuota.mockResolvedValue(100)
     mockFetchTodayUsage.mockResolvedValue({
       today_prompt_tokens: 11,
@@ -678,6 +687,21 @@ describe("apiService veloera channel APIs", () => {
     await expect(fetchCheckInStatus(request as any)).resolves.toBeUndefined()
   })
 
+  it("reads Veloera check-in support from its public status field", async () => {
+    const request = {
+      baseUrl: "https://example.com",
+      auth: { authType: AuthTypeEnum.AccessToken },
+    }
+    mockFetchSiteStatus
+      .mockResolvedValueOnce({ check_in_enabled: false })
+      .mockResolvedValueOnce({ check_in_enabled: true })
+      .mockResolvedValueOnce({ checkin_enabled: true })
+
+    await expect(fetchSupportCheckIn(request as any)).resolves.toBe(false)
+    await expect(fetchSupportCheckIn(request as any)).resolves.toBe(true)
+    await expect(fetchSupportCheckIn(request as any)).resolves.toBeUndefined()
+  })
+
   it("treats 404 and other failures as unsupported check-in detection", async () => {
     const request = {
       baseUrl: "https://example.com",
@@ -707,13 +731,11 @@ describe("apiService veloera channel APIs", () => {
         accessToken: "token",
         userId: "1",
       },
-      checkIn: {
-        enableDetection: true,
-        siteStatus: {
-          isCheckedInToday: false,
-          lastDetectedAt: 5,
-        },
-      },
+      siteType: SITE_TYPES.VELOERA,
+      checkIn: createCheckInConfig(SITE_TYPES.VELOERA, {
+        isCheckedInToday: false,
+        observedAt: 5,
+      }),
     }
 
     mockFetchApiData.mockResolvedValueOnce({ can_check_in: false })
@@ -727,13 +749,17 @@ describe("apiService veloera channel APIs", () => {
       today_quota_consumption: 33,
       today_requests_count: 44,
       today_income: 55,
-      checkIn: {
-        enableDetection: true,
-        siteStatus: {
-          isCheckedInToday: true,
-          lastDetectedAt: 123456,
-        },
-      },
+      checkIn: expect.any(Object),
+    })
+    expect(
+      getSelectedCheckInStatus({
+        config: result.checkIn,
+        siteType: SITE_TYPES.VELOERA,
+      }),
+    ).toEqual({
+      outcome: "known",
+      today: "checked",
+      evidence: { source: "probe", observedAt: 123456 },
     })
 
     nowSpy.mockRestore()
@@ -747,22 +773,14 @@ describe("apiService veloera channel APIs", () => {
         accessToken: "token",
         userId: "1",
       },
-      checkIn: {
-        enableDetection: false,
-        siteStatus: {
-          isCheckedInToday: true,
-          lastDetectedAt: 999,
-        },
-      },
+      siteType: SITE_TYPES.VELOERA,
+      checkIn: createCheckInConfig(SITE_TYPES.VELOERA, { matched: false }),
     }
 
     const result = await fetchAccountData(request as any)
 
     expect(mockFetchApiData).not.toHaveBeenCalled()
-    expect(result.checkIn.siteStatus).toEqual({
-      isCheckedInToday: true,
-      lastDetectedAt: 999,
-    })
+    expect(result.checkIn.selection).not.toHaveProperty("methodId")
   })
 
   it("returns a healthy refresh result when account aggregation succeeds", async () => {
@@ -775,7 +793,7 @@ describe("apiService veloera channel APIs", () => {
         accessToken: "token",
         userId: "1",
       },
-      checkIn: { enableDetection: true },
+      checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
     } as any)
 
     expect(result.success).toBe(true)
@@ -798,7 +816,7 @@ describe("apiService veloera channel APIs", () => {
         accessToken: "token",
         userId: "1",
       },
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     } as any)
 
     expect(mockDetermineHealthStatus).toHaveBeenCalledWith(failure)

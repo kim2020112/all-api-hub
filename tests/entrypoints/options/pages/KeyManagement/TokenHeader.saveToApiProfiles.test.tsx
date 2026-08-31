@@ -8,6 +8,7 @@ import {
   AIHUBMIX_WEB_ORIGIN,
   SITE_TYPES,
 } from "~/constants/siteType"
+import { KEY_MANAGEMENT_TEST_IDS } from "~/features/KeyManagement/testIds"
 import {
   MANAGED_SITE_CHANNEL_KEY_MATCH_REASONS,
   MANAGED_SITE_CHANNEL_MODELS_MATCH_REASONS,
@@ -20,6 +21,7 @@ import {
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import { AuthTypeEnum, SiteHealthStatus, type DisplaySiteData } from "~/types"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { testI18n } from "~~/tests/test-utils/i18n"
 import {
   RECOVERABLE_ACTION_POLICY,
@@ -35,14 +37,14 @@ const mockOpenSettingsTab = vi.fn()
 const mockOpenWithAccount = vi.fn()
 const mockLoggerError = vi.fn()
 
-vi.mock(
-  "~/services/apiCredentialProfiles/apiCredentialProfilesStorage",
-  () => ({
-    apiCredentialProfilesStorage: {
-      createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-    },
-  }),
-)
+vi.mock("~/services/apiCredentialProfiles/apiCredentialProfileLinks", () => ({
+  apiCredentialProfileLinks: {
+    capture: async ({ profile }: { profile: unknown }) => ({
+      status: "captured",
+      profile: await mockCreateProfile(profile),
+    }),
+  },
+}))
 
 vi.mock("react-hot-toast", () => ({
   default: {
@@ -120,7 +122,7 @@ function createAccountStub(): DisplaySiteData {
     token: "token",
     userId: "1",
     authType: AuthTypeEnum.AccessToken,
-    checkIn: { enableDetection: false },
+    checkIn: buildCheckInConfig(),
   }
 }
 
@@ -189,6 +191,19 @@ const expectNoVisibleManagedSiteDescription = () => {
   ).toHaveLength(0)
 }
 
+async function clickSaveAndAssociateAction(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(
+    screen.getByTestId(KEY_MANAGEMENT_TEST_IDS.apiCredentialAssociationButton),
+  )
+  await user.click(
+    screen.getByRole("menuitem", {
+      name: "keyManagement:actions.saveToApiProfiles",
+    }),
+  )
+}
+
 describe("TokenHeader save to API profiles", () => {
   beforeEach(() => {
     mockCreateProfile.mockReset()
@@ -210,7 +225,8 @@ describe("TokenHeader save to API profiles", () => {
     })
   })
 
-  it("explains the API credential library save action on the row button", () => {
+  it("exposes the API credential relationship menu on the row", async () => {
+    const user = userEvent.setup()
     const account = createAccountStub()
 
     const token = {
@@ -239,11 +255,14 @@ describe("TokenHeader save to API profiles", () => {
       />,
     )
 
-    expect(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.saveToApiProfiles",
-      }),
-    ).toHaveAttribute("title", "keyManagement:actions.saveToApiProfilesHint")
+    const button = screen.getByTestId(
+      KEY_MANAGEMENT_TEST_IDS.apiCredentialAssociationButton,
+    )
+    expect(button).not.toHaveAttribute("title")
+    await user.hover(button)
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "keyManagement:actionToolbar.apiCredential",
+    )
   })
 
   it("creates an openai-compatible profile from token + account baseUrl", async () => {
@@ -289,11 +308,7 @@ describe("TokenHeader save to API profiles", () => {
       />,
     )
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.saveToApiProfiles",
-      }),
-    )
+    await clickSaveAndAssociateAction(user)
 
     await waitFor(() => {
       expect(mockCreateProfile).toHaveBeenCalledWith({
@@ -357,11 +372,7 @@ describe("TokenHeader save to API profiles", () => {
       />,
     )
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.saveToApiProfiles",
-      }),
-    )
+    await clickSaveAndAssociateAction(user)
 
     await waitFor(() => {
       expect(mockCreateProfile).toHaveBeenCalledWith({
@@ -417,11 +428,7 @@ describe("TokenHeader save to API profiles", () => {
       />,
     )
 
-    await user.click(
-      screen.getByRole("button", {
-        name: "keyManagement:actions.saveToApiProfiles",
-      }),
-    )
+    await clickSaveAndAssociateAction(user)
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalled()

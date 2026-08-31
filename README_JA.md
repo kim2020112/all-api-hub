@@ -229,6 +229,17 @@ GitHub Stable と Nightly は手動インストール用チャネルで、自動
 <hr>
 
 <div>
+  <a href="https://go.apimart.ai/gh-all-api-hub">
+    <img src="resources/partners/apimart.png" alt="APIMart" width="180" align="left" hspace="10" vspace="4">
+  </a>
+  <p>
+    APIMart は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画をひとつの非同期 API でカバーし、タスクを送信して ID を取得、ポーリングまたはコールバックで結果を取得できます。数万枚のバッチ処理もタイムアウトなしで実行でき、モデルを切り替えてもコードの変更は不要です。従量課金・月額料金なし。<a href="https://go.apimart.ai/gh-all-api-hub">こちらのリンク</a>から登録して利用を始められます。
+  </p>
+</div>
+
+<hr>
+
+<div>
   <p>
     <a href="https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=all-api-hub&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=all-api-hub">
       <img src="resources/partners/volcengine_en.jpg" alt="Dola Seed on BytePlus ModelArk" width="100%">
@@ -258,7 +269,7 @@ GitHub Stable と Nightly は手動インストール用チャネルで、自動
 ### 🧩 高い互換性
 どのアーキテクチャを使っていても、高い確率で対応しています。
 - **アカウントサイト互換アーキテクチャ**：[new-api](https://github.com/QuantumNous/new-api)、[one-api](https://github.com/songquanpeng/one-api)、[Sub2API](https://github.com/Wei-Shaw/sub2api)、[one-hub](https://github.com/MartialBE/one-hub)、[Veloera](https://github.com/Veloera/Veloera)、[done-hub](https://github.com/deanxv/done-hub) など
-- **特色あるアカウントプラットフォームと互換実装**：[AnyRouter](https://anyrouter.top)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API など
+- **特色あるアカウントプラットフォームと互換実装**：[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API など
 - **セルフホスト型管理バックエンド**：[new-api](https://github.com/QuantumNous/new-api)、[AxonHub](https://github.com/looplj/axonhub)、[Claude Code Hub](https://github.com/ding113/claude-code-hub)、[Octopus](https://github.com/bestruirui/octopus)、[Veloera](https://github.com/Veloera/Veloera)、[done-hub](https://github.com/deanxv/done-hub) など。チャネル管理、移行、一部のモデル同期に利用できます
 - **完全な一覧**：👉 [対応サイト](https://all-api-hub.qixing1217.top/ja/supported-sites.html)
 

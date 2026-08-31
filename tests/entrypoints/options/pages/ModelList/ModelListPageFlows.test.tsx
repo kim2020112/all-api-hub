@@ -25,6 +25,7 @@ import {
 } from "~/services/productAnalytics/contracts"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import { AuthTypeEnum } from "~/types"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { render, screen } from "~~/tests/test-utils/render"
 
 const mockUseModelListData = vi.fn()
@@ -63,7 +64,7 @@ const ACCOUNT = {
   token: "token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
 } as any
 
 const SECOND_ACCOUNT = {
@@ -355,8 +356,6 @@ function buildState(overrides: Record<string, any> = {}) {
 
     showRealPrice: false,
     setShowRealPrice: vi.fn(),
-    showRatioColumn: false,
-    setShowRatioColumn: vi.fn(),
     showEndpointTypes: false,
     setShowEndpointTypes: vi.fn(),
 

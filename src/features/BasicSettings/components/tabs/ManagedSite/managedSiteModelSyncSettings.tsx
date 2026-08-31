@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
 
@@ -20,6 +20,7 @@ import {
 } from "~/components/ui"
 import { MENU_ITEM_IDS } from "~/constants/optionsMenuIds"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
+import { useDeferredPreferenceField } from "~/hooks/useDeferredPreferenceField"
 import { normalizeChannelFilters } from "~/services/managedSites/channelModelFilterRules"
 import { modelMetadataService } from "~/services/models/modelMetadata"
 import type { ModelMetadata } from "~/services/models/modelMetadata/types"
@@ -42,6 +43,7 @@ import {
   isProbeChannelModelFilterRule,
 } from "~/types/channelModelFilters"
 import type { ManagedSiteModelSyncPreferences } from "~/types/managedSiteModelSync"
+import type { PartialWithNested } from "~/types/utils"
 import { getErrorMessage } from "~/utils/core/error"
 import { safeRandomUUID } from "~/utils/core/identifier"
 import { createLogger } from "~/utils/core/logger"
@@ -54,7 +56,25 @@ type UserManagedSiteModelSyncConfig = NonNullable<
   typeof DEFAULT_PREFERENCES.managedSiteModelSync
 >
 
+type ManagedSiteModelSyncPreferenceUpdate = PartialWithNested<
+  ManagedSiteModelSyncPreferences,
+  "rateLimit"
+>
+
+type UserManagedSiteModelSyncConfigUpdate = PartialWithNested<
+  UserManagedSiteModelSyncConfig,
+  "rateLimit"
+>
+
 type EditableFilter = ChannelModelFilterRule
+
+type NumericInputCommitOptions = {
+  persistedValue: number
+  min: number
+  max: number
+  allowDecimal?: boolean
+  createUpdate: (value: number) => ManagedSiteModelSyncPreferenceUpdate
+}
 
 /**
  * Moves a filter one position up or down within the editable filter list.
@@ -91,6 +111,7 @@ const MODEL_SYNC_SETTINGS_ANALYTICS_CONTEXT = {
 } as const
 
 const CHANNEL_PROCESSING_TIMEOUT_MAX_SECONDS = 43_200
+const DEFAULT_MODEL_SYNC_PREFERENCES = DEFAULT_PREFERENCES.managedSiteModelSync!
 
 /**
  * Starts an analytics span for model-sync settings actions using fixed enums.
@@ -123,7 +144,6 @@ export default function ManagedSiteModelSyncSettings() {
     updateNewApiModelSync,
     resetNewApiModelSyncConfig,
   } = useUserPreferencesContext()
-  const [isSaving, setIsSaving] = useState(false)
   const [channelUpstreamModelOptions, setChannelUpstreamModelOptions] =
     useState<CompactMultiSelectOption[]>([])
   const [optionsLoading, setOptionsLoading] = useState(true)
@@ -131,38 +151,33 @@ export default function ManagedSiteModelSyncSettings() {
 
   // Convert from persisted user prefs to ManagedSiteModelSyncPreferences format
   const rawPrefs = userPrefs?.managedSiteModelSync ?? userPrefs?.newApiModelSync
-  const preferences: ManagedSiteModelSyncPreferences = rawPrefs
-    ? {
-        enableSync: rawPrefs.enabled,
-        intervalMs: rawPrefs.interval,
-        concurrency: rawPrefs.concurrency,
-        maxRetries: rawPrefs.maxRetries,
-        channelProcessingTimeout: rawPrefs.channelProcessingTimeout ?? 0,
-        rateLimit: rawPrefs.rateLimit,
-        allowedModels: rawPrefs.allowedModels ?? [],
-        globalChannelModelFilters: rawPrefs.globalChannelModelFilters ?? [],
-      }
-    : {
-        enableSync: DEFAULT_PREFERENCES.managedSiteModelSync?.enabled ?? false,
-        intervalMs:
-          DEFAULT_PREFERENCES.managedSiteModelSync?.interval ??
-          24 * 60 * 60 * 1000,
-        concurrency: DEFAULT_PREFERENCES.managedSiteModelSync?.concurrency ?? 2,
-        maxRetries: DEFAULT_PREFERENCES.managedSiteModelSync?.maxRetries ?? 2,
-        channelProcessingTimeout:
-          DEFAULT_PREFERENCES.managedSiteModelSync?.channelProcessingTimeout ??
-          0,
-        rateLimit: DEFAULT_PREFERENCES.managedSiteModelSync?.rateLimit ?? {
-          requestsPerMinute: 20,
-          burst: 5,
-        },
-        allowedModels:
-          DEFAULT_PREFERENCES.managedSiteModelSync?.allowedModels ?? [],
-        globalChannelModelFilters:
-          DEFAULT_PREFERENCES.managedSiteModelSync?.globalChannelModelFilters ??
-          [],
-      }
-
+  const preferences = useMemo<ManagedSiteModelSyncPreferences>(
+    () =>
+      rawPrefs
+        ? {
+            enableSync: rawPrefs.enabled,
+            intervalMs: rawPrefs.interval,
+            concurrency: rawPrefs.concurrency,
+            maxRetries: rawPrefs.maxRetries,
+            channelProcessingTimeout: rawPrefs.channelProcessingTimeout ?? 0,
+            rateLimit: rawPrefs.rateLimit,
+            allowedModels: rawPrefs.allowedModels ?? [],
+            globalChannelModelFilters: rawPrefs.globalChannelModelFilters ?? [],
+          }
+        : {
+            enableSync: DEFAULT_MODEL_SYNC_PREFERENCES.enabled,
+            intervalMs: DEFAULT_MODEL_SYNC_PREFERENCES.interval,
+            concurrency: DEFAULT_MODEL_SYNC_PREFERENCES.concurrency,
+            maxRetries: DEFAULT_MODEL_SYNC_PREFERENCES.maxRetries,
+            channelProcessingTimeout:
+              DEFAULT_MODEL_SYNC_PREFERENCES.channelProcessingTimeout,
+            rateLimit: DEFAULT_MODEL_SYNC_PREFERENCES.rateLimit,
+            allowedModels: DEFAULT_MODEL_SYNC_PREFERENCES.allowedModels,
+            globalChannelModelFilters:
+              DEFAULT_MODEL_SYNC_PREFERENCES.globalChannelModelFilters,
+          },
+    [rawPrefs],
+  )
   const [
     isGlobalChannelModelFiltersDialogOpen,
     setIsGlobalChannelModelFiltersDialogOpen,
@@ -220,7 +235,7 @@ export default function ManagedSiteModelSyncSettings() {
   }, [])
 
   const savePreferences = async (
-    updates: Partial<ManagedSiteModelSyncPreferences>,
+    updates: ManagedSiteModelSyncPreferenceUpdate,
   ) => {
     const isGlobalFiltersUpdate =
       updates.globalChannelModelFilters !== undefined
@@ -231,10 +246,8 @@ export default function ManagedSiteModelSyncSettings() {
     )
 
     try {
-      setIsSaving(true)
-
       // Convert to UserPreferences.modelSync format
-      const userPrefsUpdate: Partial<UserManagedSiteModelSyncConfig> = {}
+      const userPrefsUpdate: UserManagedSiteModelSyncConfigUpdate = {}
       if (updates.enableSync !== undefined) {
         userPrefsUpdate.enabled = updates.enableSync
       }
@@ -295,10 +308,120 @@ export default function ManagedSiteModelSyncSettings() {
       tracker.complete(PRODUCT_ANALYTICS_RESULTS.Failure)
       toast.error(t("settings:messages.saveSettingsFailed"))
       return false
-    } finally {
-      setIsSaving(false)
     }
   }
+
+  const commitNumericInput = async (
+    draft: string,
+    {
+      persistedValue,
+      min,
+      max,
+      allowDecimal = false,
+      createUpdate,
+    }: NumericInputCommitOptions,
+  ) => {
+    const nextValue = Number(draft)
+    const isValid =
+      draft.trim() !== "" &&
+      Number.isFinite(nextValue) &&
+      (allowDecimal || Number.isInteger(nextValue)) &&
+      nextValue >= min &&
+      nextValue <= max
+
+    if (!isValid) {
+      toast.error(
+        t("managedSiteModelSync:messages.error.invalidSettingValue", {
+          min,
+          max,
+        }),
+      )
+      return { ok: false }
+    }
+    if (nextValue === persistedValue) {
+      return { ok: true, value: String(persistedValue) }
+    }
+
+    const saved = await savePreferences(createUpdate(nextValue))
+    return { ok: saved, value: String(nextValue) }
+  }
+
+  const savedVersion = userPrefs?.lastUpdated ?? 0
+  const intervalHoursField = useDeferredPreferenceField({
+    savedValue: String(preferences.intervalMs / (1000 * 60 * 60)),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.intervalMs / (1000 * 60 * 60),
+        min: 1,
+        max: 720,
+        allowDecimal: true,
+        createUpdate: (hours) => ({
+          intervalMs: hours * 60 * 60 * 1000,
+        }),
+      }),
+  })
+  const concurrencyField = useDeferredPreferenceField({
+    savedValue: String(preferences.concurrency),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.concurrency,
+        min: 1,
+        max: 10,
+        createUpdate: (concurrency) => ({ concurrency }),
+      }),
+  })
+  const maxRetriesField = useDeferredPreferenceField({
+    savedValue: String(preferences.maxRetries),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.maxRetries,
+        min: 0,
+        max: 5,
+        createUpdate: (maxRetries) => ({ maxRetries }),
+      }),
+  })
+  const channelProcessingTimeoutField = useDeferredPreferenceField({
+    savedValue: String(preferences.channelProcessingTimeout),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.channelProcessingTimeout,
+        min: 0,
+        max: CHANNEL_PROCESSING_TIMEOUT_MAX_SECONDS,
+        createUpdate: (channelProcessingTimeout) => ({
+          channelProcessingTimeout,
+        }),
+      }),
+  })
+  const requestsPerMinuteField = useDeferredPreferenceField({
+    savedValue: String(preferences.rateLimit.requestsPerMinute),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.rateLimit.requestsPerMinute,
+        min: 5,
+        max: 120,
+        createUpdate: (requestsPerMinute) => ({
+          rateLimit: { requestsPerMinute },
+        }),
+      }),
+  })
+  const burstField = useDeferredPreferenceField({
+    savedValue: String(preferences.rateLimit.burst),
+    savedVersion,
+    onCommit: (draft) =>
+      commitNumericInput(draft, {
+        persistedValue: preferences.rateLimit.burst,
+        min: 1,
+        max: 20,
+        createUpdate: (burst) => ({
+          rateLimit: { burst },
+        }),
+      }),
+  })
 
   const handleOpenGlobalChannelModelFilters = () => {
     startSettingsAnalyticsAction(
@@ -531,7 +654,6 @@ export default function ManagedSiteModelSyncSettings() {
             ? PRODUCT_ANALYTICS_RESULTS.Success
             : PRODUCT_ANALYTICS_RESULTS.Failure,
         )
-        if (result.ok) setIsSaving(false)
         return result
       }}
     >
@@ -548,7 +670,6 @@ export default function ManagedSiteModelSyncSettings() {
                 onChange={(checked) =>
                   void savePreferences({ enableSync: checked })
                 }
-                disabled={isSaving}
               />
             }
           />
@@ -564,16 +685,18 @@ export default function ManagedSiteModelSyncSettings() {
                   type="number"
                   min="1"
                   max="720"
-                  value={String(preferences.intervalMs / (1000 * 60 * 60))}
-                  onChange={(e) => {
-                    const hours = parseFloat(e.target.value)
-                    if (hours > 0) {
-                      void savePreferences({
-                        intervalMs: hours * 60 * 60 * 1000,
-                      })
-                    }
-                  }}
-                  disabled={isSaving}
+                  step="any"
+                  value={intervalHoursField.draft}
+                  onChange={(event) =>
+                    intervalHoursField.setDraft(event.target.value)
+                  }
+                  onBlur={() => void intervalHoursField.commit()}
+                  onKeyDown={intervalHoursField.handleKeyDown}
+                  placeholder={String(
+                    preferences.intervalMs / (1000 * 60 * 60),
+                  )}
+                  aria-label={t("managedSiteModelSync:settings.interval")}
+                  disabled={intervalHoursField.isCommitting}
                   className="w-24"
                 />
                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -593,18 +716,16 @@ export default function ManagedSiteModelSyncSettings() {
                 type="number"
                 min="1"
                 max="10"
-                value={String(preferences.concurrency)}
-                onChange={(e) => {
-                  const concurrency = parseInt(e.target.value)
-                  if (
-                    Number.isFinite(concurrency) &&
-                    concurrency >= 1 &&
-                    concurrency <= 10
-                  ) {
-                    void savePreferences({ concurrency })
-                  }
-                }}
-                disabled={isSaving}
+                step="1"
+                value={concurrencyField.draft}
+                onChange={(event) =>
+                  concurrencyField.setDraft(event.target.value)
+                }
+                onBlur={() => void concurrencyField.commit()}
+                onKeyDown={concurrencyField.handleKeyDown}
+                placeholder={String(preferences.concurrency)}
+                aria-label={t("managedSiteModelSync:settings.concurrency")}
+                disabled={concurrencyField.isCommitting}
                 className="w-24"
               />
             }
@@ -620,18 +741,16 @@ export default function ManagedSiteModelSyncSettings() {
                 type="number"
                 min="0"
                 max="5"
-                value={String(preferences.maxRetries)}
-                onChange={(e) => {
-                  const maxRetries = parseInt(e.target.value)
-                  if (
-                    Number.isFinite(maxRetries) &&
-                    maxRetries >= 0 &&
-                    maxRetries <= 5
-                  ) {
-                    void savePreferences({ maxRetries })
-                  }
-                }}
-                disabled={isSaving}
+                step="1"
+                value={maxRetriesField.draft}
+                onChange={(event) =>
+                  maxRetriesField.setDraft(event.target.value)
+                }
+                onBlur={() => void maxRetriesField.commit()}
+                onKeyDown={maxRetriesField.handleKeyDown}
+                placeholder={String(preferences.maxRetries)}
+                aria-label={t("managedSiteModelSync:settings.maxRetries")}
+                disabled={maxRetriesField.isCommitting}
                 className="w-24"
               />
             }
@@ -650,20 +769,18 @@ export default function ManagedSiteModelSyncSettings() {
                   type="number"
                   min="0"
                   max={String(CHANNEL_PROCESSING_TIMEOUT_MAX_SECONDS)}
-                  value={String(preferences.channelProcessingTimeout)}
-                  onChange={(e) => {
-                    const timeoutSeconds = parseInt(e.target.value, 10)
-                    if (
-                      Number.isFinite(timeoutSeconds) &&
-                      timeoutSeconds >= 0 &&
-                      timeoutSeconds <= CHANNEL_PROCESSING_TIMEOUT_MAX_SECONDS
-                    ) {
-                      void savePreferences({
-                        channelProcessingTimeout: timeoutSeconds,
-                      })
-                    }
-                  }}
-                  disabled={isSaving}
+                  step="1"
+                  value={channelProcessingTimeoutField.draft}
+                  onChange={(event) =>
+                    channelProcessingTimeoutField.setDraft(event.target.value)
+                  }
+                  onBlur={() => void channelProcessingTimeoutField.commit()}
+                  onKeyDown={channelProcessingTimeoutField.handleKeyDown}
+                  placeholder={String(preferences.channelProcessingTimeout)}
+                  aria-label={t(
+                    "managedSiteModelSync:settings.channelProcessingTimeout",
+                  )}
+                  disabled={channelProcessingTimeoutField.isCommitting}
                   className="w-24"
                 />
                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -687,19 +804,18 @@ export default function ManagedSiteModelSyncSettings() {
                 type="number"
                 min="5"
                 max="120"
-                value={String(preferences.rateLimit.requestsPerMinute)}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value)
-                  if (Number.isFinite(value) && value >= 5 && value <= 120) {
-                    void savePreferences({
-                      rateLimit: {
-                        ...preferences.rateLimit,
-                        requestsPerMinute: value,
-                      },
-                    })
-                  }
-                }}
-                disabled={isSaving}
+                step="1"
+                value={requestsPerMinuteField.draft}
+                onChange={(event) =>
+                  requestsPerMinuteField.setDraft(event.target.value)
+                }
+                onBlur={() => void requestsPerMinuteField.commit()}
+                onKeyDown={requestsPerMinuteField.handleKeyDown}
+                placeholder={String(preferences.rateLimit.requestsPerMinute)}
+                aria-label={t(
+                  "managedSiteModelSync:settings.requestsPerMinute",
+                )}
+                disabled={requestsPerMinuteField.isCommitting}
                 className="w-24"
               />
             }
@@ -715,19 +831,14 @@ export default function ManagedSiteModelSyncSettings() {
                 type="number"
                 min="1"
                 max="20"
-                value={String(preferences.rateLimit.burst)}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value)
-                  if (Number.isFinite(value) && value >= 1 && value <= 20) {
-                    void savePreferences({
-                      rateLimit: {
-                        ...preferences.rateLimit,
-                        burst: value,
-                      },
-                    })
-                  }
-                }}
-                disabled={isSaving}
+                step="1"
+                value={burstField.draft}
+                onChange={(event) => burstField.setDraft(event.target.value)}
+                onBlur={() => void burstField.commit()}
+                onKeyDown={burstField.handleKeyDown}
+                placeholder={String(preferences.rateLimit.burst)}
+                aria-label={t("managedSiteModelSync:settings.burst")}
+                disabled={burstField.isCommitting}
                 className="w-24"
               />
             }
@@ -751,7 +862,7 @@ export default function ManagedSiteModelSyncSettings() {
                 onChange={(values) => {
                   void savePreferences({ allowedModels: values })
                 }}
-                disabled={isSaving || optionsLoading}
+                disabled={optionsLoading}
               />
               {optionsLoading ? (
                 <p className="text-xs text-gray-500">
@@ -783,7 +894,6 @@ export default function ManagedSiteModelSyncSettings() {
                 variant="outline"
                 size="sm"
                 onClick={handleOpenGlobalChannelModelFilters}
-                disabled={isSaving}
               >
                 {t(
                   "managedSiteModelSync:settings.globalChannelModelFiltersButton",

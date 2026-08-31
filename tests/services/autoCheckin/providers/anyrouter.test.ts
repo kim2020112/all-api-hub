@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { SITE_TYPES } from "~/constants/siteType"
-import {
-  anyrouterProvider,
-  type AnyrouterCheckInParams,
-} from "~/services/checkin/autoCheckin/providers/anyrouter"
+import { anyrouterProvider } from "~/services/checkin/autoCheckin/providers/anyrouter"
+import type { AnyrouterCheckInParams } from "~/services/checkin/autoCheckin/providers/contracts"
 import { PROTECTION_BYPASS_USER_COMMANDS } from "~/services/protectionBypass/contracts"
 import { AuthTypeEnum, SiteHealthStatus, type SiteAccount } from "~/types"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { createAutoCheckinMutationLifecycle } from "~~/tests/test-utils/autoCheckin"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: vi.fn(),
@@ -26,7 +26,7 @@ const mockAccount: SiteAccount = {
   disabled: false,
   excludeFromTotalBalance: false,
   excludeFromTodayIncome: false,
-  checkIn: { enableDetection: true },
+  checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
   health: { status: SiteHealthStatus.Healthy },
   account_info: {
     id: "12345",
@@ -60,22 +60,30 @@ const checkInForTest = (
 ) => anyrouterProvider.checkIn(account, context)
 
 describe("anyrouterProvider", () => {
-  describe("canCheckIn", () => {
-    it("returns true for valid account", () => {
-      expect(anyrouterProvider.canCheckIn(mockAccount)).toBe(true)
+  describe("getReadiness", () => {
+    it("returns ready for a valid account", () => {
+      expect(anyrouterProvider.getReadiness(mockAccount)).toEqual({
+        ready: true,
+      })
     })
 
-    it("returns false when enableDetection is false", () => {
-      const account = { ...mockAccount, checkIn: { enableDetection: false } }
-      expect(anyrouterProvider.canCheckIn(account)).toBe(false)
+    it("leaves automatic-execution intent to the Module", () => {
+      const account = {
+        ...mockAccount,
+        checkIn: buildCheckInConfig(),
+      }
+      expect(anyrouterProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
-    it("returns false when no user id", () => {
+    it("explains when account data is missing", () => {
       const account = {
         ...mockAccount,
         account_info: { ...mockAccount.account_info, id: "" },
       }
-      expect(anyrouterProvider.canCheckIn(account)).toBe(false)
+      expect(anyrouterProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "account_data_missing",
+      })
     })
   })
 
@@ -172,7 +180,20 @@ describe("anyrouterProvider", () => {
       })
     })
 
-    it("returns already_checked when response is success and message is empty", async () => {
+    it("returns success when success is true and optional result fields are omitted", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        success: true,
+        message: "",
+      })
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "success",
+        messageKey: "autoCheckin:providerFallback.checkinSuccessful",
+      })
+    })
+
+    it("does not treat an empty message as already checked", async () => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(
         fetchApi as unknown as (...args: any[]) => Promise<any>,
@@ -185,7 +206,7 @@ describe("anyrouterProvider", () => {
       })
 
       const result = await checkInForTest(mockAccount)
-      expect(result.status).toBe("already_checked")
+      expect(result.status).toBe("success")
     })
 
     it("returns already_checked when response is success and message indicates a prior check-in", async () => {
@@ -236,25 +257,38 @@ describe("anyrouterProvider", () => {
       })
     })
 
-    it("returns failed when a success response has no success or already-checked signal", async () => {
+    it.each([
+      ["ret", { ret: 1, message: "queued" }],
+      ["code", { code: 0, message: "queued" }],
+    ])("accepts %s as an independent success signal", async (_, response) => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(
         fetchApi as unknown as (...args: any[]) => Promise<any>,
       )
-      mockedFetchApi.mockResolvedValueOnce({
-        code: 1,
-        ret: 1,
-        success: true,
-        message: "queued",
-      })
+      mockedFetchApi.mockResolvedValueOnce(response)
 
       const result = await checkInForTest(mockAccount)
 
-      expect(result.status).toBe("failed")
+      expect(result.status).toBe("success")
       expect(result.rawMessage).toBe("queued")
     })
 
-    it("returns failed when response is not success (even if message indicates already checked)", async () => {
+    it("does not infer already checked from a zero ret value", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        code: 1,
+        ret: 0,
+        success: true,
+        message: "No action was performed",
+      })
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "success",
+        rawMessage: "No action was performed",
+      })
+    })
+
+    it("recognizes an explicit already-checked message on a negative response", async () => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(
         fetchApi as unknown as (...args: any[]) => Promise<any>,
@@ -267,7 +301,20 @@ describe("anyrouterProvider", () => {
       })
 
       const result = await checkInForTest(mockAccount)
-      expect(result.status).toBe("failed")
+      expect(result.status).toBe("already_checked")
+    })
+
+    it("recognizes the msg field used by compatible deployments", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        ret: 0,
+        msg: "already checked today",
+      })
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "already_checked",
+        rawMessage: "already checked today",
+      })
     })
 
     it("returns failed when response indicates failure", async () => {
@@ -315,6 +362,15 @@ describe("anyrouterProvider", () => {
       expect(result.status).toBe("already_checked")
     })
 
+    it("does not treat an empty thrown message as already checked", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      vi.mocked(fetchApi).mockRejectedValueOnce(new Error(""))
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "failed",
+      })
+    })
+
     it("handles errors gracefully", async () => {
       const { fetchApi } = await import("~/services/apiTransport/request")
       const mockedFetchApi = vi.mocked(
@@ -324,6 +380,25 @@ describe("anyrouterProvider", () => {
 
       const result = await checkInForTest(mockAccount)
       expect(result.status).toBe("failed")
+    })
+
+    it("returns uncertain when the response is lost after dispatch", async () => {
+      const { fetchApi } = await import("~/services/apiTransport/request")
+      const mutationLifecycle = createAutoCheckinMutationLifecycle()
+      vi.mocked(fetchApi).mockImplementationOnce(async (request) => {
+        request.observer?.onDispatch()
+        throw new TypeError("Failed to fetch")
+      })
+
+      await expect(
+        checkInForTest(mockAccount, {
+          ...DEFAULT_PROVIDER_CONTEXT,
+          mutationLifecycle,
+        }),
+      ).resolves.toMatchObject({
+        status: "uncertain",
+        reasonCode: "network_error",
+      })
     })
   })
 })

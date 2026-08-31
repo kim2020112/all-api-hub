@@ -3,14 +3,54 @@ import type { AccountIdentity, Sub2ApiAuthConfig } from "~/types"
 
 export type Sub2ApiStoredAuthSnapshot = {
   accessToken?: string
+  origin?: string
   userId?: AccountIdentity
   sub2apiAuth?: Sub2ApiAuthConfig
 }
 
 export type Sub2ApiPersistAuthUpdate = {
   accessToken: string
+  userId?: AccountIdentity
   refreshToken?: string
   tokenExpiresAt?: number
+  expectedOrigin: string
+  expectedUserId: AccountIdentity
+}
+
+export const SUB2API_AUTH_PERSISTENCE_STATUSES = {
+  PERSISTED: "persisted",
+  ACCOUNT_MISSING: "account_missing",
+  IDENTITY_MISMATCH: "identity_mismatch",
+  WRITE_FAILED: "write_failed",
+} as const
+
+export type Sub2ApiAuthPersistenceStatus =
+  (typeof SUB2API_AUTH_PERSISTENCE_STATUSES)[keyof typeof SUB2API_AUTH_PERSISTENCE_STATUSES]
+
+export type Sub2ApiAuthPersistenceResult = {
+  status: Sub2ApiAuthPersistenceStatus
+}
+
+const SUB2API_AUTH_PERSISTENCE_STATUS_SET = new Set<string>(
+  Object.values(SUB2API_AUTH_PERSISTENCE_STATUSES),
+)
+
+/** Reads the controlled persistence status carried by an auth-session error. */
+export function getSub2ApiAuthPersistenceStatus(
+  error: unknown,
+): Sub2ApiAuthPersistenceStatus | undefined {
+  if (!error || typeof error !== "object" || !("result" in error)) {
+    return undefined
+  }
+  const result = error.result
+  if (!result || typeof result !== "object" || !("status" in result)) {
+    return undefined
+  }
+  const status = result.status
+  return typeof status === "string" &&
+    SUB2API_AUTH_PERSISTENCE_STATUS_SET.has(status)
+    ? (status as Sub2ApiAuthPersistenceStatus)
+    : undefined
 }
 
 export type Sub2ApiAuthSession = {
@@ -18,7 +58,7 @@ export type Sub2ApiAuthSession = {
   persistAuthUpdate(
     accountId: string,
     update: Sub2ApiPersistAuthUpdate,
-  ): Promise<boolean>
+  ): Promise<Sub2ApiAuthPersistenceResult>
 }
 
 export type Sub2ApiAuthSessionRequest<

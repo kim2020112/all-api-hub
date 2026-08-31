@@ -5,6 +5,7 @@ import { OPTIONS_PAGE_PATH, POPUP_PAGE_PATH } from "~/constants/extensionPages"
 import { MENU_ITEM_IDS } from "~/constants/optionsMenuIds"
 import { getPopupViewTestId, POPUP_TEST_IDS } from "~/entrypoints/popup/testIds"
 import {
+  ACCOUNT_MANAGEMENT_LIST_ITEM_TEST_ID_PREFIX,
   ACCOUNT_MANAGEMENT_TEST_IDS,
   getAccountManagementListItemTestId,
 } from "~/features/AccountManagement/testIds"
@@ -14,6 +15,7 @@ import {
   getSiteBookmarkListItemTestId,
   SITE_BOOKMARKS_TEST_IDS,
 } from "~/features/SiteBookmarks/testIds"
+import enAccount from "~/locales/en/account.json" with { type: "json" }
 import { STORAGE_KEYS } from "~/services/core/storageKeys"
 import type { SiteAccount, SiteBookmark } from "~/types"
 import { expect, test } from "~~/e2e/fixtures/extensionTest"
@@ -293,6 +295,13 @@ test("opens the account manager from the default popup accounts tab", async ({
   await waitForExtensionRoot(page)
 
   await expect(page.getByTestId(getPopupViewTestId("accounts"))).toBeVisible()
+  const reorderButton = page.getByTestId(
+    ACCOUNT_MANAGEMENT_TEST_IDS.accountListReorderButton,
+  )
+  await expect(reorderButton).toHaveAttribute("aria-disabled", "true")
+  await expect(reorderButton).toHaveAccessibleDescription(
+    enAccount.list.reorderUnavailableInPopup,
+  )
   await expect(
     page.getByRole("button", { name: "Popup Account" }),
   ).toBeVisible()
@@ -420,6 +429,46 @@ test("updates popup account totals after disabling an account from management", 
       getAccountManagementListItemTestId("popup-disable-account"),
     ),
   ).toContainText("Disabled")
+})
+
+test("virtualizes long popup account lists while keeping the final account reachable", async ({
+  context,
+  extensionId,
+  page,
+}) => {
+  const serviceWorker = await getServiceWorker(context)
+  const accountCount = 80
+  await seedStoredAccounts(
+    serviceWorker,
+    Array.from({ length: accountCount }, (_, index) =>
+      createStoredAccount({
+        id: `virtual-account-${index}`,
+        site_name: `Virtual Account ${String(index).padStart(2, "0")}`,
+        site_url: `https://account-${index}.example.invalid`,
+      }),
+    ),
+  )
+
+  await page.goto(`chrome-extension://${extensionId}/${POPUP_PAGE_PATH}`)
+  await waitForExtensionRoot(page)
+
+  const renderedRows = page.locator(
+    `[data-testid^="${ACCOUNT_MANAGEMENT_LIST_ITEM_TEST_ID_PREFIX}"]`,
+  )
+  await expect.poll(() => renderedRows.count()).toBeGreaterThan(0)
+  expect(await renderedRows.count()).toBeLessThan(accountCount)
+
+  const lastRow = page.getByTestId(
+    getAccountManagementListItemTestId(`virtual-account-${accountCount - 1}`),
+  )
+  await expect
+    .poll(async () => {
+      await page
+        .getByTestId(POPUP_TEST_IDS.scrollContainer)
+        .evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+      return lastRow.isVisible()
+    })
+    .toBe(true)
 })
 
 test("downloads an overview share snapshot from the popup and copies the fallback caption", async ({
@@ -577,7 +626,7 @@ test("opens pending external check-ins from the popup and marks them checked in"
         access_token: "pending-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/pending/checkin",
           redeemUrl: "https://benefits.example.com/pending/redeem",
@@ -596,7 +645,7 @@ test("opens pending external check-ins from the popup and marks them checked in"
         access_token: "done-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/done/checkin",
           redeemUrl: "https://benefits.example.com/done/redeem",
@@ -664,7 +713,7 @@ test("ctrl-clicking popup external check-ins opens already checked accounts too"
         access_token: "pending-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/ctrl-pending/checkin",
           redeemUrl: "https://benefits.example.com/ctrl-pending/redeem",
@@ -683,7 +732,7 @@ test("ctrl-clicking popup external check-ins opens already checked accounts too"
         access_token: "done-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/ctrl-done/checkin",
           redeemUrl: "https://benefits.example.com/ctrl-done/redeem",
@@ -752,7 +801,7 @@ test("shift-clicking popup external check-ins groups opened pages into one brows
         access_token: "shift-pending-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/shift-pending/checkin",
           redeemUrl: "https://benefits.example.com/shift-pending/redeem",
@@ -771,7 +820,7 @@ test("shift-clicking popup external check-ins groups opened pages into one brows
         access_token: "shift-done-external-token",
       },
       checkIn: {
-        enableDetection: false,
+        automaticExecutionEnabled: false,
         customCheckIn: {
           url: "https://benefits.example.com/shift-done/checkin",
           redeemUrl: "https://benefits.example.com/shift-done/redeem",

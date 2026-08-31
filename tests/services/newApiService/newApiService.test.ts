@@ -6,6 +6,7 @@ import type { ApiToken, DisplaySiteData } from "~/types"
 import { AuthTypeEnum, SiteHealthStatus } from "~/types"
 import type { ChannelFormData, CreateChannelPayload } from "~/types/newApi"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 // ============================================================================
 // MOCKS
@@ -149,7 +150,7 @@ function createMockDisplaySiteData(
     token: "test-token-123",
     userId: "1",
     authType: AuthTypeEnum.AccessToken,
-    checkIn: { enableDetection: false },
+    checkIn: buildCheckInConfig(),
     ...overrides,
   }
 }
@@ -823,10 +824,12 @@ describe("newApiService", () => {
         }),
       )
       fetchNewApiChannelKeyMock.mockResolvedValueOnce("resolved-secret")
+      const signal = new AbortController().signal
 
       await expect(
         fetchChannelSecretKey(config, 99, {
           protectionBypassExecution: SESSION_READ_EXECUTION,
+          signal,
         }),
       ).resolves.toBe("resolved-secret")
 
@@ -838,6 +841,7 @@ describe("newApiService", () => {
         totpSecret: "otp-secret",
         channelId: 99,
         protectionBypassExecution: SESSION_READ_EXECUTION,
+        signal,
       })
     })
 
@@ -930,6 +934,7 @@ describe("newApiService", () => {
         createMockUserPreferencesWithNewApi(),
       )
       fetchNewApiChannelKeyMock.mockResolvedValueOnce("sk-revealed")
+      const signal = new AbortController().signal
 
       const result = await hydrateComparableChannelKeys(
         config,
@@ -941,7 +946,7 @@ describe("newApiService", () => {
             models: "gpt-4o",
           }),
         ],
-        { protectionBypassExecution: SESSION_READ_EXECUTION },
+        { protectionBypassExecution: SESSION_READ_EXECUTION, signal },
       )
 
       expect(result).toEqual([
@@ -950,6 +955,9 @@ describe("newApiService", () => {
           key: "sk-revealed",
         }),
       ])
+      expect(fetchNewApiChannelKeyMock).toHaveBeenCalledWith(
+        expect.objectContaining({ signal }),
+      )
     })
 
     it("should map New API verification requirements during hydration", async () => {

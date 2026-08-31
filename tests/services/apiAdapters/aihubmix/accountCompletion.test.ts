@@ -12,6 +12,11 @@ import type { AccountCompletionHelpers } from "~/services/apiAdapters/contracts/
 import { API_SERVICE_FETCH_CONTEXT_KINDS } from "~/services/apiTransport/type"
 import { AuthTypeEnum } from "~/types"
 
+import {
+  createAccountCompletionCheckInConfigMock,
+  createCheckInConfig,
+} from "../checkInFixtures"
+
 const {
   mockExtractDefaultExchangeRate,
   mockFetchSiteStatus,
@@ -70,20 +75,11 @@ const trimString = vi.fn((value: unknown) =>
   typeof value === "string" ? value.trim() : "",
 )
 
-const createInitialCheckInConfig = vi.fn(
-  ({ enableDetection, autoCheckInEnabled }) => ({
-    enableDetection,
-    autoCheckInEnabled,
-    siteStatus: {
-      isCheckedInToday: false,
-    },
-    customCheckIn: {
-      url: "",
-      redeemUrl: "",
-      openRedeemWithCheckIn: true,
-      isCheckedInToday: false,
-    },
-  }),
+const createInitialCheckInConfig = createAccountCompletionCheckInConfigMock(
+  SITE_TYPES.AIHUBMIX,
+  {
+    automaticExecutionEnabled: false,
+  },
 )
 
 const handleCheckInSupportFetchFailure = vi.fn(() => false as const)
@@ -139,8 +135,7 @@ describe("aihubmixAccountCompletion", () => {
     })
     expect(mockFetchSupportCheckIn).not.toHaveBeenCalled()
     expect(createInitialCheckInConfig).toHaveBeenCalledWith({
-      enableDetection: false,
-      autoCheckInEnabled: true,
+      supported: false,
     })
     expect(result).toEqual({
       username: "aihubmix-user",
@@ -150,11 +145,10 @@ describe("aihubmixAccountCompletion", () => {
       exchangeRate: UI_CONSTANTS.EXCHANGE_RATE.DEFAULT,
       authType: AuthTypeEnum.AccessToken,
       checkIn: {
-        enableDetection: false,
-        autoCheckInEnabled: true,
-        siteStatus: {
-          isCheckedInToday: false,
-        },
+        ...createCheckInConfig(SITE_TYPES.AIHUBMIX, {
+          matched: false,
+          automaticExecutionEnabled: false,
+        }),
         customCheckIn: {
           url: "",
           redeemUrl: "",
@@ -215,8 +209,7 @@ describe("aihubmixAccountCompletion", () => {
       exchangeRate: UI_CONSTANTS.EXCHANGE_RATE.DEFAULT,
       authType: AuthTypeEnum.AccessToken,
       checkIn: expect.objectContaining({
-        enableDetection: true,
-        autoCheckInEnabled: true,
+        automaticExecutionEnabled: false,
       }),
     })
   })
@@ -347,10 +340,9 @@ describe("aihubmixAccountCompletion", () => {
 
     expect(handleCheckInSupportFetchFailure).toHaveBeenCalledWith(supportError)
     expect(createInitialCheckInConfig).toHaveBeenCalledWith({
-      enableDetection: false,
-      autoCheckInEnabled: true,
+      supported: false,
     })
-    expect(result.checkIn.enableDetection).toBe(false)
+    expect(result.checkIn.selection).not.toHaveProperty("methodId")
   })
 
   it("classifies missing generated access token when username is present", async () => {

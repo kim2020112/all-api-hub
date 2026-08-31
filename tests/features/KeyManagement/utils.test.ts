@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { SITE_TYPES } from "~/constants/siteType"
 import { UI_CONSTANTS } from "~/constants/ui"
+import { getKeyManagementAssociationTargetId } from "~/features/KeyManagement/testIds"
+import { KEY_MANAGEMENT_LOAD_STATUSES } from "~/features/KeyManagement/types"
 import {
   buildAccountRuntimeKeyEntryIdentityKey,
   buildAccountTokenKeyManagementEntry,
@@ -9,6 +12,8 @@ import {
   buildTokenIdentityKey,
   formatKey,
   formatQuota,
+  isAccountKeyResourceLocatorMatch,
+  isAccountRuntimeKeyLocatorMatch,
   isManagedSiteStatusIdentityForAccount,
   loadServiceCredentialKeyManagementRuntimeKey,
   toLegacyAccountTokenForKeyManagementEntry,
@@ -38,6 +43,11 @@ vi.mock("~/utils/i18n/core", async (importOriginal) => {
 })
 
 describe("KeyManagement utils", () => {
+  it("builds a stable DOM target without exposing an unescaped association id", () => {
+    expect(
+      getKeyManagementAssociationTargetId("association/example value"),
+    ).toBe("key-management-association-target-association%2Fexample%20value")
+  })
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -95,7 +105,9 @@ describe("KeyManagement utils", () => {
       expect(
         buildServiceCredentialKeyManagementEntry({
           account,
-          serviceCredential: { status: "loading" },
+          serviceCredential: {
+            status: KEY_MANAGEMENT_LOAD_STATUSES.Loading,
+          },
           canRotate: true,
         }),
       ).toBeNull()
@@ -103,7 +115,7 @@ describe("KeyManagement utils", () => {
       const entry = buildServiceCredentialKeyManagementEntry({
         account,
         serviceCredential: {
-          status: "loaded",
+          status: KEY_MANAGEMENT_LOAD_STATUSES.Loaded,
           isRotating: true,
           credential: {
             kind: "singleton_service_key",
@@ -224,7 +236,7 @@ describe("KeyManagement utils", () => {
       const entry = buildServiceCredentialKeyManagementEntry({
         account,
         serviceCredential: {
-          status: "loaded",
+          status: KEY_MANAGEMENT_LOAD_STATUSES.Loaded,
           credential: {
             kind: "singleton_service_key",
             service: "codex",
@@ -282,6 +294,58 @@ describe("KeyManagement utils", () => {
           name: "Codex",
         },
       })
+    })
+  })
+
+  describe("credential association locator matching", () => {
+    it("matches account tokens by account, site type, and token id", () => {
+      const account = buildDisplaySiteData({
+        id: "account-1",
+        siteType: SITE_TYPES.NEW_API,
+      })
+      const runtimeKey = buildAccountTokenKeyManagementEntry(
+        account,
+        buildApiToken({ id: 42, key: "sk-example" }) as any,
+      ).runtimeKey
+
+      expect(
+        isAccountRuntimeKeyLocatorMatch(runtimeKey, {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+          accountId: "account-1",
+          siteType: SITE_TYPES.NEW_API,
+          tokenId: 42,
+        }),
+      ).toBe(true)
+      expect(
+        isAccountRuntimeKeyLocatorMatch(runtimeKey, {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+          accountId: "another-account",
+          siteType: SITE_TYPES.NEW_API,
+          tokenId: 42,
+        }),
+      ).toBe(false)
+    })
+
+    it("matches native resources by their complete opaque ref", () => {
+      const ref = {
+        accountId: "account-1",
+        siteType: SITE_TYPES.OPENROUTER,
+        scopeKey: "workspace-example",
+        resourceId: "hash-example",
+      }
+
+      expect(
+        isAccountKeyResourceLocatorMatch(ref, {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountKeyResource,
+          ref,
+        }),
+      ).toBe(true)
+      expect(
+        isAccountKeyResourceLocatorMatch(
+          { ...ref, scopeKey: "another-workspace" },
+          { source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountKeyResource, ref },
+        ),
+      ).toBe(false)
     })
   })
 

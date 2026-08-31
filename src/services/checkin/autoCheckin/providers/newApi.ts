@@ -1,3 +1,10 @@
+import {
+  CHECK_IN_METHOD_AVAILABILITIES,
+  CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES,
+  CHECK_IN_METHOD_STATUS_OUTCOMES,
+  CHECK_IN_METHOD_TODAY_STATUSES,
+  CHECK_IN_PROVIDER_READINESS_REASONS,
+} from "~/constants/checkIn"
 import { TURNSTILE_DEFAULT_WAIT_TIMEOUT_MS } from "~/constants/turnstile"
 import { normalizeAccountIdentity } from "~/services/accounts/accountIdentity"
 import {
@@ -9,14 +16,17 @@ import type {
   NewApiCheckInResponse,
   NewApiCheckInStatus,
 } from "~/services/apiService/newApiFamily/checkInDto"
+import { fetchSupportCheckIn } from "~/services/apiService/newApiFamily/default/accountBootstrap"
 import { buildCompatUserIdHeaders } from "~/services/apiTransport/compatHeaders"
 import { REQUEST_CONFIG } from "~/services/apiTransport/constant"
 import { ApiError } from "~/services/apiTransport/errors"
 import { fetchApi, fetchApiData } from "~/services/apiTransport/request"
+import type { ApiServiceRequest } from "~/services/apiTransport/type"
 import type {
   AutoCheckinProvider,
   AutoCheckinProviderContext,
-} from "~/services/checkin/autoCheckin/providers/index"
+} from "~/services/checkin/autoCheckin/providers/contracts"
+import { detectWithStatusReadback } from "~/services/checkin/autoCheckin/providers/detection"
 import {
   AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS,
   AUTO_CHECKIN_USER_CHECKIN_ENDPOINT,
@@ -70,6 +80,36 @@ const NEW_API_MESSAGE_KEYS = {
  */
 type CheckinResult = AutoCheckinProviderResult
 
+/** Build the authenticated request shared by New API check-in operations. */
+function createCheckInRequest(
+  account: SiteAccount,
+  tempWindowRequestSource?: TempWindowRequestSource,
+  protectionBypassExecution?: ProtectionBypassExecution,
+  mutationLifecycle?: AutoCheckinProviderContext["mutationLifecycle"],
+): ApiServiceRequest {
+  return {
+    baseUrl: account.site_url,
+    accountId: account.id,
+    cookieAuthSessionCookie: account.cookieAuth?.sessionCookie,
+    auth: {
+      authType: getEffectiveAuthType(account),
+      userId: account.account_info.id,
+      accessToken: account.account_info.access_token,
+    },
+    tempWindowRequestSource,
+    protectionBypassExecution,
+    ...(mutationLifecycle ? { observer: mutationLifecycle } : {}),
+  }
+}
+
+/** Read the canonical public site flag instead of matching backend copy. */
+async function isCheckInDisabled(
+  request: ApiServiceRequest,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  return (await fetchSupportCheckIn(request, signal)) === false
+}
+
 /**
  * daily check-in endpoint.
  *
@@ -81,6 +121,14 @@ const TURNSTILE_ASSIST_TIMEOUT_MS = TURNSTILE_DEFAULT_WAIT_TIMEOUT_MS
 const NATIVE_PAGE_STATUS_POLL_TIMEOUT_MS = 8_000
 const NATIVE_PAGE_STATUS_POLL_INTERVAL_MS = 1_000
 const CHECKIN_STATUS_MONTH_FORMAT_LENGTH = 7
+
+// New API exposes GET /api/user/checkin for readback and POST for mutation.
+// Its official UI treats the public /api/status checkin_enabled flag as the
+// availability contract, while check-in failures are HTTP 200 message-only
+// responses whose localized text is not stable enough for state detection:
+// https://github.com/QuantumNous/new-api/blob/2d8e50bf36e94200b809dfb39e73624ec48b1e23/controller/misc.go
+// https://github.com/QuantumNous/new-api/blob/2d8e50bf36e94200b809dfb39e73624ec48b1e23/controller/checkin.go
+// https://github.com/QuantumNous/new-api/blob/2d8e50bf36e94200b809dfb39e73624ec48b1e23/common/gin.go
 
 /**
  * Determine whether a check-in failure message indicates Turnstile verification is required.
@@ -262,35 +310,65 @@ function resolveStandardCheckinResult(params: {
  * actual status when the Turnstile-assisted attempt cannot obtain a token.
  */
 async function fetchCheckedInTodayStatus(
-  account: SiteAccount,
-  tempWindowRequestSource: TempWindowRequestSource,
-  protectionBypassExecution: ProtectionBypassExecution,
-): Promise<boolean | undefined> {
+  account: SiteAccount | undefined,
+  tempWindowRequestSource?: TempWindowRequestSource,
+  protectionBypassExecution?: ProtectionBypassExecution,
+  throwOnUnsupported = false,
+  signal?: AbortSignal,
+  strictResponse = false,
+  existingRequest?: ApiServiceRequest,
+): Promise<
+  | {
+      checkedInToday?: boolean
+      enabled: boolean
+    }
+  | undefined
+> {
   const currentMonth = new Date()
     .toISOString()
     .slice(0, CHECKIN_STATUS_MONTH_FORMAT_LENGTH)
+  const request =
+    existingRequest ??
+    (account
+      ? createCheckInRequest(
+          account,
+          tempWindowRequestSource,
+          protectionBypassExecution,
+        )
+      : undefined)
+  if (!request) return undefined
 
   try {
-    const checkInData = await fetchApiData<NewApiCheckInStatus>(
-      {
-        baseUrl: account.site_url,
-        accountId: account.id,
-        cookieAuthSessionCookie: account.cookieAuth?.sessionCookie,
-        auth: {
-          authType: getEffectiveAuthType(account),
-          userId: account.account_info.id,
-          accessToken: account.account_info.access_token,
-        },
-        tempWindowRequestSource,
-        protectionBypassExecution,
-      },
-      {
-        endpoint: `${ENDPOINT}?month=${currentMonth}`,
-      },
-    )
+    const checkInData = await fetchApiData<NewApiCheckInStatus>(request, {
+      endpoint: `${ENDPOINT}?month=${currentMonth}`,
+      ...(signal ? { options: { signal } } : {}),
+    })
 
-    return Boolean(checkInData?.stats?.checked_in_today)
+    if (
+      typeof checkInData?.stats?.checked_in_today === "boolean" &&
+      (!strictResponse || typeof checkInData?.enabled === "boolean")
+    ) {
+      return {
+        enabled: checkInData.enabled !== false,
+        checkedInToday: checkInData.stats.checked_in_today,
+      }
+    }
+
+    return !signal?.aborted && (await isCheckInDisabled(request, signal))
+      ? { enabled: false }
+      : undefined
   } catch (error) {
+    if (!signal?.aborted && (await isCheckInDisabled(request, signal))) {
+      return { enabled: false }
+    }
+    if (strictResponse) throw error
+    if (
+      throwOnUnsupported &&
+      error instanceof ApiError &&
+      (error.statusCode === 404 || error.statusCode === 405)
+    ) {
+      throw error
+    }
     if (
       error instanceof ApiError &&
       (error.statusCode === 404 || error.statusCode === 500)
@@ -314,11 +392,13 @@ async function pollCheckedInTodayStatus(
   let lastStatus: boolean | undefined
 
   while (Date.now() <= deadline) {
-    lastStatus = await fetchCheckedInTodayStatus(
-      account,
-      tempWindowRequestSource,
-      protectionBypassExecution,
-    )
+    lastStatus = (
+      await fetchCheckedInTodayStatus(
+        account,
+        tempWindowRequestSource,
+        protectionBypassExecution,
+      )
+    )?.checkedInToday
     if (lastStatus === true) return true
 
     const remainingMs = deadline - Date.now()
@@ -661,11 +741,13 @@ async function resolveTurnstileAssistedCheckinResult(params: {
 
   if (!assisted.success) {
     if (assisted.turnstile?.status !== "token_obtained") {
-      const checkedInToday = await fetchCheckedInTodayStatus(
-        params.account,
-        params.tempWindowRequestSource,
-        params.protectionBypassExecution,
-      )
+      const checkedInToday = (
+        await fetchCheckedInTodayStatus(
+          params.account,
+          params.tempWindowRequestSource,
+          params.protectionBypassExecution,
+        )
+      )?.checkedInToday
       if (checkedInToday === true) {
         return {
           status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
@@ -773,11 +855,13 @@ async function resolveTurnstileAssistedCheckinResult(params: {
     assisted.turnstile?.status &&
     assisted.turnstile.status !== "token_obtained"
   ) {
-    const checkedInToday = await fetchCheckedInTodayStatus(
-      params.account,
-      params.tempWindowRequestSource,
-      params.protectionBypassExecution,
-    )
+    const checkedInToday = (
+      await fetchCheckedInTodayStatus(
+        params.account,
+        params.tempWindowRequestSource,
+        params.protectionBypassExecution,
+      )
+    )?.checkedInToday
     if (checkedInToday === true) {
       return {
         status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
@@ -813,22 +897,15 @@ async function performCheckin(
   account: SiteAccount,
   tempWindowRequestSource: TempWindowRequestSource,
   protectionBypassExecution: ProtectionBypassExecution,
+  mutationLifecycle?: AutoCheckinProviderContext["mutationLifecycle"],
 ): Promise<NewApiCheckInResponse> {
-  const { site_url, account_info } = account
-
   return await fetchApi<NewApiCheckInRecord>(
-    {
-      baseUrl: site_url,
-      accountId: account.id,
-      cookieAuthSessionCookie: account.cookieAuth?.sessionCookie,
-      auth: {
-        authType: getEffectiveAuthType(account),
-        userId: account_info.id,
-        accessToken: account_info.access_token,
-      },
+    createCheckInRequest(
+      account,
       tempWindowRequestSource,
       protectionBypassExecution,
-    },
+      mutationLifecycle,
+    ),
     {
       endpoint: ENDPOINT,
       options: {
@@ -868,8 +945,34 @@ async function checkinNewApi(
       account,
       tempWindowRequestSource,
       context.protectionBypassExecution,
+      context.mutationLifecycle,
     )
     const responseMessage = normalizeCheckinMessage(checkinResponse.message)
+
+    if (!checkinResponse.success) {
+      const statusAfterFailure = await fetchCheckedInTodayStatus(
+        account,
+        tempWindowRequestSource,
+        context.protectionBypassExecution,
+      )
+      if (statusAfterFailure?.enabled === false) {
+        return {
+          status: CHECKIN_RESULT_STATUS.FAILED,
+          rawMessage: responseMessage || undefined,
+          messageKey: responseMessage
+            ? undefined
+            : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.checkinFailed,
+          data: checkinResponse,
+        }
+      }
+      if (statusAfterFailure?.checkedInToday === true) {
+        return {
+          status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
+          rawMessage: responseMessage || undefined,
+          data: checkinResponse.data,
+        }
+      }
+    }
 
     const standardResult = resolveStandardCheckinResult({
       payload: checkinResponse,
@@ -915,7 +1018,28 @@ async function checkinNewApi(
       data: checkinResponse ?? undefined,
     }
   } catch (error: unknown) {
+    if (context.mutationLifecycle?.dispatched) {
+      return resolveProviderErrorResult({
+        error,
+        mutationDispatched: true,
+      })
+    }
+
     const errorMessage = getProviderErrorMessage(error)
+    if (
+      await isCheckInDisabled(
+        createCheckInRequest(
+          account,
+          tempWindowRequestSource,
+          context.protectionBypassExecution,
+        ),
+      )
+    ) {
+      return resolveProviderErrorResult({
+        error,
+        mutationDispatched: context.mutationLifecycle?.dispatched,
+      })
+    }
     if (
       shouldAttemptNativePageCheckinFallback({
         success: false,
@@ -931,35 +1055,80 @@ async function checkinNewApi(
       })
     }
 
-    return resolveProviderErrorResult({ error })
+    return resolveProviderErrorResult({
+      error,
+      mutationDispatched: context.mutationLifecycle?.dispatched,
+    })
   }
 }
 
 /**
  * Determine whether this account has the required configuration for check-in.
  */
-function canCheckIn(account: SiteAccount): boolean {
-  if (!account.checkIn?.enableDetection) {
-    return false
-  }
-
+function getReadiness(account: SiteAccount) {
   if (!account.account_info?.id) {
-    return false
+    return {
+      ready: false,
+      reason: CHECK_IN_PROVIDER_READINESS_REASONS.AccountDataMissing,
+    } as const
   }
 
   const authType = getEffectiveAuthType(account)
 
   if (authType === AuthTypeEnum.AccessToken) {
-    return !!account.account_info?.access_token
+    return account.account_info?.access_token
+      ? ({ ready: true } as const)
+      : ({
+          ready: false,
+          reason: CHECK_IN_PROVIDER_READINESS_REASONS.CredentialsMissing,
+        } as const)
   }
 
-  return true
+  return { ready: true } as const
 }
 
 /**
  * Exported provider implementation for `site_type = new-api`.
  */
+const getStatus: NonNullable<AutoCheckinProvider["getStatus"]> = async ({
+  account,
+  request,
+  observedAt,
+  signal,
+}) => {
+  const observation = await fetchCheckedInTodayStatus(
+    account,
+    undefined,
+    undefined,
+    true,
+    signal,
+    true,
+    request,
+  )
+  return observation
+    ? {
+        outcome: CHECK_IN_METHOD_STATUS_OUTCOMES.Known,
+        availability: observation.enabled
+          ? CHECK_IN_METHOD_AVAILABILITIES.Enabled
+          : CHECK_IN_METHOD_AVAILABILITIES.Disabled,
+        ...(typeof observation.checkedInToday === "boolean"
+          ? {
+              today: observation.checkedInToday
+                ? CHECK_IN_METHOD_TODAY_STATUSES.Checked
+                : CHECK_IN_METHOD_TODAY_STATUSES.NotChecked,
+            }
+          : {}),
+        evidence: {
+          source: CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES.Probe,
+          observedAt,
+        },
+      }
+    : undefined
+}
+
 export const newApiProvider: AutoCheckinProvider = {
-  canCheckIn,
+  getReadiness,
+  detect: (context) => detectWithStatusReadback(context, getStatus),
+  getStatus,
   checkIn: checkinNewApi,
 }

@@ -12,7 +12,8 @@ The following are the most common and suitable types of sites for unified manage
 | New API | Unified AI model aggregation and distribution center. | [Official Website](https://www.newapi.ai/) / [GitHub](https://github.com/QuantumNous/new-api) |
 | one-api | LLM API management and distribution system, supporting mainstream models such as OpenAI, Azure, Anthropic Claude, Google Gemini, DeepSeek, etc. Unified API adaptation, can be used for Key management and secondary distribution. | [GitHub](https://github.com/songquanpeng/one-api) |
 | Sub2API | Sub2API-CRS2 one-stop open-source relay service, providing unified access to Claude, OpenAI, Gemini, and Antigravity subscriptions, with shared plans, more efficient cost sharing, and seamless use of native tools. | [GitHub](https://github.com/Wei-Shaw/sub2api) |
-| AnyRouter | Claude Code intermediate station · Zero threshold · Free $50 | [Documentation](https://docs.anyrouter.top/) / [Official Website](https://anyrouter.top) |
+| AnyRouter | Claude Code intermediate station · Zero threshold · Free $50 | [Documentation](https://docs.anyrouter.top/) / [Official Website](https://anyrouter.top/register?aff=tDKX) |
+| AgentRouter | AI API routing and relay service platform. | [Official Website](https://agentrouter.org/register?aff=TUX6) |
 | one-hub | OpenAI interface management and distribution system, modified from songquanpeng/one-api, supports more models, adds a statistics page, and improves function calls for non-OpenAI models. | [Official Website](https://one-hub.xiao5.info/) / [GitHub](https://github.com/MartialBE/one-hub) |
 | Veloera | This project has been discontinued. | [GitHub](https://github.com/Veloera/Veloera) |
 | VoAPI | Only legacy compatible deployments are supported; newer VoAPI versions are outside the extension's current compatibility scope. | [GitHub](https://github.com/VoAPI/VoAPI) |
@@ -121,6 +122,17 @@ If you are looking for stable, efficient, and highly compatible AI relay service
     </a>
     <p>
       Are you concerned about diluted models, reduced model intelligence, or opaque pricing? Every model offered by <strong>Infistar.ai</strong> is verified through real API calls. Supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to ensure low latency and peak-hour stability. It covers mainstream models including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, reranking, and more. Pricing and usage are transparent and easy to review, with models available from 10% of official prices. All API Hub users can register and try it through <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">the dedicated link</a> (<a href="./service-guides/infistar.md">setup guide</a>).
+    </p>
+  </section>
+
+  <hr>
+
+  <section class="sponsor-item">
+    <a class="sponsor-logo" href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+    <p>
+      <strong>APIMart</strong> is a low-cost API platform for AI image & video generation — GPT-Image-2 from <strong>$0.006/image</strong>, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, then fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee. Sign up through <a href="https://go.apimart.ai/gh-all-api-hub">this link</a> to get started.
     </p>
   </section>
 

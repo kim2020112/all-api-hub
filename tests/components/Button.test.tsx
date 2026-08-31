@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { Button } from "~/components/ui/button"
+import { Button, BUTTON_LOADING_BEHAVIORS } from "~/components/ui/button"
 import { ProductAnalyticsScope } from "~/contexts/ProductAnalyticsScopeContext"
 import {
   PRODUCT_ANALYTICS_ACTION_IDS,
@@ -56,6 +56,93 @@ describe("Button", () => {
       "data-size",
       "lg",
     )
+  })
+
+  it("lets text button sizes shrink, wrap, and grow within their container", async () => {
+    render(
+      <>
+        <Button>Default localized action label</Button>
+        <Button size="sm">Small localized action label</Button>
+        <Button size="lg">Large localized action label</Button>
+      </>,
+    )
+
+    const textButtons = [
+      await screen.findByRole("button", {
+        name: "Default localized action label",
+      }),
+      await screen.findByRole("button", {
+        name: "Small localized action label",
+      }),
+      await screen.findByRole("button", {
+        name: "Large localized action label",
+      }),
+    ]
+
+    for (const button of textButtons) {
+      expect(button).toHaveClass(
+        "h-auto",
+        "min-w-0",
+        "max-w-full",
+        "shrink",
+        "text-center",
+        "break-words",
+        "whitespace-normal",
+      )
+      expect(button).not.toHaveClass("shrink-0")
+      expect(button).not.toHaveClass("whitespace-nowrap")
+    }
+
+    expect(textButtons[0]).not.toHaveClass("min-h-9")
+    expect(textButtons[1]).not.toHaveClass("min-h-8")
+    expect(textButtons[2]).not.toHaveClass("min-h-10")
+  })
+
+  it("keeps icon-only button sizes fixed", async () => {
+    render(
+      <>
+        <Button size="icon" aria-label="Default icon" />
+        <Button size="icon-xs" aria-label="Extra-small icon" />
+        <Button size="icon-sm" aria-label="Small icon" />
+        <Button size="icon-lg" aria-label="Large icon" />
+      </>,
+    )
+
+    for (const name of [
+      "Default icon",
+      "Extra-small icon",
+      "Small icon",
+      "Large icon",
+    ]) {
+      const button = await screen.findByRole("button", { name })
+      expect(button).toHaveClass("max-w-none", "shrink-0", "whitespace-nowrap")
+      expect(button).not.toHaveClass("max-w-full")
+      expect(button).not.toHaveClass("shrink")
+      expect(button).not.toHaveClass("whitespace-normal")
+    }
+  })
+
+  it("lets compact text actions opt out of wrapping", async () => {
+    render(
+      <Button className="h-6 max-w-none shrink-0 whitespace-nowrap">
+        Compact action
+      </Button>,
+    )
+
+    const button = await screen.findByRole("button", {
+      name: "Compact action",
+    })
+    expect(button).toHaveClass(
+      "h-6",
+      "max-w-none",
+      "shrink-0",
+      "whitespace-nowrap",
+    )
+    expect(button).not.toHaveClass("h-auto")
+    expect(button).not.toHaveClass("min-h-9")
+    expect(button).not.toHaveClass("max-w-full")
+    expect(button).not.toHaveClass("shrink")
+    expect(button).not.toHaveClass("whitespace-normal")
   })
 
   it("forwards the resolved visual size through asChild", async () => {
@@ -188,6 +275,54 @@ describe("Button", () => {
     )
 
     const button = await screen.findByRole("button", { name: "Save" })
+    expect(button).toBeDisabled()
+
+    fireEvent.click(button)
+
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it("keeps an interactive loading action enabled and clickable", async () => {
+    const onClick = vi.fn()
+
+    render(
+      <Button
+        loading
+        loadingBehavior={BUTTON_LOADING_BEHAVIORS.Interactive}
+        onClick={onClick}
+      >
+        Cancel loading
+      </Button>,
+    )
+
+    const button = await screen.findByRole("button", {
+      name: "Cancel loading",
+    })
+    expect(button).toBeEnabled()
+    expect(button).toHaveAttribute("aria-busy", "true")
+
+    fireEvent.click(button)
+
+    expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it("lets an explicit disabled state override interactive loading", async () => {
+    const onClick = vi.fn()
+
+    render(
+      <Button
+        loading
+        loadingBehavior={BUTTON_LOADING_BEHAVIORS.Interactive}
+        disabled
+        onClick={onClick}
+      >
+        Cancel loading
+      </Button>,
+    )
+
+    const button = await screen.findByRole("button", {
+      name: "Cancel loading",
+    })
     expect(button).toBeDisabled()
 
     fireEvent.click(button)

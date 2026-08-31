@@ -126,12 +126,12 @@ const logger = createLogger("ApiTransportRequest")
 type ApiTransportObserverEvent = keyof ApiTransportRequestObserver
 
 /** Keeps optional lifecycle evidence best-effort and isolated from transport results. */
-function notifyApiTransportObserver(
+export function notifyApiTransportObserver(
   observer: ApiTransportRequestObserver | undefined,
   event: ApiTransportObserverEvent,
 ): void {
   try {
-    observer?.[event]()
+    observer?.[event]?.()
   } catch {
     logger.warn("API transport observer callback failed", { event })
   }
@@ -419,6 +419,7 @@ async function fetchViaCurrentTabContent<T>(context: {
       response = await sendTabMessageWithRetry(context.fetchContext.tabId, {
         action: RuntimeActionIds.ContentPerformTempWindowFetch,
         requestId,
+        expectedOrigin: new URL(context.fetchContext.origin).origin,
         fetchUrl: context.url,
         fetchOptions: normalizeRequestInitForMessage(context.fetchOptions),
         responseType: context.responseType,

@@ -1,10 +1,21 @@
 import userEvent from "@testing-library/user-event"
+import { http, HttpResponse } from "msw"
 import { describe, expect, it, vi } from "vitest"
 
-import { AccountKeyResourceListItem } from "~/features/KeyManagement/components/AccountKeyResource/AccountKeyResourceListItem"
+import { AccountKeyResourceListItem as NativeAccountKeyResourceListItem } from "~/features/KeyManagement/components/AccountKeyResource/AccountKeyResourceListItem"
+import { openRouterKeyResourceCardAdapter } from "~/features/KeyManagement/presentation/openRouterKeyResourceCard"
 import { KEY_MANAGEMENT_TEST_IDS } from "~/features/KeyManagement/testIds"
 import type { NativeKeyManagementRow } from "~/features/KeyManagement/types"
-import { render, screen } from "~~/tests/test-utils/render"
+import { maskSecretForDisplay } from "~/utils/core/formatters"
+import { server } from "~~/tests/msw/server"
+import { render, screen, waitFor } from "~~/tests/test-utils/render"
+
+const AccountKeyResourceListItem = (props: any) => (
+  <NativeAccountKeyResourceListItem
+    cardAdapter={openRouterKeyResourceCardAdapter}
+    {...props}
+  />
+)
 
 const row: NativeKeyManagementRow = {
   kind: "account-key-resource",
@@ -62,9 +73,18 @@ describe("AccountKeyResourceListItem", () => {
       screen.getByTestId(KEY_MANAGEMENT_TEST_IDS.keyResourceSummaryFacts),
     ).toBeVisible()
     expect(screen.getByText("keyManagement:keyDetails.key")).toBeVisible()
-    expect(
-      screen.getByText("keyManagement:keyDetails.createResponseOnlySecret"),
-    ).toBeVisible()
+    const secretAvailabilityButton = screen.getByRole("button", {
+      name: "keyManagement:keyDetails.createResponseOnlySecret",
+    })
+    expect(secretAvailabilityButton).toBeVisible()
+    expect(secretAvailabilityButton).toHaveAttribute("type", "button")
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "keyManagement:keyDetails.createResponseOnlySecret",
+    )
+    await user.hover(secretAvailabilityButton)
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "keyManagement:keyDetails.createResponseOnlySecret",
+    )
     expect(
       screen.getByRole("button", {
         name: "keyManagement:openRouter.list.actions.edit",
@@ -77,6 +97,9 @@ describe("AccountKeyResourceListItem", () => {
     ).toBeVisible()
     expect(
       screen.queryByRole("button", { name: "common:actions.copyKey" }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole("button", { name: "common:actions.export" }),
     ).toBeNull()
     expect(
       screen.queryByRole("button", {
@@ -161,6 +184,141 @@ describe("AccountKeyResourceListItem", () => {
     expect(
       screen.queryByText("keyManagement:openRouter.list.values.unlimited"),
     ).toBeNull()
+  })
+
+  it("exposes complete-key actions from a linked credential profile", async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get("https://api.example.invalid/v1/v1/models", () =>
+        HttpResponse.json({ data: { object: "list", data: [] } }),
+      ),
+    )
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined)
+
+    render(
+      <AccountKeyResourceListItem
+        row={row}
+        onExpandedChange={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        associatedProfile={{
+          id: "profile-example",
+          name: "Example credential",
+          apiType: "openai-compatible",
+          baseUrl: "https://api.example.invalid/v1",
+          apiKey: "complete-example-secret",
+          tagIds: [],
+          notes: "",
+          createdAt: 1,
+          updatedAt: 1,
+        }}
+      />,
+      { withUserPreferencesProvider: true, withThemeProvider: false },
+    )
+
+    expect(
+      await screen.findByText(maskSecretForDisplay("complete-example-secret")),
+    ).toBeVisible()
+    const showButton = await screen.findByRole("button", {
+      name: "keyManagement:actions.showKey",
+    })
+    expect(showButton).toBeVisible()
+    expect(
+      await screen.findByRole("button", { name: "common:actions.copyKey" }),
+    ).toBeVisible()
+    const exportButton = await screen.findByRole("button", {
+      name: "common:actions.export",
+    })
+    expect(exportButton).toBeVisible()
+    expect(
+      screen.getByTestId(KEY_MANAGEMENT_TEST_IDS.importToManagedSiteButton),
+    ).toBeVisible()
+    const verifyApiButton = await screen.findByRole("button", {
+      name: "keyManagement:actions.verifyApi",
+    })
+    expect(verifyApiButton).toBeVisible()
+    expect(
+      await screen.findByRole("button", {
+        name: "keyManagement:actions.verifyCliSupport",
+      }),
+    ).toBeVisible()
+
+    await user.click(showButton)
+    expect(screen.getByText("complete-example-secret")).toBeVisible()
+
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.copyKey" }),
+    )
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("complete-example-secret"),
+    )
+
+    await user.click(exportButton)
+    expect(
+      await screen.findByText("keyManagement:actions.useInCherry"),
+    ).toBeVisible()
+    await user.keyboard("{Escape}")
+
+    await user.click(verifyApiButton)
+    expect(await screen.findByRole("dialog")).toBeVisible()
+  })
+
+  it("hides a newly linked profile secret until the user reveals it", async () => {
+    const user = userEvent.setup()
+    const commonProps = {
+      row,
+      onExpandedChange: vi.fn(),
+      onEdit: vi.fn(),
+      onDelete: vi.fn(),
+    }
+    const profile = {
+      id: "profile-first",
+      name: "First credential",
+      apiType: "openai-compatible" as const,
+      baseUrl: "https://api.example.invalid/v1",
+      apiKey: "complete-first-secret",
+      tagIds: [],
+      notes: "",
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    const { rerender } = render(
+      <AccountKeyResourceListItem
+        {...commonProps}
+        associatedProfile={profile}
+      />,
+      { withUserPreferencesProvider: true, withThemeProvider: false },
+    )
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "keyManagement:actions.showKey",
+      }),
+    )
+    expect(screen.getByText(profile.apiKey)).toBeVisible()
+
+    const nextProfile = {
+      ...profile,
+      id: "profile-second",
+      name: "Second credential",
+      apiKey: "complete-second-secret",
+    }
+    rerender(
+      <AccountKeyResourceListItem
+        {...commonProps}
+        associatedProfile={nextProfile}
+      />,
+    )
+
+    expect(screen.queryByText(nextProfile.apiKey)).not.toBeInTheDocument()
+    expect(
+      screen.getByText(maskSecretForDisplay(nextProfile.apiKey)),
+    ).toBeVisible()
+    expect(
+      screen.getByRole("button", { name: "keyManagement:actions.showKey" }),
+    ).toBeVisible()
   })
 
   it("keeps native mutations available when details come from row facts", async () => {

@@ -1,5 +1,6 @@
 import {
   cloneElement,
+  createContext,
   useCallback,
   useEffect,
   useId,
@@ -34,14 +35,19 @@ interface TooltipProps {
   className?: string
   wrapperClassName?: string
   anchorAsChild?: boolean
+  includeAccessibleDescription?: boolean
 }
 
 interface TooltipChildProps {
   id?: string
+  "data-tooltip-anchor-id"?: string
   "aria-describedby"?: string
   onFocusCapture?: FocusEventHandler<HTMLElement>
   onBlurCapture?: FocusEventHandler<HTMLElement>
 }
+
+/** Identifies the anchor managed by the nearest explicit Tooltip instance. */
+export const TooltipContext = createContext<string | null>(null)
 
 /**
  * Tooltip renders rich or text content from a wrapper anchor by default, or from the child itself when requested.
@@ -54,6 +60,7 @@ export default function Tooltip({
   className = "",
   wrapperClassName = "",
   anchorAsChild = false,
+  includeAccessibleDescription = true,
 }: TooltipProps) {
   const instanceId = useId()
   const generatedAnchorId = `tooltip-${instanceId}`
@@ -65,6 +72,8 @@ export default function Tooltip({
   const [isOpen, setIsOpen] = useState(false)
 
   const isString = typeof content === "string"
+  const shouldRenderDescription =
+    anchorAsChild && isString && includeAccessibleDescription
   const tooltipId = anchorAsChild && isString ? undefined : popupId
   const childProps = children.props as TooltipChildProps
   const anchorId =
@@ -73,7 +82,11 @@ export default function Tooltip({
     new Set(
       [
         childProps["aria-describedby"],
-        anchorAsChild ? (isString ? descriptionId : popupId) : undefined,
+        shouldRenderDescription
+          ? descriptionId
+          : anchorAsChild
+            ? popupId
+            : undefined,
       ]
         .flatMap((value) => value?.split(/\s+/) ?? [])
         .filter(Boolean),
@@ -142,9 +155,16 @@ export default function Tooltip({
     }
   }, [cancelFocusCheck, isOpen, scheduleFocusCheck])
 
+  const managedChild = cloneElement(
+    children as ReactElement<Record<string, unknown>>,
+    {
+      "data-tooltip-anchor-id": anchorId,
+    },
+  )
   const anchor = anchorAsChild ? (
     cloneElement(children as ReactElement<Record<string, unknown>>, {
       id: anchorId,
+      "data-tooltip-anchor-id": anchorId,
       ...(describedBy ? { "aria-describedby": describedBy } : {}),
       onFocusCapture: handleFocusCapture,
       onBlurCapture: handleBlurCapture,
@@ -156,16 +176,16 @@ export default function Tooltip({
       onFocusCapture={handleFocusCapture}
       onBlurCapture={handleBlurCapture}
     >
-      {children}
+      {managedChild}
     </div>
   )
 
   const defaultClassName = `${Z_INDEX.tooltip} max-w-[90vw] rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg dark:bg-dark-bg-tertiary dark:text-dark-text-primary ${className}`
   return (
-    <>
+    <TooltipContext.Provider value={anchorId}>
       {anchor}
 
-      {anchorAsChild && isString ? (
+      {shouldRenderDescription ? (
         <span id={descriptionId} className="sr-only">
           {content}
         </span>
@@ -202,6 +222,6 @@ export default function Tooltip({
           {content}
         </ReactTooltip>
       )}
-    </>
+    </TooltipContext.Provider>
   )
 }

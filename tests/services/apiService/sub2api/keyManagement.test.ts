@@ -39,6 +39,7 @@ const {
 
 vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: (...args: any[]) => fetchApiMock(...args),
+  notifyApiTransportObserver: vi.fn(),
 }))
 
 vi.mock("~/services/apiService/sub2api/tokenResync", () => ({
@@ -201,7 +202,7 @@ describe("apiService sub2api key management service", () => {
     getLatestAuthMock.mockReset()
     persistAuthUpdateMock.mockReset()
     getLatestAuthMock.mockResolvedValue(null)
-    persistAuthUpdateMock.mockResolvedValue(true)
+    persistAuthUpdateMock.mockResolvedValue({ status: "persisted" })
   })
 
   it("combines available groups with rate data for shared forms", async () => {
@@ -908,7 +909,7 @@ describe("apiService sub2api key management service", () => {
           : currentAccount.sub2apiAuth,
       }
 
-      return true
+      return { status: "persisted" }
     })
 
     const fetchMock = vi.fn().mockResolvedValue(
@@ -928,6 +929,14 @@ describe("apiService sub2api key management service", () => {
     vi.stubGlobal("fetch", fetchMock as any)
 
     fetchApiMock.mockImplementation(async (_request, options) => {
+      if (options?.endpoint === "/api/v1/auth/me") {
+        return {
+          code: 0,
+          message: "ok",
+          data: { id: 1, username: "example-user", balance: 1 },
+        }
+      }
+
       if (options?.endpoint === "/api/v1/groups/available") {
         return {
           code: 0,
@@ -991,6 +1000,11 @@ describe("apiService sub2api key management service", () => {
       .mockResolvedValueOnce({
         code: 0,
         message: "ok",
+        data: { id: 1, username: "example-user", balance: 1 },
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        message: "ok",
         data: {
           items: [
             {
@@ -1024,6 +1038,9 @@ describe("apiService sub2api key management service", () => {
       accessToken: "new-jwt",
       refreshToken: "rotated-refresh",
       tokenExpiresAt: now + 3600 * 1000,
+      userId: "1",
+      expectedOrigin: "https://sub2.example.com",
+      expectedUserId: "1",
     })
   })
 
@@ -1031,6 +1048,7 @@ describe("apiService sub2api key management service", () => {
     getLatestAuthMock.mockResolvedValue(null)
     resyncSub2ApiAuthTokenMock.mockResolvedValue({
       accessToken: "resynced-jwt",
+      userId: "1",
       source: ACCOUNT_BROWSER_SESSION_SOURCES.EXISTING_TAB,
     })
 
@@ -1070,9 +1088,13 @@ describe("apiService sub2api key management service", () => {
       "https://sub2.example.com",
       undefined,
       undefined,
+      "1",
     )
     expect(persistAuthUpdateMock).toHaveBeenCalledWith("acc-1", {
       accessToken: "resynced-jwt",
+      userId: "1",
+      expectedOrigin: "https://sub2.example.com",
+      expectedUserId: "1",
     })
   })
 

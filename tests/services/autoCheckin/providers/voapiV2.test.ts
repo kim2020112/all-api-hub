@@ -1,11 +1,10 @@
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { AUTO_CHECKIN_METHOD_IDS } from "~/constants/checkIn"
 import { SITE_TYPES } from "~/constants/siteType"
-import {
-  resolveAutoCheckinProvider,
-  type AutoCheckinProvider,
-} from "~/services/checkin/autoCheckin/providers"
+import { autoCheckinMethodRegistry } from "~/services/checkin/autoCheckin/providers"
+import type { AutoCheckinProvider } from "~/services/checkin/autoCheckin/providers/contracts"
 import { voApiV2Provider } from "~/services/checkin/autoCheckin/providers/voapiV2"
 import { PROTECTION_BYPASS_USER_COMMANDS } from "~/services/protectionBypass/contracts"
 import type { SiteAccount } from "~/types"
@@ -13,6 +12,8 @@ import { CHECKIN_RESULT_STATUS } from "~/types/autoCheckin"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
 import { server } from "~~/tests/msw/server"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { createAutoCheckinMutationLifecycle } from "~~/tests/test-utils/autoCheckin"
+import { buildCheckInConfig } from "~~/tests/test-utils/factories"
 
 const {
   mockResyncVoApiV2AuthToken,
@@ -65,9 +66,7 @@ const account = {
     id: "7",
     access_token: "jwt-dashboard",
   },
-  checkIn: {
-    enableDetection: true,
-  },
+  checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
 } as unknown as SiteAccount
 
 const DEFAULT_PROVIDER_CONTEXT = {
@@ -92,9 +91,69 @@ describe("voApiV2Provider", () => {
   })
 
   it("registers the VoAPI v2 auto-check-in provider", () => {
-    expect(resolveAutoCheckinProvider(account)).toBe(
-      voApiV2Provider as AutoCheckinProvider,
+    expect(
+      autoCheckinMethodRegistry.resolveById(
+        AUTO_CHECKIN_METHOD_IDS.VoApiV2DailyCheckIn,
+      )?.provider,
+    ).toBe(voApiV2Provider as AutoCheckinProvider)
+  })
+
+  it("accepts only a boolean GET status and treats malformed data as unknown", async () => {
+    server.use(
+      http.get("https://example.invalid/api/check_in/stats", () =>
+        HttpResponse.json({ code: 0, data: { todaySigned: false } }),
+      ),
     )
+    await expect(
+      voApiV2Provider.detect!({ account, observedAt: 230 }),
+    ).resolves.toMatchObject({
+      detection: { outcome: "matched" },
+      status: { outcome: "known", today: "not_checked" },
+    })
+    expect(mockSubmitVoApiV2CheckIn).not.toHaveBeenCalled()
+
+    server.use(
+      http.get("https://example.invalid/api/check_in/stats", () =>
+        HttpResponse.json({ code: 0, data: {} }),
+      ),
+    )
+    await expect(
+      voApiV2Provider.detect!({ account, observedAt: 231 }),
+    ).resolves.toEqual({
+      outcome: "unknown",
+      reason: "invalid_response",
+      attemptedAt: 231,
+    })
+  })
+
+  it("propagates the discovery abort signal to the stats request", async () => {
+    server.use(
+      http.get(
+        "https://example.invalid/api/check_in/stats",
+        async () => new Promise<never>(() => undefined),
+      ),
+    )
+    const controller = new AbortController()
+
+    const detection = voApiV2Provider.detect!({
+      account,
+      observedAt: 232,
+      signal: controller.signal,
+    })
+
+    await vi.waitFor(() => {
+      expect(mockFetchVoApiV2CheckInStats).toHaveBeenCalled()
+    })
+    controller.abort()
+
+    expect(mockFetchVoApiV2CheckInStats).toHaveBeenCalledWith(
+      expect.objectContaining({ abortSignal: controller.signal }),
+    )
+    await expect(detection).resolves.toEqual({
+      outcome: "unknown",
+      reason: "invalid_response",
+      attemptedAt: 232,
+    })
   })
 
   it("propagates the popup source through VoAPI v2 check-in and stats requests", async () => {
@@ -134,7 +193,7 @@ describe("voApiV2Provider", () => {
   it("treats repeated same-day sign-in as already checked", async () => {
     server.use(
       http.post("https://example.invalid/api/check_in", () =>
-        HttpResponse.json({ code: 1, data: null, msg: "Signed in today" }),
+        HttpResponse.json({ code: 1, data: null, msg: "No action performed" }),
       ),
       http.get("https://example.invalid/api/check_in/stats", () =>
         HttpResponse.json({ code: 0, data: { todaySigned: true } }),
@@ -151,36 +210,40 @@ describe("voApiV2Provider", () => {
     )
   })
 
-  it("does not run without the saved dashboard JWT", () => {
-    expect(
-      voApiV2Provider.canCheckIn({
-        ...account,
-        account_info: { ...account.account_info, access_token: "" },
-      } as SiteAccount),
-    ).toBe(false)
-  })
+  it("does not treat protocol code 1 as already checked without status confirmation", async () => {
+    server.use(
+      http.post("https://example.invalid/api/check_in", () =>
+        HttpResponse.json({ code: 1, data: null, msg: "Request rejected" }),
+      ),
+      http.get("https://example.invalid/api/check_in/stats", () =>
+        HttpResponse.json({ code: 0, data: { todaySigned: false } }),
+      ),
+    )
 
-  it("does not run when automatic check-in is disabled", () => {
-    expect(
-      voApiV2Provider.canCheckIn({
-        ...account,
-        checkIn: {
-          enableDetection: true,
-          autoCheckInEnabled: false,
-        },
-      } as SiteAccount),
-    ).toBe(false)
-  })
-
-  it("returns a failed result for unusable VoAPI v2 accounts", async () => {
-    await expect(
-      checkInForTest({
-        ...account,
-        account_info: { ...account.account_info, access_token: "" },
-      } as SiteAccount),
-    ).resolves.toMatchObject({
+    await expect(checkInForTest(account)).resolves.toMatchObject({
       status: CHECKIN_RESULT_STATUS.FAILED,
     })
+  })
+
+  it("does not run without the saved dashboard JWT", () => {
+    expect(
+      voApiV2Provider.getReadiness({
+        ...account,
+        account_info: { ...account.account_info, access_token: "" },
+      } as SiteAccount),
+    ).toEqual({ ready: false, reason: "credentials_missing" })
+  })
+
+  it("leaves automatic-execution intent to the Module", () => {
+    expect(
+      voApiV2Provider.getReadiness({
+        ...account,
+        checkIn: {
+          ...account.checkIn,
+          automaticExecutionEnabled: false,
+        },
+      }),
+    ).toEqual({ ready: true })
   })
 
   it("reports failure when submit succeeds but final stats are not checked in", async () => {
@@ -221,6 +284,59 @@ describe("voApiV2Provider", () => {
       TEMP_WINDOW_REQUEST_SOURCES.Background,
       DEFAULT_PROVIDER_CONTEXT.protectionBypassExecution,
     )
+  })
+
+  it("keeps a failed token resync retryable after an authoritative 401", async () => {
+    const mutationLifecycle = createAutoCheckinMutationLifecycle()
+    mockResyncVoApiV2AuthToken.mockRejectedValueOnce(
+      new Error("dashboard token resync unavailable"),
+    )
+    server.use(
+      http.post("https://example.invalid/api/check_in", () =>
+        HttpResponse.json({ code: 2, data: null, msg: "Auth expire" }),
+      ),
+    )
+
+    await expect(
+      checkInForTest(account, {
+        ...DEFAULT_PROVIDER_CONTEXT,
+        mutationLifecycle,
+      }),
+    ).resolves.toMatchObject({
+      status: CHECKIN_RESULT_STATUS.FAILED,
+      rawMessage: "dashboard token resync unavailable",
+    })
+    expect(mutationLifecycle.dispatched).toBe(false)
+  })
+
+  it("keeps a failed auth persistence step retryable after an authoritative 401", async () => {
+    const mutationLifecycle = createAutoCheckinMutationLifecycle()
+    mockResyncVoApiV2AuthToken.mockResolvedValueOnce({
+      accessToken: "resynced-dashboard-token",
+      userId: "8",
+      username: "resynced-owner",
+      source: "existing_tab",
+    })
+    mockUpdateAccount.mockRejectedValueOnce(
+      new Error("account auth persistence unavailable"),
+    )
+    server.use(
+      http.post("https://example.invalid/api/check_in", () =>
+        HttpResponse.json({ code: 2, data: null, msg: "Auth expire" }),
+      ),
+    )
+
+    await expect(
+      checkInForTest(account, {
+        ...DEFAULT_PROVIDER_CONTEXT,
+        mutationLifecycle,
+      }),
+    ).resolves.toMatchObject({
+      status: CHECKIN_RESULT_STATUS.FAILED,
+      rawMessage: "account auth persistence unavailable",
+    })
+    expect(mutationLifecycle.dispatched).toBe(false)
+    expect(mockSubmitVoApiV2CheckIn).toHaveBeenCalledTimes(1)
   })
 
   it("reports generic backend failures without dashboard JWT re-sync", async () => {

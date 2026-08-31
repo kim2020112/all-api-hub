@@ -2,6 +2,15 @@ import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import {
+  AUTO_CHECKIN_METHOD_IDS,
+  CHECK_IN_METHOD_AVAILABILITIES,
+  CHECK_IN_METHOD_DETECTION_EVIDENCE_SOURCES,
+  CHECK_IN_METHOD_DETECTION_OUTCOMES,
+  CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES,
+  CHECK_IN_METHOD_STATUS_OUTCOMES,
+  CHECK_IN_METHOD_TODAY_STATUSES,
+} from "~/constants/checkIn"
 import { SITE_TYPES } from "~/constants/siteType"
 import AccountForm from "~/features/AccountManagement/components/AccountDialog/AccountForm"
 import { ACCOUNT_FORM_MOBILE_DEFAULT_OPEN } from "~/features/AccountManagement/components/AccountDialog/accountFormSections"
@@ -9,6 +18,7 @@ import { createEmptyAccountDialogDraft } from "~/features/AccountManagement/comp
 import { getAccountDialogSitePolicy } from "~/features/AccountManagement/components/AccountDialog/sitePolicy"
 import { ACCOUNT_MANAGEMENT_TEST_IDS } from "~/features/AccountManagement/testIds"
 import enAccountDialog from "~/locales/en/accountDialog.json"
+import { createCompatibilityCheckInConfig } from "~/services/checkin/autoCheckin/compatibilityConfig"
 import { AuthTypeEnum, type CheckInConfig } from "~/types"
 import { testI18n } from "~~/tests/test-utils/i18n"
 import { fireEvent, render, screen, within } from "~~/tests/test-utils/render"
@@ -53,15 +63,20 @@ describe("AccountDialog AccountForm", () => {
     vi.restoreAllMocks()
   })
 
-  const createCheckIn = (
-    overrides: Partial<CheckInConfig> = {},
-  ): CheckInConfig =>
-    ({
-      enableDetection: false,
-      autoCheckInEnabled: undefined,
-      customCheckIn: undefined,
-      ...overrides,
-    }) as CheckInConfig
+  const createCheckIn = (input?: {
+    siteType?: Parameters<
+      typeof createCompatibilityCheckInConfig
+    >[0]["siteType"]
+    supported?: boolean
+    automaticExecutionEnabled?: boolean
+    customCheckIn?: CheckInConfig["customCheckIn"]
+  }): CheckInConfig =>
+    createCompatibilityCheckInConfig({
+      siteType: input?.siteType ?? SITE_TYPES.UNKNOWN,
+      supported: input?.supported ?? false,
+      automaticExecutionEnabled: input?.automaticExecutionEnabled ?? true,
+      customCheckIn: input?.customCheckIn,
+    })
 
   const createProps = (): ComponentProps<typeof AccountForm> => ({
     draft: {
@@ -117,6 +132,10 @@ describe("AccountDialog AccountForm", () => {
     onSiteTypeChange: vi.fn(),
     onAuthTypeChange: vi.fn(),
     onCheckInChange: vi.fn(),
+    onCheckInSelectionChange: vi.fn(),
+    onRedetectCheckInMethods: vi.fn(),
+    isRedetectingCheckInMethods: false,
+    checkInRedetectionFeedback: null,
   })
 
   const withSitePolicy = (
@@ -266,7 +285,7 @@ describe("AccountDialog AccountForm", () => {
       screen.getByText("accountDialog:form.checkInStatus"),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("accountDialog:form.checkInStatusDesc"),
+      screen.getByText("accountDialog:form.checkInStatusUnsupported"),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole("switch", {
@@ -685,9 +704,7 @@ describe("AccountDialog AccountForm", () => {
       ),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("accountDialog:form.checkInStatusUnsupported", {
-        exact: false,
-      }),
+      screen.getByText("accountDialog:form.checkInStatusPending"),
     ).toBeInTheDocument()
     expect(
       screen.queryByText("accountDialog:form.checkInStatusDesc"),
@@ -748,8 +765,9 @@ describe("AccountDialog AccountForm", () => {
     const props = createProps()
     props.draft.siteType = SITE_TYPES.NEW_API
     props.draft.checkIn = createCheckIn({
-      enableDetection: true,
-      autoCheckInEnabled: false,
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+      automaticExecutionEnabled: false,
     })
     const onCheckInChange = vi.mocked(props.onCheckInChange)
 
@@ -771,8 +789,9 @@ describe("AccountDialog AccountForm", () => {
     })
 
     const nextCheckIn = createCheckIn({
-      enableDetection: true,
-      autoCheckInEnabled: false,
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+      automaticExecutionEnabled: false,
       customCheckIn: {
         url: "https://check.example.com/",
         openRedeemWithCheckIn: false,
@@ -790,7 +809,7 @@ describe("AccountDialog AccountForm", () => {
     )
     expect(onCheckInChange).toHaveBeenCalledWith({
       ...nextCheckIn,
-      autoCheckInEnabled: true,
+      automaticExecutionEnabled: true,
     })
 
     await user.click(
@@ -820,7 +839,8 @@ describe("AccountDialog AccountForm", () => {
 
     onCheckInChange.mockClear()
     const missingRedeemToggleCheckIn = createCheckIn({
-      enableDetection: true,
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
       customCheckIn: {
         url: "https://check.example.com/",
       },
@@ -843,13 +863,14 @@ describe("AccountDialog AccountForm", () => {
     })
   })
 
-  it("shows auto check-in for supported sites even when a legacy draft has status detection disabled", async () => {
+  it("shows auto check-in for a selected method even when automatic execution is disabled", async () => {
     const user = userEvent.setup()
     const props = createProps()
     props.draft.siteType = SITE_TYPES.NEW_API
     props.draft.checkIn = createCheckIn({
-      enableDetection: false,
-      autoCheckInEnabled: false,
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+      automaticExecutionEnabled: false,
     })
 
     render(<AccountForm {...withSitePolicy(props)} />)
@@ -868,16 +889,560 @@ describe("AccountDialog AccountForm", () => {
 
     expect(props.onCheckInChange).toHaveBeenCalledWith({
       ...props.draft.checkIn,
-      autoCheckInEnabled: true,
+      automaticExecutionEnabled: true,
     })
+  })
+
+  it("shows enabled automatic intent while a candidate method is still unresolved", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.SUB2API
+    props.draft.checkIn = createEmptyAccountDialogDraft(
+      SITE_TYPES.SUB2API,
+    ).checkIn
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByRole("switch", {
+        name: "accountDialog:form.autoCheckInEnabled",
+      }),
+    ).toBeChecked()
+    expect(
+      screen.getByText("accountDialog:form.autoCheckInPendingDesc"),
+    ).toBeVisible()
+    expect(
+      screen.getByRole("combobox", {
+        name: "accountDialog:form.checkInMethod",
+      }),
+    ).toHaveTextContent(
+      "accountDialog:form.automaticCheckInSelectionWithDetail",
+    )
+    expect(
+      screen.getByText("accountDialog:form.checkInSelectionAutomaticPending"),
+    ).toBeVisible()
+  })
+
+  it("distinguishes a confirmed unavailable method from one awaiting confirmation", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: false,
+    })
+    props.draft.checkIn.methodKnowledge.methods["new-api:daily-checkin"] = {
+      detection: {
+        outcome: CHECK_IN_METHOD_DETECTION_OUTCOMES.Unsupported,
+        evidence: {
+          source: CHECK_IN_METHOD_DETECTION_EVIDENCE_SOURCES.Probe,
+          observedAt: 200,
+        },
+      },
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByRole("combobox", {
+        name: "accountDialog:form.checkInMethod",
+      }),
+    ).toHaveTextContent(
+      "accountDialog:form.automaticCheckInSelectionWithDetail",
+    )
+    expect(
+      screen.getByText(
+        "accountDialog:form.checkInSelectionAutomaticUnavailable",
+      ),
+    ).toBeVisible()
+  })
+
+  it("explains ambiguous and unknown detection without exposing site identifiers", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+    props.draft.checkIn.methodKnowledge.methods[
+      "new-api:daily-checkin"
+    ]!.detection = {
+      outcome: CHECK_IN_METHOD_DETECTION_OUTCOMES.Unknown,
+      reason: "timeout",
+      attemptedAt: 200,
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByText("accountDialog:form.checkInStatusUnknown"),
+    ).toBeVisible()
+  })
+
+  it("keeps the selected method and automatic control when status is unavailable", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+    props.draft.checkIn.methodKnowledge.methods[
+      "new-api:daily-checkin"
+    ]!.status = {
+      outcome: CHECK_IN_METHOD_STATUS_OUTCOMES.Unknown,
+      reason: "network",
+      attemptedAt: 200,
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByText("accountDialog:form.checkInStatusUnavailable"),
+    ).toBeVisible()
+    expect(
+      screen.getByRole("switch", {
+        name: "accountDialog:form.autoCheckInEnabled",
+      }),
+    ).toBeChecked()
+  })
+
+  it("shows the automatic result in the trigger and explains it below", async () => {
+    testI18n.addResourceBundle("en", "accountDialog", enAccountDialog)
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+
+    try {
+      render(<AccountForm {...withSitePolicy(props)} />)
+
+      const methodSelect = await screen.findByRole("combobox", {
+        name: enAccountDialog.form.checkInMethod,
+      })
+      expect(methodSelect).toHaveTextContent(
+        "Automatic selection: Daily check-in",
+      )
+      expect(methodSelect).not.toHaveTextContent("New API")
+      expect(methodSelect).toHaveAttribute(
+        "aria-describedby",
+        "check-in-method-helper",
+      )
+      expect(
+        screen.getByText(
+          "The system currently selects Daily check-in. Re-detection may update this method.",
+        ),
+      ).toBeVisible()
+    } finally {
+      testI18n.removeResourceBundle("en", "accountDialog")
+    }
+  })
+
+  it("names a third-party check-in protocol and explains its compatibility boundary", async () => {
+    testI18n.addResourceBundle("en", "accountDialog", enAccountDialog)
+    const props = createProps()
+    const methodId = AUTO_CHECKIN_METHOD_IDS.Sub2ApiProDailyCheckIn
+    props.draft.siteType = SITE_TYPES.SUB2API
+    props.draft.checkIn = {
+      automaticExecutionEnabled: true,
+      methodKnowledge: {
+        methods: {
+          [methodId]: {
+            detection: {
+              outcome: CHECK_IN_METHOD_DETECTION_OUTCOMES.Matched,
+              evidence: {
+                source: CHECK_IN_METHOD_DETECTION_EVIDENCE_SOURCES.Probe,
+                observedAt: 200,
+              },
+            },
+          },
+        },
+      },
+      selection: {
+        mode: "automatic",
+        methodId,
+      },
+    }
+
+    try {
+      render(<AccountForm {...withSitePolicy(props)} />)
+
+      expect(
+        await screen.findByRole("combobox", {
+          name: enAccountDialog.form.checkInMethod,
+        }),
+      ).toHaveTextContent("Automatic selection: Sub2API Pro daily check-in")
+      expect(
+        screen.getByText(
+          "This method uses the third-party Sub2API Pro check-in protocol and only works on deployments that support it.",
+        ),
+      ).toBeVisible()
+    } finally {
+      testI18n.removeResourceBundle("en", "accountDialog")
+    }
+  })
+
+  it("names the fixed method in the manual selection helper", async () => {
+    testI18n.addResourceBundle("en", "accountDialog", enAccountDialog)
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = {
+      ...createCheckIn({
+        siteType: SITE_TYPES.NEW_API,
+        supported: true,
+      }),
+      selection: {
+        mode: "manual",
+        methodId: "new-api:daily-checkin",
+      },
+    }
+
+    try {
+      render(<AccountForm {...withSitePolicy(props)} />)
+
+      expect(
+        await screen.findByRole("combobox", {
+          name: enAccountDialog.form.checkInMethod,
+        }),
+      ).toHaveTextContent("Daily check-in")
+      expect(
+        screen.getByText(
+          "You manually selected Daily check-in. The system will not replace it automatically.",
+        ),
+      ).toBeVisible()
+    } finally {
+      testI18n.removeResourceBundle("en", "accountDialog")
+    }
+  })
+
+  it("explains that automatic check-in is paused when the site disables the selected method", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+      automaticExecutionEnabled: true,
+    })
+    props.draft.checkIn.methodKnowledge.methods[
+      "new-api:daily-checkin"
+    ]!.status = {
+      outcome: CHECK_IN_METHOD_STATUS_OUTCOMES.Known,
+      availability: CHECK_IN_METHOD_AVAILABILITIES.Disabled,
+      today: CHECK_IN_METHOD_TODAY_STATUSES.NotChecked,
+      evidence: {
+        source: CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES.Probe,
+        observedAt: 200,
+      },
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByText("accountDialog:form.checkInStatusDisabled"),
+    ).toBeVisible()
+    expect(
+      screen.getByText("accountDialog:form.autoCheckInPausedBySiteDesc"),
+    ).toBeVisible()
+    expect(
+      screen.getByRole("switch", {
+        name: "accountDialog:form.autoCheckInEnabled",
+      }),
+    ).toBeChecked()
+  })
+
+  it("supports manual selection, restoring automatic selection, and redetection", async () => {
+    const user = userEvent.setup()
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+
+    const { rerender } = render(<AccountForm {...withSitePolicy(props)} />)
+
+    await screen.findByTestId(
+      ACCOUNT_MANAGEMENT_TEST_IDS.accountFormSectionCheckIn,
+    )
+
+    expect(
+      screen.getByRole("combobox", {
+        name: "accountDialog:form.checkInMethod",
+      }),
+    ).toHaveTextContent(
+      "accountDialog:form.automaticCheckInSelectionWithDetail",
+    )
+
+    await user.click(
+      screen.getByRole("combobox", {
+        name: "accountDialog:form.checkInMethod",
+      }),
+    )
+    await user.click(
+      screen.getByRole("option", {
+        name: "accountDialog:form.dailyCheckInMethod",
+      }),
+    )
+    expect(props.onCheckInSelectionChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: {
+          mode: "manual",
+          methodId: "new-api:daily-checkin",
+        },
+      }),
+    )
+
+    props.draft.checkIn = vi.mocked(
+      props.onCheckInSelectionChange,
+    ).mock.calls[0][0]
+    rerender(<AccountForm {...withSitePolicy(props)} />)
+    await user.click(
+      screen.getByRole("combobox", {
+        name: "accountDialog:form.checkInMethod",
+      }),
+    )
+    await user.click(
+      screen.getByRole("option", {
+        name: "accountDialog:form.automaticCheckInSelection",
+      }),
+    )
+    expect(props.onCheckInSelectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selection: {
+          mode: "automatic",
+          methodId: "new-api:daily-checkin",
+        },
+      }),
+    )
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "accountDialog:form.restoreAutomaticCheckInSelection",
+      }),
+    )
+    expect(props.onCheckInSelectionChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selection: {
+          mode: "automatic",
+          methodId: "new-api:daily-checkin",
+        },
+      }),
+    )
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "accountDialog:form.redetectCheckInMethods",
+      }),
+    )
+    expect(props.onRedetectCheckInMethods).toHaveBeenCalledOnce()
+  })
+
+  it("allows redetection while a manually selected method is stale", async () => {
+    const user = userEvent.setup()
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = {
+      ...createCheckIn({
+        siteType: SITE_TYPES.NEW_API,
+        supported: false,
+      }),
+      selection: {
+        mode: "manual",
+        methodId: "new-api:daily-checkin",
+      },
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    await screen.findByTestId(
+      ACCOUNT_MANAGEMENT_TEST_IDS.accountFormSectionCheckIn,
+    )
+
+    expect(
+      screen.getByText("accountDialog:form.checkInSelectionStale", {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole("button", {
+        name: "accountDialog:form.redetectCheckInMethods",
+      }),
+    )
+    expect(props.onRedetectCheckInMethods).toHaveBeenCalledOnce()
+  })
+
+  it("shows progress while re-detecting check-in methods", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: false,
+    })
+    props.isRedetectingCheckInMethods = true
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    const button = await screen.findByRole("button", {
+      name: "accountDialog:form.redetectingCheckInMethods",
+    })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute("aria-busy", "true")
+  })
+
+  it("keeps the redetection result visible and explains that edit-mode changes must be saved", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+    props.checkInRedetectionFeedback = {
+      kind: "completed",
+      decisionOutcome: "resolved",
+      selectedMethodDisabled: false,
+      saveRequired: true,
+      unknownReasons: [],
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    const feedback = await screen.findByRole("status", {
+      name: "accountDialog:messages.checkInRedetectResolved",
+    })
+    expect(
+      within(feedback).getByText(
+        "accountDialog:messages.checkInRedetectSaveRequired",
+      ),
+    ).toBeVisible()
+  })
+
+  it("explains why redetection was inconclusive without asking to save it", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+    props.checkInRedetectionFeedback = {
+      kind: "completed",
+      decisionOutcome: "unknown",
+      selectedMethodDisabled: false,
+      saveRequired: false,
+      unknownReasons: ["timeout"],
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    const feedback = await screen.findByRole("status", {
+      name: "accountDialog:messages.checkInRedetectUnknown",
+    })
+    expect(
+      within(feedback).getByText(
+        "accountDialog:messages.checkInRedetectUnknownReasons.timeout",
+      ),
+    ).toBeVisible()
+    expect(
+      within(feedback).queryByText(
+        "accountDialog:messages.checkInRedetectSaveRequired",
+      ),
+    ).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["network", "network"],
+    ["authentication_required", "authentication_required"],
+    ["permission_denied", "permission_denied"],
+    ["source_unavailable", "source_unavailable"],
+    ["identity_mismatch", "identity_mismatch"],
+    ["invalid_response", "invalid_response"],
+    ["credential_persistence_failed", "credential_persistence_failed"],
+  ] as const)(
+    "explains an inconclusive redetection caused by %s",
+    async (reason, messageKey) => {
+      const props = createProps()
+      props.draft.siteType = SITE_TYPES.NEW_API
+      props.draft.checkIn = createCheckIn({
+        siteType: SITE_TYPES.NEW_API,
+        supported: true,
+      })
+      props.checkInRedetectionFeedback = {
+        kind: "completed",
+        decisionOutcome: "unknown",
+        selectedMethodDisabled: false,
+        saveRequired: false,
+        unknownReasons: [reason],
+      }
+
+      render(<AccountForm {...withSitePolicy(props)} />)
+
+      const feedback = await screen.findByRole("status", {
+        name: "accountDialog:messages.checkInRedetectUnknown",
+      })
+      expect(
+        within(feedback).getByText(
+          `accountDialog:messages.checkInRedetectUnknownReasons.${messageKey}`,
+        ),
+      ).toBeVisible()
+    },
+  )
+
+  it.each([
+    ["ambiguous", false, "accountDialog:messages.checkInRedetectAmbiguous"],
+    ["unsupported", false, "accountDialog:messages.checkInRedetectUnsupported"],
+    ["unknown", false, "accountDialog:messages.checkInRedetectUnknown"],
+    ["resolved", true, "accountDialog:messages.checkInRedetectDisabled"],
+  ] as const)(
+    "presents %s redetection feedback",
+    async (decisionOutcome, selectedMethodDisabled, expectedTitle) => {
+      const props = createProps()
+      props.draft.siteType = SITE_TYPES.NEW_API
+      props.draft.checkIn = createCheckIn({
+        siteType: SITE_TYPES.NEW_API,
+        supported: true,
+      })
+      props.checkInRedetectionFeedback = {
+        kind: "completed",
+        decisionOutcome,
+        selectedMethodDisabled,
+        saveRequired: false,
+        unknownReasons: [],
+      }
+
+      render(<AccountForm {...withSitePolicy(props)} />)
+
+      expect(
+        await screen.findByRole("status", { name: expectedTitle }),
+      ).toHaveAttribute("aria-live", "polite")
+    },
+  )
+
+  it("announces redetection failures assertively", async () => {
+    const props = createProps()
+    props.draft.siteType = SITE_TYPES.NEW_API
+    props.draft.checkIn = createCheckIn({
+      siteType: SITE_TYPES.NEW_API,
+      supported: true,
+    })
+    props.checkInRedetectionFeedback = {
+      kind: "failed",
+      message: "Example redetection failure",
+    }
+
+    render(<AccountForm {...withSitePolicy(props)} />)
+
+    expect(
+      await screen.findByRole("alert", {
+        name: "Example redetection failure",
+      }),
+    ).toHaveAttribute("aria-live", "assertive")
   })
 
   it("does not show built-in auto check-in controls for AIHubMix accounts", async () => {
     const props = createProps()
     props.draft.siteType = SITE_TYPES.AIHUBMIX
     props.draft.checkIn = createCheckIn({
-      enableDetection: true,
-      autoCheckInEnabled: true,
+      siteType: SITE_TYPES.AIHUBMIX,
+      supported: false,
+      automaticExecutionEnabled: true,
     })
 
     render(<AccountForm {...withSitePolicy(props)} />)

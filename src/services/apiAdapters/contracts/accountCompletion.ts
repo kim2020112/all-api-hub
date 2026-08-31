@@ -42,8 +42,7 @@ export type AccountCompletionHelpers = {
   ): AutoDetectCompletionError
   trimString(value: unknown): string
   createInitialCheckInConfig(input: {
-    enableDetection: boolean
-    autoCheckInEnabled: boolean
+    supported: boolean
   }): AutoDetectCompletionData["checkIn"]
   handleCheckInSupportFetchFailure(error: unknown): false
 }

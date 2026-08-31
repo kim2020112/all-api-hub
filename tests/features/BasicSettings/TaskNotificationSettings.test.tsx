@@ -27,6 +27,7 @@ import {
   getDocsTaskNotificationsNtfyUrl,
   getDocsTaskNotificationsWecomUrl,
 } from "~/utils/navigation/docsLinks"
+import { createDeferred } from "~~/tests/test-utils/deferred"
 import { render, screen, waitFor } from "~~/tests/test-utils/render"
 
 const {
@@ -36,6 +37,7 @@ const {
   sendTaskNotificationMessageMock,
   showResultToastMock,
   taskNotificationsMock,
+  taskNotificationsVersionMock,
   trackProductAnalyticsEventMock,
   showUpdateToastMock,
   updateSiteAnnouncementNotificationsMock,
@@ -49,6 +51,7 @@ const {
   taskNotificationsMock: {
     current: undefined as TaskNotificationPreferences | undefined,
   },
+  taskNotificationsVersionMock: { current: 1 },
   trackProductAnalyticsEventMock: vi.fn(),
   showUpdateToastMock: vi.fn(),
   updateSiteAnnouncementNotificationsMock: vi.fn(),
@@ -70,6 +73,7 @@ const preferenceWriteFailure = () => ({
 
 vi.mock("~/contexts/UserPreferencesContext", () => ({
   useUserPreferencesContext: () => ({
+    preferences: { lastUpdated: taskNotificationsVersionMock.current },
     siteAnnouncementNotifications: DEFAULT_SITE_ANNOUNCEMENT_PREFERENCES,
     taskNotifications:
       taskNotificationsMock.current ?? DEFAULT_TASK_NOTIFICATION_PREFERENCES,
@@ -124,6 +128,7 @@ describe("TaskNotificationSettings", () => {
     taskNotificationsMock.current = structuredClone(
       DEFAULT_TASK_NOTIFICATION_PREFERENCES,
     )
+    taskNotificationsVersionMock.current = 1
     updateSiteAnnouncementNotificationsMock.mockResolvedValue(true)
     updateTaskNotificationsMock.mockResolvedValue(preferenceWriteSuccess())
   })
@@ -175,7 +180,7 @@ describe("TaskNotificationSettings", () => {
   })
 
   it("uses container-width responsive layout for notification row actions", async () => {
-    render(<TaskNotificationSettings />, {
+    const { container } = render(<TaskNotificationSettings />, {
       withUserPreferencesProvider: false,
       withThemeProvider: false,
     })
@@ -195,8 +200,27 @@ describe("TaskNotificationSettings", () => {
     expect(actionBar).toHaveClass(
       "w-full",
       "flex-wrap",
+      "justify-end",
       "[@container(min-width:42rem)]:w-auto",
       "[@container(min-width:42rem)]:shrink-0",
+    )
+
+    const taskRow = container.querySelector("#task-notifications-autoCheckin")
+    const taskContent = taskRow?.querySelector(
+      '[data-slot="notification-setting-content"]',
+    )
+    const taskActions = taskRow?.querySelector(
+      '[data-slot="notification-setting-actions"]',
+    )
+
+    expect(taskContent).toHaveClass(
+      "has-[>[data-slot=notification-setting-actions]>[data-slot=switch]]:flex-row",
+      "has-[>[data-slot=notification-setting-actions]>[data-slot=switch]]:items-center",
+      "has-[>[data-slot=notification-setting-actions]>[data-slot=switch]]:justify-between",
+    )
+    expect(taskActions).toHaveClass(
+      "has-[>[data-slot=switch]]:w-auto",
+      "has-[>[data-slot=switch]]:shrink-0",
     )
   })
 
@@ -1135,6 +1159,115 @@ describe("TaskNotificationSettings", () => {
     expect(sendTaskNotificationMessageMock).not.toHaveBeenCalled()
   })
 
+  it("keeps a dirty channel draft while clean channel values refresh", async () => {
+    taskNotificationsMock.current = {
+      ...DEFAULT_TASK_NOTIFICATION_PREFERENCES,
+      channels: {
+        ...DEFAULT_TASK_NOTIFICATION_PREFERENCES.channels,
+        [TASK_NOTIFICATION_CHANNELS.Telegram]: {
+          enabled: true,
+          botToken: "saved-token",
+          chatId: "saved-chat",
+        },
+        [TASK_NOTIFICATION_CHANNELS.Webhook]: {
+          enabled: true,
+          url: "https://hooks.example.invalid/old",
+        },
+      },
+    }
+
+    const { rerender } = render(<TaskNotificationSettings />, {
+      withUserPreferencesProvider: false,
+      withThemeProvider: false,
+    })
+    const telegramInput = await screen.findByLabelText(
+      "settings:taskNotifications.channels.telegram.botToken",
+    )
+    const webhookInput = screen.getByLabelText(
+      "settings:taskNotifications.channels.webhook.url",
+    )
+
+    fireEvent.change(telegramInput, { target: { value: "local draft" } })
+    taskNotificationsMock.current = {
+      ...taskNotificationsMock.current,
+      channels: {
+        ...taskNotificationsMock.current.channels,
+        [TASK_NOTIFICATION_CHANNELS.Webhook]: {
+          enabled: true,
+          url: "https://hooks.example.invalid/refreshed",
+        },
+      },
+    }
+    taskNotificationsVersionMock.current = 2
+    rerender(<TaskNotificationSettings />)
+
+    expect(telegramInput).toHaveValue("local draft")
+    await waitFor(() => {
+      expect(webhookInput).toHaveValue(
+        "https://hooks.example.invalid/refreshed",
+      )
+    })
+  })
+
+  it("deduplicates blur and test-triggered saves for the same channel draft", async () => {
+    const write = createDeferred<ReturnType<typeof preferenceWriteSuccess>>()
+    updateTaskNotificationsMock.mockReturnValueOnce(write.promise)
+    taskNotificationsMock.current = {
+      ...DEFAULT_TASK_NOTIFICATION_PREFERENCES,
+      channels: {
+        ...DEFAULT_TASK_NOTIFICATION_PREFERENCES.channels,
+        [TASK_NOTIFICATION_CHANNELS.Webhook]: {
+          enabled: true,
+          url: "",
+        },
+      },
+    }
+
+    render(<TaskNotificationSettings />, {
+      withUserPreferencesProvider: false,
+      withThemeProvider: false,
+    })
+    const webhookChannel = document.getElementById(
+      SETTINGS_ANCHORS.TASK_NOTIFICATIONS_CHANNEL_WEBHOOK,
+    )
+    if (!webhookChannel) {
+      throw new Error("Expected webhook channel settings row")
+    }
+    const webhookInput = within(webhookChannel).getByLabelText(
+      "settings:taskNotifications.channels.webhook.url",
+    )
+    const testButton = within(webhookChannel).getByRole("button", {
+      name: "settings:taskNotifications.test.action",
+    })
+
+    fireEvent.change(webhookInput, {
+      target: { value: "https://hooks.example.invalid/test" },
+    })
+    expect(testButton).toBeEnabled()
+    fireEvent.click(testButton)
+
+    expect(updateTaskNotificationsMock).toHaveBeenCalledTimes(1)
+    expect(updateTaskNotificationsMock).toHaveBeenCalledWith({
+      channels: {
+        [TASK_NOTIFICATION_CHANNELS.Webhook]: {
+          url: "https://hooks.example.invalid/test",
+        },
+      },
+    })
+
+    await act(async () => {
+      write.resolve(preferenceWriteSuccess())
+      await write.promise
+    })
+    await waitFor(() => {
+      expect(sendTaskNotificationMessageMock).toHaveBeenCalledWith(
+        TaskNotificationMessageTypes.Test,
+        { channel: TASK_NOTIFICATION_CHANNELS.Webhook },
+      )
+    })
+    expect(updateTaskNotificationsMock).toHaveBeenCalledTimes(1)
+  })
+
   it("does not save unchanged third-party channel drafts", async () => {
     taskNotificationsMock.current = {
       ...DEFAULT_TASK_NOTIFICATION_PREFERENCES,
@@ -1303,7 +1436,6 @@ describe("TaskNotificationSettings", () => {
 
     expect(updateTaskNotificationsMock).toHaveBeenCalledWith({
       tasks: {
-        ...DEFAULT_TASK_NOTIFICATION_PREFERENCES.tasks,
         [TASK_NOTIFICATION_TASKS.AutoCheckin]: false,
       },
     })

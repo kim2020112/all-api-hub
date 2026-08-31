@@ -6,9 +6,14 @@ import { SITE_TYPES } from "~/constants/siteType"
 import { type useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
 import ApiCredentialProfiles from "~/entrypoints/options/pages/ApiCredentialProfiles"
 import {
+  API_CREDENTIAL_PROFILES_TEST_IDS,
+  getApiCredentialProfileRowTestId,
+} from "~/features/ApiCredentialProfiles/testIds"
+import {
   KEY_MANAGEMENT_GUIDED_IMPORT_TARGETS,
   KEY_MANAGEMENT_ROUTE_PARAMS,
 } from "~/features/KeyManagement/constants"
+import { ACCOUNT_RUNTIME_KEY_SOURCES } from "~/services/accounts/accountRuntimeKeys"
 import {
   DEFAULT_PREFERENCES,
   type UserPreferences,
@@ -22,19 +27,36 @@ import {
 import {
   normalizeGoogleFamilyBaseUrl,
   normalizeOpenAiFamilyBaseUrl,
-} from "~/services/verification/webAiApiCheck/extractCredentials"
+} from "~/services/verification/webAiApiCheck/credentialExtraction/baseUrlCandidates"
 import type { Tag } from "~/types"
 import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
+import {
+  API_CREDENTIAL_PROFILE_LINK_SOURCES,
+  API_CREDENTIAL_PROFILE_LINK_STATES,
+  type ApiCredentialProfileLink,
+} from "~/types/apiCredentialProfiles"
 import { requireHistoryTarget } from "~~/tests/test-utils/history"
-import { render, screen, waitFor, within } from "~~/tests/test-utils/render"
+import {
+  act,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "~~/tests/test-utils/render"
 
 let store: ApiCredentialProfile[] = []
+let profileLinks: ApiCredentialProfileLink[] = []
 const mockOpenModelsPage = vi.fn()
 const mockOpenSettingsTab = vi.fn()
 const mockOpenWithCredentials = vi.fn()
 const pushWithinOptionsPageMock = vi.fn()
+const replaceWithinOptionsPageMock = vi.fn()
+const mockOpenKeysPage = vi.fn()
 const mockUseUserPreferencesContext = vi.fn()
 const mockDismissGatewayGuidanceSurface = vi.fn()
+const CC_SWITCH_EXPORT_DIALOG_NAME = "CCSwitch export"
+const CC_SWITCH_EXPORT_DIALOG_CLOSE_NAME = "Close CCSwitch export"
+const KILO_CODE_EXPORT_DIALOG_NAME = "Kilo Code export"
 const mockFetchOpenAICompatibleModelIds = vi.fn(
   async (
     _params: Parameters<
@@ -44,6 +66,7 @@ const mockFetchOpenAICompatibleModelIds = vi.fn(
 )
 
 const mockListProfiles = vi.fn(async () => store)
+const mockListProfileLinks = vi.fn(async () => profileLinks)
 const mockFetchApiCredentialModelIds = vi.fn(
   async (
     _params: Parameters<
@@ -116,6 +139,20 @@ const mockDeleteProfile = vi.fn(async (id: string) => {
   return store.length !== before
 })
 
+const {
+  mockRelinkProfileLink,
+  mockToastError,
+  mockToastPromise,
+  mockToastSuccess,
+  mockUnlinkProfileLink,
+} = vi.hoisted(() => ({
+  mockRelinkProfileLink: vi.fn(),
+  mockToastError: vi.fn(),
+  mockToastPromise: vi.fn((promise: Promise<unknown>) => promise),
+  mockToastSuccess: vi.fn(),
+  mockUnlinkProfileLink: vi.fn(),
+}))
+
 type UserPreferencesContextValue = ReturnType<typeof useUserPreferencesContext>
 type ApiCredentialProfilesContextValue = Pick<
   UserPreferencesContextValue,
@@ -157,12 +194,61 @@ const createApiCredentialProfilesContextValue = (
     dismissGatewayGuidanceSurface: mockDismissGatewayGuidanceSurface,
   }) satisfies ApiCredentialProfilesContextValue
 
+const seedActiveAssociation = () => {
+  store = [
+    {
+      id: "p-1",
+      name: "Linked profile",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://linked.example.invalid",
+      apiKey: "sk-linked",
+      tagIds: [],
+      notes: "",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ]
+  profileLinks = [
+    {
+      id: "association-remove",
+      profileId: "p-1",
+      locator: {
+        source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+        accountId: "account-example",
+        siteType: SITE_TYPES.NEW_API,
+        tokenId: 3,
+      },
+      state: API_CREDENTIAL_PROFILE_LINK_STATES.Active,
+      linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.User,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ]
+}
+
+const seedExportableProfile = () => {
+  store = [
+    {
+      id: "p-1",
+      name: "Exportable",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://example.com",
+      apiKey: "sk-test",
+      tagIds: [],
+      notes: "",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ]
+}
+
 vi.mock(
   "~/services/apiCredentialProfiles/apiCredentialProfilesStorage",
   () => ({
     subscribeToApiCredentialProfilesChanges: () => () => {},
     apiCredentialProfilesStorage: {
       listProfiles: () => mockListProfiles(),
+      listLinks: () => mockListProfileLinks(),
       createProfile: (input: any) => mockCreateProfile(input),
       updateProfile: (id: string, updates: Partial<ApiCredentialProfile>) =>
         mockUpdateProfile(id, updates),
@@ -171,9 +257,53 @@ vi.mock(
   }),
 )
 
+vi.mock("~/services/apiCredentialProfiles/apiCredentialProfileLinks", () => ({
+  apiCredentialProfileLinks: {
+    list: () => mockListProfileLinks(),
+    relink: mockRelinkProfileLink,
+    unlink: mockUnlinkProfileLink,
+  },
+}))
+
+vi.mock("react-hot-toast", () => ({
+  default: {
+    error: mockToastError,
+    promise: mockToastPromise,
+    success: mockToastSuccess,
+  },
+}))
+
 vi.mock("~/components/dialogs/ChannelDialog", () => ({
   ChannelDialogProvider: ({ children }: { children: ReactNode }) => children,
   useChannelDialog: () => ({ openWithCredentials: mockOpenWithCredentials }),
+}))
+
+vi.mock("~/components/CCSwitchExportDialog", () => ({
+  CCSwitchExportDialog: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label={CC_SWITCH_EXPORT_DIALOG_NAME}>
+      <button type="button" onClick={onClose}>
+        {CC_SWITCH_EXPORT_DIALOG_CLOSE_NAME}
+      </button>
+    </div>
+  ),
+}))
+
+vi.mock(
+  "~/features/ApiCredentialProfiles/components/KiloCodeProfileExportDialog",
+  () => ({
+    KiloCodeProfileExportDialog: () => (
+      <div role="dialog" aria-label={KILO_CODE_EXPORT_DIALOG_NAME} />
+    ),
+  }),
+)
+
+vi.mock("~/hooks/useAccountData", () => ({
+  useAccountData: () => ({
+    displayData: [
+      { id: "account-example", name: "Example account" },
+      { id: "account-second", name: "Second account" },
+    ],
+  }),
 }))
 
 vi.mock("~/services/apiCredentialProfiles/modelCatalog", async () => {
@@ -215,6 +345,9 @@ vi.mock("~/utils/navigation", () => ({
   openSettingsTab: (...args: unknown[]) => mockOpenSettingsTab(...args),
   pushWithinOptionsPage: (...args: unknown[]) =>
     pushWithinOptionsPageMock(...args),
+  replaceWithinOptionsPage: (...args: unknown[]) =>
+    replaceWithinOptionsPageMock(...args),
+  openKeysPage: (...args: unknown[]) => mockOpenKeysPage(...args),
 }))
 
 vi.mock("~/services/aiApi/openaiCompatible", () => ({
@@ -229,7 +362,10 @@ describe("ApiCredentialProfiles page", () => {
   beforeEach(async () => {
     globalThis.sessionStorage?.clear()
     store = []
+    profileLinks = []
     mockListProfiles.mockClear()
+    mockListProfileLinks.mockReset()
+    mockListProfileLinks.mockImplementation(async () => profileLinks)
     mockFetchOpenAICompatibleModelIds.mockReset()
     mockFetchOpenAICompatibleModelIds.mockResolvedValue([])
     mockFetchApiCredentialModelIds.mockReset()
@@ -245,7 +381,16 @@ describe("ApiCredentialProfiles page", () => {
     mockOpenSettingsTab.mockReset()
     mockOpenWithCredentials.mockReset()
     pushWithinOptionsPageMock.mockReset()
+    replaceWithinOptionsPageMock.mockReset()
+    mockOpenKeysPage.mockReset()
     mockDismissGatewayGuidanceSurface.mockReset()
+    mockRelinkProfileLink.mockReset()
+    mockRelinkProfileLink.mockResolvedValue(undefined)
+    mockUnlinkProfileLink.mockReset()
+    mockUnlinkProfileLink.mockResolvedValue(true)
+    mockToastError.mockReset()
+    mockToastPromise.mockClear()
+    mockToastSuccess.mockReset()
     mockUseUserPreferencesContext.mockReturnValue(
       createApiCredentialProfilesContextValue(),
     )
@@ -393,6 +538,413 @@ describe("ApiCredentialProfiles page", () => {
     expect(importButton).toBeVisible()
     expect(importButton).toHaveAttribute("data-guidance-highlight", "true")
     expect(mockOpenWithCredentials).not.toHaveBeenCalled()
+  })
+
+  it("waits for profiles, selects the target endpoint, and focuses the exact row", async () => {
+    const scrollIntoViewSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {})
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus")
+    store = [
+      {
+        id: "p-1",
+        name: "First Profile",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://first.example.invalid",
+        apiKey: "sk-first",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "p-2",
+        name: "Target Profile",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://target.example.invalid",
+        apiKey: "sk-target",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+
+    render(<ApiCredentialProfiles routeParams={{ profileId: "p-2" }} />)
+
+    const targetRow = await screen.findByTestId(
+      getApiCredentialProfileRowTestId("p-2"),
+    )
+    await waitFor(() => expect(targetRow).toHaveFocus())
+    expect(screen.queryByText("First Profile")).not.toBeInTheDocument()
+    expect(scrollIntoViewSpy).toHaveBeenCalledWith({
+      block: "center",
+      inline: "nearest",
+    })
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true })
+  })
+
+  it("reports a missing profile target without focusing the first profile", async () => {
+    const user = userEvent.setup()
+    store = [
+      {
+        id: "p-1",
+        name: "Available Profile",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://available.example.invalid",
+        apiKey: "sk-available",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+
+    render(
+      <ApiCredentialProfiles routeParams={{ profileId: "missing-profile" }} />,
+    )
+
+    expect(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.targetMissingMessage,
+      ),
+    ).toBeVisible()
+    const availableRow = screen.getByTestId(
+      getApiCredentialProfileRowTestId("p-1"),
+    )
+    expect(availableRow).not.toHaveFocus()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "apiCredentialProfiles:target.clear",
+      }),
+    )
+    expect(replaceWithinOptionsPageMock).toHaveBeenCalledWith(
+      "#apiCredentialProfiles",
+    )
+  })
+
+  it("shows local account context and maps a stored link to exact key navigation", async () => {
+    const user = userEvent.setup()
+    store = [
+      {
+        id: "p-1",
+        name: "Linked Profile",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://linked.example.invalid",
+        apiKey: "sk-linked",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    profileLinks = [
+      {
+        id: "association-1",
+        profileId: "p-1",
+        locator: {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+          accountId: "account-example",
+          siteType: SITE_TYPES.NEW_API,
+          tokenId: 1,
+        },
+        state: API_CREDENTIAL_PROFILE_LINK_STATES.Active,
+        linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.User,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "association-2",
+        profileId: "p-1",
+        locator: {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.ServiceCredential,
+          accountId: "account-second",
+          siteType: SITE_TYPES.NEW_API,
+          service: "codex",
+        },
+        state: API_CREDENTIAL_PROFILE_LINK_STATES.Active,
+        linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.User,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+
+    render(<ApiCredentialProfiles />)
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /apiCredentialProfiles:association.linked/,
+      }),
+    )
+    const exampleAccountGroup = screen.getByRole("group", {
+      name: "Example account · apiCredentialProfiles:association.accountToken",
+    })
+    expect(
+      screen.getByText(
+        "Second account · apiCredentialProfiles:association.serviceCredential",
+      ),
+    ).toBeVisible()
+    await user.click(
+      within(exampleAccountGroup).getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.viewKey",
+      }),
+    )
+    expect(mockOpenKeysPage).toHaveBeenCalledWith({
+      associationId: "association-1",
+    })
+  })
+
+  it("confirms a stored association and refreshes its status", async () => {
+    const user = userEvent.setup()
+    store = [
+      {
+        id: "p-1",
+        name: "Association to confirm",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://confirm.example.invalid",
+        apiKey: "sk-confirm",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    const link = {
+      id: "association-confirm",
+      profileId: "p-1",
+      locator: {
+        source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+        accountId: "account-example",
+        siteType: SITE_TYPES.NEW_API,
+        tokenId: 1,
+      },
+      state: API_CREDENTIAL_PROFILE_LINK_STATES.NeedsConfirmation,
+      linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.ResolvedRuntimeKey,
+      createdAt: 1,
+      updatedAt: 1,
+    } satisfies ApiCredentialProfileLink
+    profileLinks = [link]
+
+    render(<ApiCredentialProfiles />)
+    await user.click(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.associationButton,
+      ),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.confirmLink",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mockRelinkProfileLink).toHaveBeenCalledWith({
+        id: link.id,
+        profileId: link.profileId,
+        locator: link.locator,
+        linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.User,
+      })
+      expect(mockToastSuccess).toHaveBeenCalledWith(
+        "apiCredentialProfiles:association.confirmed",
+      )
+    })
+    expect(mockListProfileLinks).toHaveBeenCalledTimes(2)
+  })
+
+  it("reports association confirmation failures without refreshing", async () => {
+    const user = userEvent.setup()
+    store = [
+      {
+        id: "p-1",
+        name: "Association failure",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://failure.example.invalid",
+        apiKey: "sk-failure",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    profileLinks = [
+      {
+        id: "association-failure",
+        profileId: "p-1",
+        locator: {
+          source: ACCOUNT_RUNTIME_KEY_SOURCES.AccountToken,
+          accountId: "account-example",
+          siteType: SITE_TYPES.NEW_API,
+          tokenId: 2,
+        },
+        state: API_CREDENTIAL_PROFILE_LINK_STATES.NeedsConfirmation,
+        linkedBy: API_CREDENTIAL_PROFILE_LINK_SOURCES.ResolvedRuntimeKey,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    mockRelinkProfileLink.mockRejectedValueOnce(
+      new Error("storage unavailable"),
+    )
+
+    render(<ApiCredentialProfiles />)
+    await user.click(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.associationButton,
+      ),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.confirmLink",
+      }),
+    )
+
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith(
+        "apiCredentialProfiles:association.updateFailed",
+      ),
+    )
+    expect(mockListProfileLinks).toHaveBeenCalledOnce()
+  })
+
+  it("does not refresh when an association removal was not persisted", async () => {
+    const user = userEvent.setup()
+    seedActiveAssociation()
+    const unlinkResult = Promise.resolve(false)
+    mockUnlinkProfileLink.mockReturnValueOnce(unlinkResult)
+
+    render(<ApiCredentialProfiles />)
+    await user.click(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.associationButton,
+      ),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.removeLink",
+      }),
+    )
+    await act(async () => {
+      await unlinkResult
+    })
+    await waitFor(() => expect(mockUnlinkProfileLink).toHaveBeenCalledOnce())
+    expect(mockListProfileLinks).toHaveBeenCalledOnce()
+    expect(mockToastSuccess).not.toHaveBeenCalled()
+  })
+
+  it("refreshes after a persisted association removal", async () => {
+    const user = userEvent.setup()
+    seedActiveAssociation()
+    mockUnlinkProfileLink.mockResolvedValueOnce(true)
+
+    render(<ApiCredentialProfiles />)
+    await user.click(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.associationButton,
+      ),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.removeLink",
+      }),
+    )
+    await waitFor(() => expect(mockToastSuccess).toHaveBeenCalledOnce())
+    expect(mockListProfileLinks).toHaveBeenCalledTimes(2)
+  })
+
+  it("reports association removal failures without refreshing", async () => {
+    const user = userEvent.setup()
+    seedActiveAssociation()
+    mockUnlinkProfileLink.mockRejectedValueOnce(
+      new Error("storage unavailable"),
+    )
+
+    render(<ApiCredentialProfiles />)
+    await user.click(
+      await screen.findByTestId(
+        API_CREDENTIAL_PROFILES_TEST_IDS.associationButton,
+      ),
+    )
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: "apiCredentialProfiles:association.removeLink",
+      }),
+    )
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith(
+        "apiCredentialProfiles:association.updateFailed",
+      ),
+    )
+    expect(mockListProfileLinks).toHaveBeenCalledOnce()
+  })
+
+  it("keeps association status unknown while links are loading", async () => {
+    store = [
+      {
+        id: "p-1",
+        name: "Loading Association",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://loading.example.invalid",
+        apiKey: "sk-loading",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    mockListProfileLinks.mockReturnValueOnce(
+      new Promise<ApiCredentialProfileLink[]>(() => {}),
+    )
+
+    render(<ApiCredentialProfiles />)
+
+    expect(await screen.findByText("Loading Association")).toBeVisible()
+    expect(
+      screen.queryByText("apiCredentialProfiles:association.sectionTitle"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("discloses association load failure and retries without showing unlinked", async () => {
+    const user = userEvent.setup()
+    store = [
+      {
+        id: "p-1",
+        name: "Unavailable Association",
+        apiType: API_TYPES.OPENAI_COMPATIBLE,
+        baseUrl: "https://unavailable.example.invalid",
+        apiKey: "sk-unavailable",
+        tagIds: [],
+        notes: "",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]
+    mockListProfileLinks
+      .mockRejectedValueOnce(new Error("storage unavailable"))
+      .mockResolvedValueOnce([])
+
+    render(<ApiCredentialProfiles />)
+
+    expect(
+      await screen.findByText("apiCredentialProfiles:association.loadFailed"),
+    ).toBeVisible()
+    expect(
+      screen.queryByText("apiCredentialProfiles:association.sectionTitle"),
+    ).not.toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.retry" }),
+    )
+
+    await waitFor(() => {
+      expect(mockListProfileLinks).toHaveBeenCalledTimes(2)
+      expect(
+        screen.queryByText("apiCredentialProfiles:association.loadFailed"),
+      ).not.toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText("apiCredentialProfiles:association.sectionTitle"),
+    ).not.toBeInTheDocument()
   })
 
   it("keeps managed-site setup recovery out of guidance for complete configuration", async () => {
@@ -802,22 +1354,9 @@ describe("ApiCredentialProfiles page", () => {
     })
   })
 
-  it("opens export dialogs from the per-profile export menu", async () => {
+  it("opens CCSwitch export from the per-profile export menu", async () => {
     const user = userEvent.setup()
-
-    store = [
-      {
-        id: "p-1",
-        name: "Exportable",
-        apiType: API_TYPES.OPENAI_COMPATIBLE,
-        baseUrl: "https://example.com",
-        apiKey: "sk-test",
-        tagIds: [],
-        notes: "",
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ]
+    seedExportableProfile()
 
     render(<ApiCredentialProfiles />)
 
@@ -833,13 +1372,30 @@ describe("ApiCredentialProfiles page", () => {
       }),
     )
 
-    expect(
-      await screen.findByText("ui:dialog.ccswitch.description"),
-    ).toBeInTheDocument()
+    const exportDialog = await screen.findByRole("dialog", {
+      name: CC_SWITCH_EXPORT_DIALOG_NAME,
+    })
+    expect(exportDialog).toBeVisible()
 
     await user.click(
-      screen.getByRole("button", { name: "common:actions.cancel" }),
+      within(exportDialog).getByRole("button", {
+        name: CC_SWITCH_EXPORT_DIALOG_CLOSE_NAME,
+      }),
     )
+    expect(
+      screen.queryByRole("dialog", {
+        name: CC_SWITCH_EXPORT_DIALOG_NAME,
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("opens Kilo Code export from the per-profile export menu", async () => {
+    const user = userEvent.setup()
+    seedExportableProfile()
+
+    render(<ApiCredentialProfiles />)
+
+    expect(await screen.findByText("Exportable")).toBeInTheDocument()
 
     await user.click(
       screen.getByRole("button", { name: "common:actions.export" }),
@@ -852,8 +1408,10 @@ describe("ApiCredentialProfiles page", () => {
     )
 
     expect(
-      await screen.findByText("ui:dialog.kiloCode.title"),
-    ).toBeInTheDocument()
+      await screen.findByRole("dialog", {
+        name: KILO_CODE_EXPORT_DIALOG_NAME,
+      }),
+    ).toBeVisible()
   })
 
   it("opens shared CLI verification for a stored profile", async () => {

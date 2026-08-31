@@ -1,6 +1,15 @@
+import {
+  CHECK_IN_EXECUTION_SKIP_REASONS,
+  CHECK_IN_METHOD_EXECUTION_RESULT_KINDS,
+  CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES,
+  CHECK_IN_METHOD_STATUS_OUTCOMES,
+  CHECK_IN_METHOD_TODAY_STATUSES,
+  CHECK_IN_SELECTION_STATUSES,
+} from "~/constants/checkIn"
 import { RuntimeActionIds } from "~/constants/runtimeActions"
 import { accountStorage } from "~/services/accounts/accountStorage"
 import { buildAccountDisplayNameMap } from "~/services/accounts/utils/accountDisplayName"
+import { getSelectedCheckInStatus } from "~/services/checkin/autoCheckin/inspection"
 import {
   onAutoCheckinMessage,
   type AutoCheckinDebugScheduleDailyAlarmForTodayRequest,
@@ -9,6 +18,15 @@ import {
   type AutoCheckinRunNowRequest,
   type AutoCheckinUpdateSettingsRequest,
 } from "~/services/checkin/autoCheckin/messaging"
+import {
+  executeSelectedCheckIn,
+  inspectSelectedCheckInCompatibility,
+} from "~/services/checkin/autoCheckin/methods"
+import { resolveProviderErrorResult } from "~/services/checkin/autoCheckin/providers/shared"
+import {
+  CHECK_IN_STATUS_REFRESH_OUTCOMES,
+  refreshSelectedStatus,
+} from "~/services/checkin/autoCheckin/refresh"
 import { withExtensionStorageWriteLock } from "~/services/core/storageWriteLock"
 import { notifyTaskResult } from "~/services/notifications/taskNotificationService"
 import {
@@ -49,7 +67,9 @@ import {
   AUTO_CHECKIN_RUN_TYPE,
   AUTO_CHECKIN_SCHEDULE_MODE,
   AUTO_CHECKIN_SKIP_REASON,
+  CHECKIN_ACCOUNT_STATE_DURABILITY,
   CHECKIN_RESULT_STATUS,
+  getAutoCheckinRunResultFromSummary,
   getAutoCheckinSkipReasonTranslationKey,
   type AutoCheckinAccountSnapshot,
   type AutoCheckinPreferences,
@@ -64,6 +84,7 @@ import {
   type CheckinAccountResult,
   type CheckinResultStatus,
 } from "~/types/autoCheckin"
+import type { CheckInExecutionSkipReason } from "~/types/checkIn"
 import {
   getTaskNotificationStatusFromCounts,
   TASK_NOTIFICATION_STATUSES,
@@ -88,10 +109,61 @@ import { getErrorMessage } from "~/utils/core/error"
 import { createLogger } from "~/utils/core/logger"
 import { t } from "~/utils/i18n/core"
 
-import { resolveAutoCheckinProvider } from "./providers"
+import { isRetryableCheckinResult } from "./resultPolicy"
 import { AUTO_CHECKIN_STATUS_STORAGE_LOCK, autoCheckinStorage } from "./storage"
 
 const logger = createLogger("AutoCheckin")
+
+const isSuccessfulCheckinStatus = (status: CheckinResultStatus): boolean =>
+  status === CHECKIN_RESULT_STATUS.SUCCESS ||
+  status === CHECKIN_RESULT_STATUS.ALREADY_CHECKED
+
+const isFailedCheckinStatus = (status: CheckinResultStatus): boolean =>
+  status === CHECKIN_RESULT_STATUS.FAILED
+
+const toSchedulerSkipReason = (
+  reason: CheckInExecutionSkipReason,
+): AutoCheckinSkipReason => {
+  switch (reason) {
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AccountDisabled:
+      return AUTO_CHECKIN_SKIP_REASON.ACCOUNT_DISABLED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.GlobalAutomaticExecutionDisabled:
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AutomaticExecutionDisabled:
+      return AUTO_CHECKIN_SKIP_REASON.AUTO_CHECKIN_DISABLED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AlreadyChecked:
+      return AUTO_CHECKIN_SKIP_REASON.ALREADY_CHECKED_TODAY
+    case CHECK_IN_EXECUTION_SKIP_REASONS.MethodDisabled:
+      return AUTO_CHECKIN_SKIP_REASON.METHOD_DISABLED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.StatusUnavailable:
+      return AUTO_CHECKIN_SKIP_REASON.STATUS_UNAVAILABLE
+    case CHECK_IN_EXECUTION_SKIP_REASONS.NoProvider:
+      return AUTO_CHECKIN_SKIP_REASON.NO_PROVIDER
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AccountDataMissing:
+      return AUTO_CHECKIN_SKIP_REASON.ACCOUNT_DATA_MISSING
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AuthenticationRequired:
+      return AUTO_CHECKIN_SKIP_REASON.AUTHENTICATION_REQUIRED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.CredentialsMissing:
+      return AUTO_CHECKIN_SKIP_REASON.CREDENTIALS_MISSING
+    case CHECK_IN_EXECUTION_SKIP_REASONS.NetworkError:
+      return AUTO_CHECKIN_SKIP_REASON.NETWORK_ERROR
+    case CHECK_IN_EXECUTION_SKIP_REASONS.SourceUnavailable:
+      return AUTO_CHECKIN_SKIP_REASON.SOURCE_UNAVAILABLE
+    case CHECK_IN_EXECUTION_SKIP_REASONS.PermissionDenied:
+      return AUTO_CHECKIN_SKIP_REASON.PERMISSION_DENIED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.Timeout:
+      return AUTO_CHECKIN_SKIP_REASON.TIMEOUT
+    case CHECK_IN_EXECUTION_SKIP_REASONS.AccountUnavailable:
+      return AUTO_CHECKIN_SKIP_REASON.ACCOUNT_UNAVAILABLE
+    case CHECK_IN_EXECUTION_SKIP_REASONS.NoSelectedMethod:
+      return AUTO_CHECKIN_SKIP_REASON.NO_SELECTED_METHOD
+    case CHECK_IN_EXECUTION_SKIP_REASONS.MethodUnavailable:
+      return AUTO_CHECKIN_SKIP_REASON.METHOD_UNAVAILABLE
+    case CHECK_IN_EXECUTION_SKIP_REASONS.MethodNotMatched:
+      return AUTO_CHECKIN_SKIP_REASON.METHOD_NOT_MATCHED
+    case CHECK_IN_EXECUTION_SKIP_REASONS.MethodUnsupported:
+      return AUTO_CHECKIN_SKIP_REASON.METHOD_UNSUPPORTED
+  }
+}
 
 const createAutomaticCheckinExecution = (
   trigger: (typeof PROTECTION_BYPASS_AUTOMATIC_TRIGGERS)[keyof typeof PROTECTION_BYPASS_AUTOMATIC_TRIGGERS],
@@ -864,21 +936,20 @@ class AutoCheckinScheduler {
     previousSummary?: AutoCheckinRunSummary,
   ): AutoCheckinRunSummary {
     const values = Object.values(perAccount)
-    const successStatuses: CheckinResultStatus[] = [
-      CHECKIN_RESULT_STATUS.SUCCESS,
-      CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
-    ]
     const successCount = values.filter((value) =>
-      successStatuses.includes(value.status),
+      isSuccessfulCheckinStatus(value.status),
     ).length
-    const failedCount = values.filter(
-      (value) => value.status === CHECKIN_RESULT_STATUS.FAILED,
+    const failedCount = values.filter((value) =>
+      isFailedCheckinStatus(value.status),
     ).length
     const skippedCount = values.filter(
       (value) => value.status === CHECKIN_RESULT_STATUS.SKIPPED,
     ).length
+    const uncertainCount = values.filter(
+      (value) => value.status === CHECKIN_RESULT_STATUS.UNCERTAIN,
+    ).length
 
-    const executed = successCount + failedCount
+    const executed = successCount + failedCount + uncertainCount
     const totalEligible =
       previousSummary?.totalEligible ?? executed + skippedCount
 
@@ -888,7 +959,8 @@ class AutoCheckinScheduler {
       successCount,
       failedCount,
       skippedCount,
-      needsRetry: failedCount > 0,
+      ...(uncertainCount > 0 ? { uncertainCount } : {}),
+      needsRetry: values.some(isRetryableCheckinResult),
     }
   }
 
@@ -919,27 +991,32 @@ class AutoCheckinScheduler {
     account: SiteAccount,
     accountName: string,
   ): AutoCheckinAccountSnapshot {
-    const disabled = account.disabled === true
-    const detectionEnabled = account.checkIn?.enableDetection ?? false
-    const autoCheckinEnabled = account.checkIn?.autoCheckInEnabled !== false
+    const compatibility = inspectSelectedCheckInCompatibility({
+      account,
+      // This helper is called only after the scheduler's global/manual gate.
+      globalAutomaticExecutionEnabled: true,
+    })
+    const selectionState = compatibility.state.selectionState
+    const detectionEnabled =
+      selectionState.status === CHECK_IN_SELECTION_STATUSES.Selected
+    const autoCheckinEnabled = account.checkIn.automaticExecutionEnabled
+    const selectedStatus = getSelectedCheckInStatus({
+      config: account.checkIn,
+      siteType: account.site_type,
+    })
 
-    let skipReason: AutoCheckinSkipReason | undefined
+    const executionEligibility = compatibility.state.executionEligibility
+    let skipReason: AutoCheckinSkipReason | undefined =
+      executionEligibility.eligible === false
+        ? toSchedulerSkipReason(executionEligibility.skipReason)
+        : undefined
 
-    if (disabled) {
-      skipReason = AUTO_CHECKIN_SKIP_REASON.ACCOUNT_DISABLED
-    } else if (!detectionEnabled) {
-      skipReason = AUTO_CHECKIN_SKIP_REASON.DETECTION_DISABLED
-    } else if (!autoCheckinEnabled) {
-      skipReason = AUTO_CHECKIN_SKIP_REASON.AUTO_CHECKIN_DISABLED
-    }
-
-    const provider = skipReason ? null : resolveAutoCheckinProvider(account)
-    const providerAvailable = provider ? provider.canCheckIn(account) : false
-
-    if (!skipReason && !provider) {
-      skipReason = AUTO_CHECKIN_SKIP_REASON.NO_PROVIDER
-    } else if (!skipReason && !providerAvailable) {
-      skipReason = AUTO_CHECKIN_SKIP_REASON.PROVIDER_NOT_READY
+    const providerAvailable = compatibility.providerAvailable
+    if (!skipReason && !providerAvailable) {
+      skipReason =
+        compatibility.providerReadiness?.ready === false
+          ? toSchedulerSkipReason(compatibility.providerReadiness.reason)
+          : AUTO_CHECKIN_SKIP_REASON.NO_PROVIDER
     }
 
     return {
@@ -950,8 +1027,16 @@ class AutoCheckinScheduler {
       autoCheckinEnabled,
       providerAvailable,
       // Display-only field: DO NOT use this for eligibility decisions (provider outcomes are the source of truth).
-      isCheckedInToday: account.checkIn?.siteStatus?.isCheckedInToday,
-      lastCheckInDate: account.checkIn?.siteStatus?.lastCheckInDate,
+      isCheckedInToday:
+        selectedStatus?.outcome === CHECK_IN_METHOD_STATUS_OUTCOMES.Known
+          ? selectedStatus.today === CHECK_IN_METHOD_TODAY_STATUSES.Checked
+          : undefined,
+      lastCheckInDate:
+        selectedStatus?.outcome === CHECK_IN_METHOD_STATUS_OUTCOMES.Known &&
+        selectedStatus.evidence.source ===
+          CHECK_IN_METHOD_STATUS_EVIDENCE_SOURCES.LegacyMigration
+          ? selectedStatus.evidence.legacyDayKey
+          : undefined,
       skipReason,
     }
   }
@@ -994,66 +1079,98 @@ class AutoCheckinScheduler {
     accountName: string,
     tempWindowRequestSource: TempWindowRequestSource,
     protectionBypassExecution: ProtectionBypassExecution,
+    requireStatusConfirmationBeforeMutation = false,
   ): Promise<{
     result: CheckinAccountResult
-    successful: boolean
   }> {
     const buildResult = (
       status: CheckinResultStatus,
-      partial?: Pick<
-        CheckinAccountResult,
-        "message" | "messageKey" | "messageParams" | "rawMessage" | "reasonCode"
+      partial?: Partial<
+        Pick<
+          CheckinAccountResult,
+          | "message"
+          | "messageKey"
+          | "messageParams"
+          | "rawMessage"
+          | "reasonCode"
+          | "retryable"
+          | "methodId"
+          | "reconciliation"
+          | "accountStateDurability"
+        >
       >,
-    ): CheckinAccountResult => ({
-      accountId: account.id,
-      accountName,
-      status,
-      ...(partial ?? {}),
-      timestamp: Date.now(),
-    })
+    ): CheckinAccountResult =>
+      ({
+        accountId: account.id,
+        accountName,
+        status,
+        ...(partial ?? {}),
+        timestamp: Date.now(),
+      }) as CheckinAccountResult
 
     try {
-      const provider = resolveAutoCheckinProvider(account)
-      if (!provider) {
-        const messageKey = getAutoCheckinSkipReasonTranslationKey(
-          AUTO_CHECKIN_SKIP_REASON.NO_PROVIDER,
-        )
-        logger.warn("No check-in provider; skipping", {
-          accountId: account.id,
-          siteName: account.site_name,
-          messageKey,
-        })
+      const execution = await executeSelectedCheckIn({
+        account,
+        // This helper is called only after the scheduler's global/manual gate.
+        globalAutomaticExecutionEnabled: true,
+        context: {
+          tempWindowRequestSource,
+          protectionBypassExecution,
+        },
+        revalidateAccount: (refreshedConfig) =>
+          accountStorage.prepareAccountForSelectedCheckIn(
+            account.id,
+            refreshedConfig,
+          ),
+        requireStatusConfirmationBeforeMutation,
+      })
+      if (execution.kind === CHECK_IN_METHOD_EXECUTION_RESULT_KINDS.Skipped) {
+        const reasonCode = toSchedulerSkipReason(execution.reason)
+        const retryablePreMutationFailure = execution.retryable === true
         return {
-          result: buildResult(CHECKIN_RESULT_STATUS.FAILED, {
-            messageKey,
-            reasonCode: AUTO_CHECKIN_SKIP_REASON.NO_PROVIDER,
-          }),
-          successful: false,
+          result: buildResult(
+            retryablePreMutationFailure
+              ? CHECKIN_RESULT_STATUS.FAILED
+              : CHECKIN_RESULT_STATUS.SKIPPED,
+            {
+              messageKey: getAutoCheckinSkipReasonTranslationKey(reasonCode),
+              reasonCode,
+              ...(retryablePreMutationFailure ? { retryable: true } : {}),
+            },
+          ),
         }
       }
-
-      const providerResult = await provider.checkIn(account, {
-        tempWindowRequestSource,
-        protectionBypassExecution,
-      })
+      const providerResult = execution.result
       const result = buildResult(providerResult.status, {
         messageKey: providerResult.messageKey,
         messageParams: providerResult.messageParams,
         rawMessage: providerResult.rawMessage,
+        reasonCode: providerResult.reasonCode,
+        methodId: execution.methodId,
+        reconciliation: providerResult.reconciliation,
+        ...(providerResult.status === CHECKIN_RESULT_STATUS.FAILED
+          ? { retryable: execution.retryable }
+          : {}),
       })
 
       if (
         providerResult.status === CHECKIN_RESULT_STATUS.SUCCESS ||
         providerResult.status === CHECKIN_RESULT_STATUS.ALREADY_CHECKED
       ) {
-        await accountStorage.markAccountAsSiteCheckedIn(account.id)
+        const persisted = await accountStorage.markAccountAsSiteCheckedIn(
+          account.id,
+        )
+        result.accountStateDurability =
+          persisted === false
+            ? CHECKIN_ACCOUNT_STATE_DURABILITY.FAILED
+            : CHECKIN_ACCOUNT_STATE_DURABILITY.PERSISTED
         logger.info("Check-in completed", {
           accountId: account.id,
           siteName: account.site_name,
           status: providerResult.status,
           message: providerResult.rawMessage ?? providerResult.messageKey ?? "",
         })
-        return { result, successful: true }
+        return { result }
       }
 
       logger.warn("Check-in failed", {
@@ -1062,19 +1179,25 @@ class AutoCheckinScheduler {
         status: providerResult.status,
         message: providerResult.rawMessage ?? providerResult.messageKey ?? "",
       })
-      return { result, successful: false }
+      return { result }
     } catch (error) {
       const errorMessage = getErrorMessage(error)
+      const normalizedError = resolveProviderErrorResult({ error })
       logger.error("Check-in error", {
         accountId: account.id,
         siteName: account.site_name,
         error: errorMessage,
       })
       return {
-        result: buildResult(CHECKIN_RESULT_STATUS.FAILED, {
-          rawMessage: errorMessage,
+        result: buildResult(normalizedError.status, {
+          messageKey: normalizedError.messageKey,
+          messageParams: normalizedError.messageParams,
+          rawMessage: normalizedError.rawMessage,
+          reasonCode: normalizedError.reasonCode,
+          ...(normalizedError.status === CHECKIN_RESULT_STATUS.FAILED
+            ? { retryable: false }
+            : {}),
         }),
-        successful: false,
       }
     }
   }
@@ -1087,7 +1210,6 @@ class AutoCheckinScheduler {
   }): Promise<
     Array<{
       result: CheckinAccountResult
-      successful: boolean
     }>
   > {
     return Promise.all(
@@ -1108,9 +1230,9 @@ class AutoCheckinScheduler {
               accountName,
               status: CHECKIN_RESULT_STATUS.FAILED,
               rawMessage: getErrorMessage(error),
+              retryable: false,
               timestamp: Date.now(),
             },
-            successful: false,
           }
         }
       }),
@@ -1933,8 +2055,8 @@ class AutoCheckinScheduler {
    * - `AUTO_CHECKIN_RUN_TYPE.MANUAL`: invoked by the UI. Does not create a new retry queue, but can shrink an
    *   existing queue for today based on the latest results.
    *
-   * Important: we DO NOT use `checkIn.siteStatus.isCheckedInToday` for eligibility because it
-   * is not trusted. Providers must return `already_checked` when appropriate.
+   * Persisted method status is a display projection and may be stale. Providers
+   * must return `already_checked` when appropriate.
    */
   async runCheckins(options: {
     runType?: AutoCheckinRunType
@@ -2052,16 +2174,11 @@ class AutoCheckinScheduler {
         (account) => account.disabled === true,
       )
 
-      // Filter accounts with detection enabled
-      const detectionEnabledAccounts = enabledAccounts.filter(
-        (account) => account.checkIn?.enableDetection,
-      )
-
       const accountSnapshots: AutoCheckinAccountSnapshot[] = []
       const runnableAccounts: SiteAccount[] = []
 
       // Build snapshots and determine runnable accounts
-      for (const account of detectionEnabledAccounts) {
+      for (const account of enabledAccounts) {
         const snapshot = this.buildAccountSnapshot(
           account,
           accountDisplayNameById.get(account.id) ?? account.id,
@@ -2105,7 +2222,9 @@ class AutoCheckinScheduler {
       }
 
       logger.debug("Prepared check-in execution set", {
-        detectionEnabledCount: detectionEnabledAccounts.length,
+        selectedMethodCount: accountSnapshots.filter(
+          (snapshot) => snapshot.detectionEnabled,
+        ).length,
         runnableCount: runnableAccounts.length,
       })
 
@@ -2134,7 +2253,7 @@ class AutoCheckinScheduler {
         await autoCheckinStorage.saveStatus({
           ...(currentStatus ?? {}),
           lastRunAt: new Date().toISOString(),
-          lastRunResult: AUTO_CHECKIN_RUN_RESULT.SUCCESS,
+          lastRunResult: AUTO_CHECKIN_RUN_RESULT.SKIPPED,
           perAccount,
           summary: mergedSummary,
           accountsSnapshot,
@@ -2182,6 +2301,7 @@ class AutoCheckinScheduler {
       // API/page resources are limited by their owning lower layers.
       let successCount = 0
       let failedCount = 0
+      let uncertainCount = 0
 
       const checkinOutcomes = await this.runAccountCheckins({
         accounts: runnableAccounts,
@@ -2192,35 +2312,35 @@ class AutoCheckinScheduler {
 
       for (const outcome of checkinOutcomes) {
         results[outcome.result.accountId] = outcome.result
-        if (outcome.successful) {
+        if (isSuccessfulCheckinStatus(outcome.result.status)) {
           successCount++
-        } else {
+        } else if (isFailedCheckinStatus(outcome.result.status)) {
           failedCount++
+        } else if (outcome.result.status === CHECKIN_RESULT_STATUS.UNCERTAIN) {
+          uncertainCount++
         }
       }
 
-      // Determine overall result
-      let overallResult: AutoCheckinRunResult = AUTO_CHECKIN_RUN_RESULT.SUCCESS
-      if (failedCount > 0 && successCount > 0) {
-        overallResult = AUTO_CHECKIN_RUN_RESULT.PARTIAL
-      } else if (failedCount > 0) {
-        overallResult = AUTO_CHECKIN_RUN_RESULT.FAILED
-      }
-
-      const skippedCount = accountSnapshots.length - runnableAccounts.length
-      const summaryNeedsRetry = failedCount > 0 && runnableAccounts.length > 0
+      const runtimeSkippedCount = checkinOutcomes.filter(
+        (outcome) => outcome.result.status === CHECKIN_RESULT_STATUS.SKIPPED,
+      ).length
+      const skippedCount =
+        accountSnapshots.length - runnableAccounts.length + runtimeSkippedCount
+      const summaryNeedsRetry = checkinOutcomes.some((outcome) =>
+        isRetryableCheckinResult(outcome.result),
+      )
 
       const summary: AutoCheckinRunSummary = {
         totalEligible: accountSnapshots.length,
-        executed: runnableAccounts.length,
+        executed: successCount + failedCount + uncertainCount,
         successCount,
         failedCount,
         skippedCount,
+        ...(uncertainCount > 0 ? { uncertainCount } : {}),
         needsRetry: summaryNeedsRetry,
       }
-
       const updatedAccountIds = checkinOutcomes
-        .filter((outcome) => outcome.successful)
+        .filter((outcome) => isSuccessfulCheckinStatus(outcome.result.status))
         .map((outcome) => outcome.result.accountId)
 
       const accountIdsToRefresh = checkinOutcomes
@@ -2241,7 +2361,7 @@ class AutoCheckinScheduler {
           // Retry queue is derived only from today's *failed* runnable accounts.
           // Provider `already_checked` is treated as success and excluded automatically.
           const failedAccountIds = checkinOutcomes
-            .filter((outcome) => !outcome.successful)
+            .filter((outcome) => isRetryableCheckinResult(outcome.result))
             .map((outcome) => outcome.result.accountId)
 
           retryState = {
@@ -2259,7 +2379,7 @@ class AutoCheckinScheduler {
       ) {
         const pending = retryState.pendingAccountIds.filter((accountId) => {
           const result = results[accountId]
-          return result ? result.status === CHECKIN_RESULT_STATUS.FAILED : true
+          return result ? isRetryableCheckinResult(result) : true
         })
         retryState =
           pending.length > 0
@@ -2282,6 +2402,7 @@ class AutoCheckinScheduler {
         results,
       )
       const mergedSummary = mergeSummaryIfNeeded(summary, perAccount)
+      const overallResult = getAutoCheckinRunResultFromSummary(mergedSummary)
 
       await autoCheckinStorage.saveStatus({
         ...(currentStatus ?? {}),
@@ -2504,18 +2625,22 @@ class AutoCheckinScheduler {
         accountDisplayNameById.get(account.id) ?? account.id,
         tempWindowRequestSource,
         protectionBypassExecution,
+        true,
       )
       // Persist that we've attempted one more time for this account today, regardless of outcome.
       attemptsByAccount[accountId] = attempts + 1
       updates[accountId] = outcome.result
-      if (outcome.successful) {
+      if (isSuccessfulCheckinStatus(outcome.result.status)) {
         updatedAccountIds.push(outcome.result.accountId)
       }
       if (outcome.result.status === CHECKIN_RESULT_STATUS.SUCCESS) {
         accountIdsToRefresh.push(outcome.result.accountId)
       }
 
-      if (!outcome.successful && attemptsByAccount[accountId] < maxAttempts) {
+      if (
+        isRetryableCheckinResult(outcome.result) &&
+        attemptsByAccount[accountId] < maxAttempts
+      ) {
         remaining.push(accountId)
       }
     }
@@ -2530,12 +2655,7 @@ class AutoCheckinScheduler {
       currentStatus?.summary,
     )
 
-    let lastRunResult: AutoCheckinRunResult = AUTO_CHECKIN_RUN_RESULT.SUCCESS
-    if (summary.failedCount > 0 && summary.successCount > 0) {
-      lastRunResult = AUTO_CHECKIN_RUN_RESULT.PARTIAL
-    } else if (summary.failedCount > 0) {
-      lastRunResult = AUTO_CHECKIN_RUN_RESULT.FAILED
-    }
+    const lastRunResult = getAutoCheckinRunResultFromSummary(summary)
 
     let accountsSnapshot = currentStatus?.accountsSnapshot
     for (const result of Object.values(updates)) {
@@ -2608,7 +2728,7 @@ class AutoCheckinScheduler {
           successCount: retrySuccessCount,
           failedCount: retryFailedCount,
           skippedCount: retrySkippedCount,
-          needsRetry: retryFailedCount > 0,
+          needsRetry: Boolean(nextRetryState?.pendingAccountIds.length),
         },
         durationMs: Date.now() - startTime,
         mode: PRODUCT_ANALYTICS_MODE_IDS.RetryFailed,
@@ -2722,19 +2842,14 @@ class AutoCheckinScheduler {
       currentStatus.summary,
     )
 
-    let lastRunResult: AutoCheckinRunResult = AUTO_CHECKIN_RUN_RESULT.SUCCESS
-    if (summary.failedCount > 0 && summary.successCount > 0) {
-      lastRunResult = AUTO_CHECKIN_RUN_RESULT.PARTIAL
-    } else if (summary.failedCount > 0) {
-      lastRunResult = AUTO_CHECKIN_RUN_RESULT.FAILED
-    }
+    const lastRunResult = getAutoCheckinRunResultFromSummary(summary)
 
     let retryState = currentStatus.retryState
     if (
       retryState?.day === today &&
       retryState.pendingAccountIds.includes(accountId)
     ) {
-      if (result.status !== CHECKIN_RESULT_STATUS.FAILED) {
+      if (!isRetryableCheckinResult(result)) {
         const nextPending = retryState.pendingAccountIds.filter(
           (id) => id !== accountId,
         )
@@ -2777,6 +2892,39 @@ class AutoCheckinScheduler {
       summary,
       pendingRetry,
     }
+  }
+
+  /** Read the selected method status without executing a check-in mutation. */
+  async verifyAccountStatus(accountId: string) {
+    const account = await accountStorage.getAccountById(accountId)
+    if (!account) {
+      throw new Error(t("messages:storage.accountNotFound", { id: accountId }))
+    }
+
+    let refreshOutcome
+    const refreshedCheckIn = await refreshSelectedStatus({
+      config: account.checkIn,
+      siteType: account.site_type,
+      account,
+      observedAt: Date.now(),
+      onOutcome: (outcome) => {
+        refreshOutcome = outcome
+      },
+    })
+    if (refreshOutcome !== CHECK_IN_STATUS_REFRESH_OUTCOMES.Read) {
+      throw new Error("Check-in status could not be verified")
+    }
+
+    const persistedAccount =
+      await accountStorage.prepareAccountForSelectedCheckIn(
+        account.id,
+        refreshedCheckIn,
+      )
+    if (!persistedAccount) {
+      throw new Error("Check-in status could not be saved")
+    }
+
+    return { verified: true as const }
   }
 
   /**
@@ -3021,6 +3169,15 @@ export async function retryAutoCheckinAccount(
   return { success: true as const }
 }
 
+/** Verify a selected method's current status without issuing a check-in POST. */
+async function verifyAutoCheckinAccountStatus(accountId?: string) {
+  if (!accountId) {
+    return { success: false as const, error: "Missing accountId" }
+  }
+  await autoCheckinScheduler.verifyAccountStatus(accountId)
+  return { success: true as const }
+}
+
 /**
  * Load display data for one account before opening manual check-in pages.
  */
@@ -3167,6 +3324,16 @@ export function setupAutoCheckinMessagingListeners() {
                 tempWindowRequestSource,
               ),
           )
+        } catch (error) {
+          return toAutoCheckinFailure(error)
+        }
+      },
+    ),
+    onAutoCheckinMessage(
+      AutoCheckinMessageTypes.VerifyAccountStatus,
+      async ({ data }) => {
+        try {
+          return await verifyAutoCheckinAccountStatus(data.accountId)
         } catch (error) {
           return toAutoCheckinFailure(error)
         }

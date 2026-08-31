@@ -33,11 +33,11 @@ features:
   - title: "💰 Cross-Site Model Price Comparison"
     details: "Calculate effective model prices across sites and quickly find better-value models and groups."
   - title: "✅ Multi-Site Auto Check-In"
-    details: "Check in to multiple sites with one click or on a schedule, collect rewards automatically, and skip daily logins."
+    details: "Run daily check-ins for supported accounts with one click or on a schedule, collect rewards automatically, and skip daily logins."
   - title: "🧪 API, Model & CLI Verification"
     details: "Test API connectivity, model availability, and CLI integration in one click to quickly troubleshoot configuration issues."
   - title: "🔔 Announcements & Task Alerts"
-    details: "See announcements from added sites in one place and receive timely maintenance, model, and pricing updates, plus results from auto check-ins, WebDAV auto-sync, and model sync."
+    details: "See announcements from added sites in one place and receive timely maintenance, model, and pricing updates, plus results from scheduled background auto check-ins, WebDAV auto-sync, and model sync."
   - title: "🚀 Web Capture & One-Click Export"
     details: "Quickly find Base URLs or API Keys on web pages and export them to popular AI clients with one click."
   - title: "🛠️ Popular AI Gateway Support"
@@ -60,7 +60,7 @@ In the AI era, many of us keep multiple relay-site accounts to save money or try
 
 - **How do I start?**: [Download and install the extension](./get-started.md) -> [Add my first account](./get-started.md#add-site)
 - **I want to save money**: [Earn credits with auto check-in](./auto-checkin.md) -> [Compare model prices across sites](./model-list.md)
-- **I want less manual work**: [See asset changes at a glance](./balance-history.md) -> [Sync accounts to other AI tools](./get-started.md#quick-export-sites)
+- **I want less manual work**: [See asset changes at a glance](./balance-history.md) -> [Sync accounts to other AI tools](./get-started.md#quick-export-sites) -> [Receive background task notifications](./task-notifications.md)
 
 ### 🛠️ I am an advanced user (Key collector)
 
@@ -79,7 +79,7 @@ In the AI era, many of us keep multiple relay-site accounts to save money or try
 No matter which architecture you use, there is a good chance we support it:
 
 - **Account-site compatible architectures**: New API, One API, Sub2API, One-Hub, Veloera, Done-Hub, and more.
-- **Specialized account platforms and compatible implementations**: OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API, and more.
+- **Specialized account platforms and compatible implementations**: [OpenRouter](https://openrouter.ai/), [AnyRouter](https://anyrouter.top/register?aff=tDKX), [AgentRouter](https://agentrouter.org/register?aff=TUX6), [AIHubMix](https://aihubmix.com/?aff=W3DN), Super-API, v-api, Neo-API, and more.
 - **Self-hosted admin backends**: New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub, and more, for backend management, migration, and partial model sync.
 
 > If you use Safari on macOS, read the [Safari Installation Guide](./safari-install.md) first.
@@ -224,6 +224,19 @@ Thank you to all our sponsors for supporting the project's long-term feature dev
   </div>
   <p class="readme-sponsor-copy">
     Concerned about diluted models, reduced model intelligence, or opaque pricing? Every model offered by Infistar.ai is verified through real API calls. Supply comes from official APIs and official account pools, with load balancing across more than 10,000 supply routes to ensure low latency and peak-hour stability. It covers mainstream models including ChatGPT, Claude, Gemini, Grok, GLM, DeepSeek, Kimi, Qwen, and MiniMax, with full-modal capabilities spanning text, video, images, embeddings, reranking, and more. Pricing and usage are transparent and easy to review, with models available from 10% of official prices. All API Hub users can register and try it through <a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">the dedicated link</a> (<a href="./service-guides/infistar.md">setup guide</a>).
+  </p>
+</div>
+
+<hr class="readme-sponsor-divider">
+
+<div class="readme-sponsor">
+  <div class="readme-sponsor-logo">
+    <a href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+  </div>
+  <p class="readme-sponsor-copy">
+    <strong>APIMart</strong> is a low-cost API platform for AI image & video generation — GPT-Image-2 from <strong>$0.006/image</strong>, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, then fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee. Sign up through <a href="https://go.apimart.ai/gh-all-api-hub">this link</a> to get started.
   </p>
 </div>
 

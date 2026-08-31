@@ -2,12 +2,11 @@ import { Storage } from "@plasmohq/storage"
 
 import { withExtensionStorageWriteLock } from "~/services/core/storageWriteLock"
 import {
-  AUTO_CHECKIN_RUN_RESULT,
   AUTO_CHECKIN_SKIP_REASON,
   CHECKIN_RESULT_STATUS,
+  getAutoCheckinRunResultFromSummary,
   getAutoCheckinSkipReasonTranslationKey,
   type AutoCheckinAccountSnapshot,
-  type AutoCheckinRunResult,
   type AutoCheckinRunSummary,
   type AutoCheckinStatus,
   type CheckinAccountResult,
@@ -15,6 +14,8 @@ import {
 } from "~/types/autoCheckin"
 import { createLogger } from "~/utils/core/logger"
 import { isPlainObject } from "~/utils/core/object"
+
+import { isRetryableCheckinResult } from "./resultPolicy"
 
 const logger = createLogger("AutoCheckinStorage")
 
@@ -39,8 +40,8 @@ export const AUTO_CHECKIN_STATUS_STORAGE_LOCK =
  * `successCount` includes both `CHECKIN_RESULT_STATUS.SUCCESS` and
  * `CHECKIN_RESULT_STATUS.ALREADY_CHECKED`. `executed` counts only successful and
  * failed executions, while `totalEligible` falls back to `executed + skipped`
- * when no prior eligible total is provided. `needsRetry` is true whenever
- * `failedCount > 0`.
+ * when no prior eligible total is provided. `needsRetry` is true only when a
+ * failed result remains eligible for the ordinary retry queue.
  */
 function recalculateSummaryFromResults(
   perAccount: Record<string, CheckinAccountResult>,
@@ -60,8 +61,11 @@ function recalculateSummaryFromResults(
   const skippedCount = values.filter(
     (value) => value.status === CHECKIN_RESULT_STATUS.SKIPPED,
   ).length
+  const uncertainCount = values.filter(
+    (value) => value.status === CHECKIN_RESULT_STATUS.UNCERTAIN,
+  ).length
 
-  const executed = successCount + failedCount
+  const executed = successCount + failedCount + uncertainCount
   const totalEligible =
     previousSummary?.totalEligible ?? executed + skippedCount
 
@@ -71,27 +75,9 @@ function recalculateSummaryFromResults(
     successCount,
     failedCount,
     skippedCount,
-    needsRetry: failedCount > 0,
+    ...(uncertainCount > 0 ? { uncertainCount } : {}),
+    needsRetry: values.some(isRetryableCheckinResult),
   }
-}
-
-/**
- * Derive the overall auto check-in run result from an aggregated summary.
- * @param summary Aggregated run summary with success and failure counts.
- * @returns `AUTO_CHECKIN_RUN_RESULT.PARTIAL` when both success and failure are
- * present, `AUTO_CHECKIN_RUN_RESULT.FAILED` when only failures remain, or
- * `AUTO_CHECKIN_RUN_RESULT.SUCCESS` otherwise.
- */
-function getRunResultFromSummary(
-  summary: AutoCheckinRunSummary,
-): AutoCheckinRunResult {
-  if (summary.failedCount > 0 && summary.successCount > 0) {
-    return AUTO_CHECKIN_RUN_RESULT.PARTIAL
-  }
-  if (summary.failedCount > 0) {
-    return AUTO_CHECKIN_RUN_RESULT.FAILED
-  }
-  return AUTO_CHECKIN_RUN_RESULT.SUCCESS
 }
 
 /**
@@ -321,7 +307,7 @@ class AutoCheckinStorage {
 
           const nextStatus: AutoCheckinStatus = {
             ...current,
-            lastRunResult: getRunResultFromSummary(summary),
+            lastRunResult: getAutoCheckinRunResultFromSummary(summary),
             perAccount,
             summary,
             retryState,
@@ -531,7 +517,9 @@ class AutoCheckinStorage {
 
             next.summary = summary
             next.lastRunResult =
-              resultCount > 0 ? getRunResultFromSummary(summary) : undefined
+              resultCount > 0
+                ? getAutoCheckinRunResultFromSummary(summary)
+                : undefined
           } else {
             next.summary = undefined
             next.lastRunResult = undefined

@@ -1,3 +1,4 @@
+import { CHECK_IN_PROVIDER_READINESS_REASONS } from "~/constants/checkIn"
 import { fetchApi } from "~/services/apiTransport/request"
 import {
   AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS,
@@ -11,33 +12,23 @@ import { AuthTypeEnum } from "~/types"
 import { CHECKIN_RESULT_STATUS } from "~/types/autoCheckin"
 import { normalizeTempWindowRequestSource } from "~/utils/browser/tempWindowRequestSource"
 
-import type { AutoCheckinProvider, AutoCheckinProviderContext } from "./index"
+import type {
+  AnyrouterCheckInParams,
+  AutoCheckinProvider,
+  AutoCheckinProviderContext,
+} from "./contracts"
 
-export type AnyrouterCheckInParams = {
-  id?: string
-  site_url: string
-  cookieAuthSessionCookie?: string
-  account_info: {
-    id: number
-  }
+interface AnyrouterCheckInResponse {
+  code?: number
+  ret?: number
+  success?: boolean
+  message?: string
+  msg?: string
 }
 
 const isSiteAccount = (
   account: SiteAccount | AnyrouterCheckInParams,
 ): account is SiteAccount => "site_type" in account
-
-/**
- * AnyRouter returns an empty message string when the user has already checked in.
- * This helper treats that case as already-checked, and falls back to the shared
- * detection heuristics for non-empty strings.
- * @param message - Message to evaluate.
- * @returns true if the user is already checked in.
- */
-function isAnyrouterAlreadyCheckedMessage(message: string): boolean {
-  const normalized = normalizeCheckinMessage(message).trim()
-  if (!normalized) return true
-  return isAlreadyCheckedMessage(normalized)
-}
 
 const checkinAnyRouter = async (
   account: SiteAccount | AnyrouterCheckInParams,
@@ -53,12 +44,7 @@ const checkinAnyRouter = async (
     : account.cookieAuthSessionCookie
 
   try {
-    const response = await fetchApi<{
-      code: number
-      ret: number
-      success: boolean
-      message: string
-    }>(
+    const response = await fetchApi<AnyrouterCheckInResponse>(
       {
         baseUrl: site_url,
         ...(account.id ? { accountId: account.id } : {}),
@@ -69,6 +55,9 @@ const checkinAnyRouter = async (
         },
         tempWindowRequestSource,
         ...(protectionBypassExecution ? { protectionBypassExecution } : {}),
+        ...(context.mutationLifecycle
+          ? { observer: context.mutationLifecycle }
+          : {}),
       },
       {
         endpoint: "/api/user/sign_in",
@@ -83,24 +72,24 @@ const checkinAnyRouter = async (
       true,
     )
 
-    const rawResponseMessage = normalizeCheckinMessage(response.message)
-    const normalizedResponseMessage = rawResponseMessage.toLowerCase()
-
-    if (!response.success) {
+    const rawResponseMessage = normalizeCheckinMessage(
+      response.message ?? response.msg,
+    )
+    if (isAlreadyCheckedMessage(rawResponseMessage)) {
       return {
-        status: CHECKIN_RESULT_STATUS.FAILED,
+        status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
         rawMessage: rawResponseMessage || undefined,
         messageKey: rawResponseMessage
           ? undefined
-          : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.checkinFailed,
-        data: response ?? undefined,
+          : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.alreadyCheckedToday,
       }
     }
 
-    if (
-      normalizedResponseMessage.includes("success") ||
-      normalizedResponseMessage.includes("签到成功")
-    ) {
+    // Compatibility evidence: millylee/anyrouter-check-in@514fe09 treats
+    // `success`, `ret === 1`, and `code === 0` as independent positive signals.
+    const succeeded =
+      response.success === true || response.ret === 1 || response.code === 0
+    if (succeeded) {
       return {
         status: CHECKIN_RESULT_STATUS.SUCCESS,
         rawMessage: rawResponseMessage || undefined,
@@ -108,16 +97,6 @@ const checkinAnyRouter = async (
           ? undefined
           : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.checkinSuccessful,
         data: response,
-      }
-    }
-
-    if (isAnyrouterAlreadyCheckedMessage(rawResponseMessage)) {
-      return {
-        status: CHECKIN_RESULT_STATUS.ALREADY_CHECKED,
-        rawMessage: rawResponseMessage || undefined,
-        messageKey: rawResponseMessage
-          ? undefined
-          : AUTO_CHECKIN_PROVIDER_FALLBACK_MESSAGE_KEYS.alreadyCheckedToday,
       }
     }
 
@@ -132,24 +111,25 @@ const checkinAnyRouter = async (
   } catch (error: unknown) {
     return resolveProviderErrorResult({
       error,
-      isAlreadyChecked: isAnyrouterAlreadyCheckedMessage,
+      mutationDispatched: context.mutationLifecycle?.dispatched,
     })
   }
 }
 
-const canCheckIn = (account: SiteAccount): boolean => {
-  if (!account.checkIn?.enableDetection) {
-    return false
-  }
-
+const getReadiness = (account: SiteAccount) => {
   if (!account.account_info?.id) {
-    return false
+    return {
+      ready: false,
+      reason: CHECK_IN_PROVIDER_READINESS_REASONS.AccountDataMissing,
+    } as const
   }
 
-  return true
+  return { ready: true } as const
 }
 
 export const anyrouterProvider: AutoCheckinProvider = {
-  canCheckIn,
+  // /api/user/sign_in is a mutating POST, so this provider intentionally has
+  // no detect/getStatus implementation and uses the legacy registry bridge.
+  getReadiness,
   checkIn: checkinAnyRouter,
 }

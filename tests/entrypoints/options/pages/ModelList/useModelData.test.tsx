@@ -40,6 +40,7 @@ import {
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import { AuthTypeEnum, SiteHealthStatus, type DisplaySiteData } from "~/types"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { testI18n } from "~~/tests/test-utils/i18n"
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -159,7 +160,7 @@ const createDisplayAccount = (
   token: "token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
   ...overrides,
 })
 
@@ -232,7 +233,6 @@ const createProviderCatalogModelListSource = () => ({
   supportsRuntimeModelList: false,
   supportsPricing: true,
   actionPolicy: {
-    supportsRatioDisplay: false,
     supportsGroupFiltering: false,
     supportsAccountSummary: false,
     supportsTokenCompatibility: false,

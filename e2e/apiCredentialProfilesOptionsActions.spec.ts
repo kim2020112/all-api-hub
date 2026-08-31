@@ -379,6 +379,55 @@ test("opens model management for an options-page API credential profile", async 
 
   await openProfilesPage(page, extensionId)
 
+  const toolbar = page.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.toolbar)
+  const quickActionsGroup = toolbar.getByTestId(
+    API_CREDENTIAL_PROFILES_TEST_IDS.toolbarQuickActionsGroup,
+  )
+  const integrationsGroup = toolbar.getByTestId(
+    API_CREDENTIAL_PROFILES_TEST_IDS.toolbarIntegrationsGroup,
+  )
+  const diagnosticsGroup = toolbar.getByTestId(
+    API_CREDENTIAL_PROFILES_TEST_IDS.toolbarDiagnosticsGroup,
+  )
+  const managementGroup = toolbar.getByTestId(
+    API_CREDENTIAL_PROFILES_TEST_IDS.toolbarManagementGroup,
+  )
+  await expect(toolbar).toHaveRole("toolbar")
+  await expect(toolbar).toHaveAccessibleName("Key actions")
+  await expect(quickActionsGroup).toHaveRole("group")
+  await expect(quickActionsGroup).toHaveAccessibleName("Quick actions")
+  await expect(integrationsGroup).toHaveRole("group")
+  await expect(integrationsGroup).toHaveAccessibleName(
+    "Integrations and export",
+  )
+  await expect(diagnosticsGroup).toHaveRole("group")
+  await expect(diagnosticsGroup).toHaveAccessibleName("Diagnostics")
+  await expect(managementGroup).toHaveRole("group")
+  await expect(managementGroup).toHaveAccessibleName("Management")
+  await expect(
+    quickActionsGroup.getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.copyBundleButton,
+    ),
+  ).toBeVisible()
+  await expect(
+    integrationsGroup.getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.importToManagedSiteButton,
+    ),
+  ).toBeVisible()
+  await expect(
+    integrationsGroup.getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.exportMenuButton,
+    ),
+  ).toBeVisible()
+  await expect(
+    diagnosticsGroup.getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.verifyButton),
+  ).toBeVisible()
+  await expect(
+    managementGroup.getByTestId(
+      API_CREDENTIAL_PROFILES_TEST_IDS.openModelManagementButton,
+    ),
+  ).toBeVisible()
+
   await page
     .getByTestId(API_CREDENTIAL_PROFILES_TEST_IDS.openModelManagementButton)
     .click()

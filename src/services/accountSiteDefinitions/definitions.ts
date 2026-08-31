@@ -2,6 +2,10 @@ import {
   AXON_HUB_EDITABLE_FIELD_IDS,
   AXON_HUB_TABLE_FIELD_IDS,
 } from "~/constants/axonHub"
+import {
+  NEW_API_MANAGED_RESOURCE_DETAIL_FIELD_IDS,
+  NEW_API_MANAGED_RESOURCE_TABLE_FIELD_IDS,
+} from "~/constants/newApi"
 import { SETTINGS_ANCHORS } from "~/constants/settingsAnchors"
 import {
   SUB2API_MANAGED_RESOURCE_DETAIL_FIELD_IDS,
@@ -42,6 +46,8 @@ import {
   AIHUBMIX_HOSTNAMES,
   AIHUBMIX_LOGIN_PATH,
   AIHUBMIX_WEB_ORIGIN,
+  MODELFLARE_HOSTNAME,
+  MODELFLARE_USER_ID_HEADER_NAME,
   OPENROUTER_HOSTNAMES,
   OPENROUTER_WEB_ORIGIN,
   SHAREDCHAT_HOSTNAMES,
@@ -114,6 +120,7 @@ const unsupportedModelListReadiness = {
 export const ACCOUNT_SITE_TYPE_ORDER = [
   SITE_TYPES.ONE_API,
   SITE_TYPES.NEW_API,
+  SITE_TYPES.MODELFLARE,
   SITE_TYPES.ANYROUTER,
   SITE_TYPES.VELOERA,
   SITE_TYPES.ONE_HUB,
@@ -161,7 +168,20 @@ const ACCOUNT_SITE_DEFINITIONS = [
     siteType: SITE_TYPES.NEW_API,
     scopes: ACCOUNT_AND_MANAGED_SCOPES,
     adapterFamily: ACCOUNT_SITE_ADAPTER_FAMILIES.NewApiFamily,
-    managedResource: { ...LEGACY_MANAGED_CHANNEL_POLICY },
+    managedResource: {
+      ...LEGACY_MANAGED_CHANNEL_POLICY,
+      mode: MANAGED_RESOURCE_MODES.NativeResource,
+      tableFieldIds: NEW_API_MANAGED_RESOURCE_TABLE_FIELD_IDS,
+      detailFieldIds: NEW_API_MANAGED_RESOURCE_DETAIL_FIELD_IDS,
+      actions: [
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.Create,
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.DeleteSelected,
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.Migrate,
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.SyncModels,
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.ConfigureModelSync,
+        MANAGED_RESOURCE_PRODUCT_ACTIONS.ConfigureModelFilters,
+      ],
+    },
     onboarding: {
       detection: {
         titlePatterns: [makeTitleRegex(SITE_TYPES.NEW_API)],
@@ -171,6 +191,32 @@ const ACCOUNT_SITE_DEFINITIONS = [
         usagePath: DEFAULT_USAGE_PATH,
         checkInPath: DEFAULT_CHECKIN_PATH,
         adminCredentialsPath: DEFAULT_CHECKIN_PATH,
+      },
+    },
+    readiness: directPricingReadiness,
+  },
+  {
+    siteType: SITE_TYPES.MODELFLARE,
+    scopes: ACCOUNT_SCOPE,
+    adapterFamily: ACCOUNT_SITE_ADAPTER_FAMILIES.NewApiFamily,
+    onboarding: {
+      detection: {
+        hostnames: [MODELFLARE_HOSTNAME],
+        titlePatterns: [/\bmodel\s*flare\b/i],
+        compatUserIdHeaderNames: [MODELFLARE_USER_ID_HEADER_NAME],
+      },
+      routes: {
+        usagePath: DEFAULT_USAGE_PATH,
+        checkInPath: DEFAULT_CHECKIN_PATH,
+        adminCredentialsPath: DEFAULT_CHECKIN_PATH,
+      },
+    },
+    productProfile: {
+      // The canonical deployment authenticates account APIs with its browser
+      // session plus X-ModelFlare-User: https://modelflare.dev/
+      auth: {
+        defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.Cookie,
+        defaultAuthHostnames: [MODELFLARE_HOSTNAME],
       },
     },
     readiness: directPricingReadiness,
@@ -224,7 +270,6 @@ const ACCOUNT_SITE_DEFINITIONS = [
         defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.AccessToken,
         defaultAuthHostnames: [],
         supportsCookieAuth: false,
-        supportsBuiltInCheckInDetection: false,
       },
       authSession: {
         kind: ACCOUNT_SITE_SUPPLEMENTAL_AUTH_KINDS.Sub2ApiRefreshToken,
@@ -299,7 +344,6 @@ const ACCOUNT_SITE_DEFINITIONS = [
         defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.AccessToken,
         defaultAuthHostnames: [],
         supportsCookieAuth: false,
-        supportsBuiltInCheckInDetection: false,
       },
       createdToken: {
         secretHandling:
@@ -354,7 +398,6 @@ const ACCOUNT_SITE_DEFINITIONS = [
         defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.Cookie,
         defaultAuthHostnames: SHAREDCHAT_HOSTNAMES,
         supportsCookieAuth: true,
-        supportsBuiltInCheckInDetection: false,
       },
       identity: {
         usernameRequired: false,
@@ -399,7 +442,6 @@ const ACCOUNT_SITE_DEFINITIONS = [
         defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.AccessToken,
         defaultAuthHostnames: [],
         supportsCookieAuth: false,
-        supportsBuiltInCheckInDetection: true,
       },
       identity: {
         usernameRequired: false,
@@ -437,7 +479,6 @@ const ACCOUNT_SITE_DEFINITIONS = [
         defaultAuthType: ACCOUNT_SITE_AUTH_TYPES.AccessToken,
         defaultAuthHostnames: [],
         supportsCookieAuth: false,
-        supportsBuiltInCheckInDetection: false,
       },
       identity: {
         usernameRequired: false,

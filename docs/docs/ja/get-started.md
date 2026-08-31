@@ -52,15 +52,16 @@
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：Claude Code / Codex / Gemini CLI 向けの公式高安定中継サービスです。このリンクから登録すると初回チャージが 20% オフになり、エンタープライズ顧客は最大 25% オフを受けられます。
 - [Suixiang AI Relay](https://sui-xiang.com/)：Claude、Codex、Gemini などの API 中継サービスを提供し、従量課金、毎日のチェックインによるテストクレジット、複数回線冗長、自動フェイルオーバーに対応します。[設定ガイド](./service-guides/suixiang.md)
 - [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：提供モデルはすべて実際の呼び出しで検証済みです。10,000 本を超える公式 API と公式アカウントプールの供給経路を負荷分散し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能、透明な料金と利用量、公式価格の 10% からの価格を提供します。[設定ガイド](./service-guides/infistar.md)
+- [APIMart](https://go.apimart.ai/gh-all-api-hub)：AI 画像・動画生成に特化した低価格 API プラットフォーム。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画をひとつの非同期 API でカバーし、タスクを送信して ID を取得、ポーリングまたはコールバックで結果を取得できます。数万枚のバッチ処理もタイムアウトなしで実行でき、モデルを切り替えてもコードの変更は不要です。従量課金・月額料金なし。
 - [Dola Seed on BytePlus ModelArk](https://www.byteplus.com/en/product/modelark?utm_campaign=hw&utm_content=all-api-hub&utm_medium=devrel_tool_web&utm_source=OWO&utm_term=all-api-hub)：BytePlus ModelArk から登録すると、各モデルにつき 500,000 トークン分の無料推論枠を受け取れます。
 :::
 
-> **盾越えのヒント**：サイトに Cloudflare 認証（5 秒ルール）がある場合、プラグインは自動的にウィンドウを表示して盾越えを支援します。認証が完了すると、自動的に認識を続行します。
+> **Cloudflare 認証ヘルパーのヒント**：サイトに Cloudflare 認証（5 秒ルール）がある場合、プラグインは自動的にヘルパーウィンドウを表示します。認証が完了すると、自動的に認識を続行します。
 
 <a id="manual-addition"></a>
 ### 2.2 手動追加（代替）
 
-自動認識に失敗した場合は、**「手動追加」**をクリックし、サイト種別を選択してアカウント情報を入力します。必要な項目、Access Token の確認場所、注意事項については、[アカウントの手動追加ガイド](./account-management.md#manual-addition)を参照してください。
+自動認識に失敗した場合は、**「手動追加」**をクリックし、サイト種別を選択してアカウント情報を入力します。必要な項目、Access Token の確認場所、注意事項については、[アカウントの手動追加ガイド](./add-account.md#manual-addition)を参照してください。
 
 ---
 
@@ -68,7 +69,7 @@
 
 どのアーキテクチャを使っていても、高い確率で対応しています：
 - **アカウントサイト互換アーキテクチャ**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub など。
-- **特色あるアカウントプラットフォームと互換実装**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
+- **特色あるアカウントプラットフォームと互換実装**：[OpenRouter](https://openrouter.ai/)、[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API など。
 - **セルフホスト型管理バックエンド**：New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。バックエンド管理、移行、一部のモデル同期に利用できます。
 
 ::: tip 互換性に関するヒント
@@ -102,13 +103,13 @@
 - **[Web API スニッフィング](./web-ai-api-check.md)**：Web ページ内で API 設定を迅速に識別・テスト。
 
 ### ⚡ 自動化と情報追跡
-- **[自動チェックインフロー](./auto-checkin.md)**：すべてのサイトのチェックインを毎日自動的に実行。
+- **[自動チェックインフロー](./auto-checkin.md)**：認識済みで対応しているアカウントに毎日のチェックインを設定し、すぐに実行したり最新結果を確認したりできます。
 - **[サイト公告](./site-announcements.md)**：保存済みサイトの公告をバックグラウンドで取得し、メンテナンス、モデル変更、価格調整などの情報をまとめて確認。
 - **[引き換えアシスタント](./redemption-assist.md)**：Web ページ上の引き換えコードを自動認識し、ワンクリックで取得。
 - **[ブックマーク整理](./bookmark-management.md)**：コンソール、ドキュメント、チャージ入口を一元管理。
 
 ### 🛡️ 安定性とセキュリティ保護
-- **[Cloudflare 盾越えアシスタント](./cloudflare-helper.md)**：検証を支援し、リフレッシュやチェックインの中断を防ぎます。
+- **[Cloudflare 認証ヘルパー](./cloudflare-helper.md)**：Web ページでの認証が必要な場合に、処理の続行を支援します。
 - **[WebDAV 同期と暗号化](./webdav-sync.md)**：クロスデバイスでの暗号化バックアップをサポートし、データを失わないようにします。
 
 ### 🔔 通知チャネル

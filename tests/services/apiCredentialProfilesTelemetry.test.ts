@@ -55,6 +55,703 @@ describe("api credential profile telemetry", () => {
     vi.clearAllMocks()
   })
 
+  it("refreshes DeepSeek balance telemetry with provider currency facts", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "DeepSeek",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-deepseek",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/user/balance")) {
+        return jsonResponse({
+          is_available: true,
+          balance_infos: [
+            {
+              currency: "CNY",
+              total_balance: "12.34",
+              granted_balance: "2.00",
+              topped_up_balance: "10.34",
+            },
+          ],
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.deepseek.com/user/balance",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer sk-deepseek",
+        }),
+      }),
+    )
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: { status: SiteHealthStatus.Healthy },
+        source: "deepSeekBalance",
+        facts: expect.objectContaining({
+          balances: [
+            {
+              amount: 12.34,
+              unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+              semantics: "cash",
+              grantedAmount: 2,
+              toppedUpAmount: 10.34,
+              isAvailable: true,
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it("marks an unavailable DeepSeek account as a warning", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Unavailable DeepSeek",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-deepseek-unavailable",
+      telemetryConfig: { mode: "deepSeekBalance" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/user/balance")) {
+        return jsonResponse({ is_available: false, balance_infos: [] })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: {
+          status: SiteHealthStatus.Warning,
+          reason: "insufficient-balance",
+        },
+        source: "deepSeekBalance",
+        facts: expect.objectContaining({
+          balances: [
+            {
+              amount: 0,
+              unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+              semantics: "cash",
+              isAvailable: false,
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it("rejects a malformed DeepSeek balance response instead of inventing zero", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Malformed DeepSeek",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-deepseek-malformed",
+      telemetryConfig: { mode: "deepSeekBalance" },
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ is_available: false })),
+    )
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.source).toBeUndefined()
+    expect(snapshot.facts?.balances).toBeUndefined()
+    expect(snapshot.attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "deepSeekBalance",
+          status: "unsupported",
+        }),
+      ]),
+    )
+  })
+
+  it("auto-detects OpenCode Go usage and converts provider used-percent to remaining quota", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "OpenCode Go",
+      apiType: API_TYPES.ANTHROPIC,
+      baseUrl: "https://opencode.ai/zen/go",
+      apiKey: "sk-opencode-go",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/zen/go/v1/usage")) {
+        return jsonResponse({
+          usage: {
+            rolling: {
+              status: "ok",
+              percent: 25,
+              resetsAt: "2026-04-19T05:00:00.000Z",
+            },
+            weekly: { status: "ok", percent: 40, resetsAt: "invalid" },
+            monthly: { status: "ok", percent: 0 },
+          },
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://opencode.ai/zen/go/v1/usage",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer sk-opencode-go",
+        }),
+      }),
+    )
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: { status: SiteHealthStatus.Healthy },
+        source: "openCodeGoUsage",
+        facts: expect.objectContaining({
+          quota: {
+            windows: [
+              expect.objectContaining({
+                type: "fiveHour",
+                unit: { kind: "percent" },
+                remainingPercent: 75,
+                resetTime: new Date("2026-04-19T05:00:00.000Z").getTime(),
+              }),
+              expect.objectContaining({
+                type: "weekly",
+                unit: { kind: "percent" },
+                remainingPercent: 60,
+              }),
+              expect.objectContaining({
+                type: "monthly",
+                unit: { kind: "percent" },
+                remainingPercent: 100,
+              }),
+            ],
+          },
+        }),
+      }),
+    )
+    // The weekly fixture's invalid resetsAt must not leak through as a
+    // garbage resetTime on that window.
+    const weeklyWindow = snapshot.facts?.quota?.windows?.find(
+      (window) => window.type === "weekly",
+    )
+    expect(weeklyWindow?.resetTime).toBeUndefined()
+  })
+
+  it("ignores OpenCode windows whose provider status is not ok", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "OpenCode stale",
+      apiType: API_TYPES.ANTHROPIC,
+      baseUrl: "https://opencode.ai/zen/go",
+      apiKey: "sk-opencode-stale",
+      telemetryConfig: { mode: "openCodeGoUsage" },
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          usage: {
+            rolling: { status: "error", percent: 1 },
+            weekly: { status: "ok", percent: 20 },
+          },
+        }),
+      ),
+    )
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.facts?.quota?.windows).toEqual([
+      expect.objectContaining({ type: "weekly", remainingPercent: 80 }),
+    ])
+  })
+
+  it("does not treat an incompatible OpenCode usage payload as quota data", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Invalid OpenCode",
+      apiType: API_TYPES.ANTHROPIC,
+      baseUrl: "https://opencode.ai/zen/go",
+      apiKey: "sk-opencode-invalid",
+      telemetryConfig: { mode: "openCodeGoUsage" },
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          usage: {
+            rolling: { status: "ok", percent: 125 },
+            weekly: { status: "ok", percent: "unknown" },
+            monthly: { status: "ok" },
+          },
+        }),
+      ),
+    )
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.source).toBeUndefined()
+    expect(snapshot.facts?.quota).toBeUndefined()
+    expect(snapshot.attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "openCodeGoUsage",
+          status: "unsupported",
+          message: "No usage fields returned",
+        }),
+      ]),
+    )
+  })
+
+  it("auto-detects GLM and normalizes five-hour and weekly quota windows", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "GLM",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://open.bigmodel.cn",
+      apiKey: "glm.example-key",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/monitor/usage/quota/limit")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            level: "pro",
+            limits: [
+              {
+                type: "TOKENS_LIMIT",
+                unit: 3,
+                number: 5,
+                percentage: 25,
+                nextResetTime: 1776556800000,
+              },
+              {
+                type: "CREDIT_LIMIT",
+                unit: 6,
+                number: 1,
+                usage: 10000,
+                currentValue: 2500,
+                remaining: 7500,
+              },
+              {
+                type: "TIME_LIMIT",
+                percentage: 10,
+                usage: 100,
+                currentValue: 10,
+                nextResetTime: 1779235200000,
+              },
+            ],
+          },
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: { status: SiteHealthStatus.Healthy },
+        source: "glmQuota",
+        facts: expect.objectContaining({
+          quota: {
+            membershipLevel: "pro",
+            windows: [
+              expect.objectContaining({
+                type: "fiveHour",
+                remainingPercent: 75,
+                unit: { kind: "percent" },
+              }),
+              expect.objectContaining({
+                type: "weekly",
+                remainingPercent: 75,
+                used: 2500,
+                limit: 10000,
+                remaining: 7500,
+                unit: {
+                  kind: "quota",
+                  code: "glm-credit",
+                  label: "GLM credits",
+                },
+              }),
+              expect.objectContaining({
+                type: "monthly",
+                remainingPercent: 90,
+                used: 10,
+                limit: 100,
+                remaining: 90,
+                unit: {
+                  kind: "quota",
+                  code: "glm-credit",
+                  label: "GLM credits",
+                },
+              }),
+            ],
+          },
+        }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "glm.example-key",
+        }),
+      }),
+    )
+  })
+
+  it("auto-detects the international GLM quota endpoint", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "GLM International",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
+      apiKey: "zai.example-key",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/monitor/usage/quota/limit")) {
+        return jsonResponse({
+          success: true,
+          data: {
+            level: "pro",
+            limits: [
+              {
+                type: "TOKENS_LIMIT",
+                unit: 3,
+                number: 5,
+                percentage: 20,
+              },
+            ],
+          },
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.source).toBe("glmQuota")
+    expect(snapshot.facts?.quota?.windows).toEqual([
+      expect.objectContaining({ type: "fiveHour", remainingPercent: 80 }),
+    ])
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.z.ai/api/monitor/usage/quota/limit",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "zai.example-key",
+        }),
+      }),
+    )
+  })
+
+  it("does not treat a general Z.AI API endpoint as a Coding Plan", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Z.AI General API",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.z.ai/api/paas/v4",
+      apiKey: "zai-general-key",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.source).not.toBe("glmQuota")
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "https://api.z.ai/api/monitor/usage/quota/limit",
+      expect.anything(),
+    )
+  })
+
+  it("refreshes Kimi quota windows and an enabled booster balance", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Kimi",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.kimi.com/coding/v1",
+      apiKey: "kimi.example-key",
+      telemetryConfig: { mode: "kimiQuota" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/coding/v1/usages")) {
+        return jsonResponse({
+          usage: {
+            limit: "1000",
+            used: "200",
+            remaining: "800",
+            resetTime: "2026-05-01T00:00:00.000Z",
+          },
+          limits: [
+            {
+              window: { duration: 300 },
+              detail: {
+                limit: "500",
+                used: "125",
+                remaining: "375",
+                resetTime: "2026-04-20T00:00:00.000Z",
+              },
+            },
+          ],
+          totalQuota: { limit: "1500", remaining: "1175" },
+          user: { membership: { level: "LEVEL_PRO" } },
+          boosterWallet: {
+            status: "STATUS_ACTIVE",
+            balance: { amountLeft: "315250700" },
+          },
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: { status: SiteHealthStatus.Healthy },
+        source: "kimiQuota",
+        facts: expect.objectContaining({
+          balances: [
+            {
+              amount: 3.152507,
+              unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+              semantics: "provider-wallet",
+              isAvailable: true,
+            },
+          ],
+          quota: {
+            membershipLevel: "LEVEL_PRO",
+            windows: [
+              expect.objectContaining({
+                type: "weekly",
+                remainingPercent: 80,
+                remaining: 800,
+              }),
+              expect.objectContaining({
+                type: "fiveHour",
+                remainingPercent: 75,
+                remaining: 375,
+              }),
+              expect.objectContaining({
+                type: "total",
+                remainingPercent: 78.33333333333333,
+                remaining: 1175,
+              }),
+            ],
+          },
+        }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.kimi.com/coding/v1/usages",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer kimi.example-key",
+        }),
+      }),
+    )
+  })
+
+  it("auto-detects Kimi CN Open Platform balance telemetry", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Kimi Open Platform",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.moonshot.cn",
+      apiKey: "sk-moonshot-cn",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/v1/users/me/balance")) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            available_balance: 49.58894,
+            voucher_balance: 46.58893,
+            cash_balance: 3.00001,
+          },
+          scode: "0x0",
+          status: true,
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot).toEqual(
+      expect.objectContaining({
+        health: { status: SiteHealthStatus.Healthy },
+        source: "kimiOpenPlatformBalance",
+        facts: expect.objectContaining({
+          balances: [
+            {
+              amount: 49.58894,
+              unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+              semantics: "provider-wallet",
+              grantedAmount: 46.58893,
+              toppedUpAmount: 3.00001,
+              isAvailable: true,
+            },
+          ],
+        }),
+      }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.moonshot.cn/v1/users/me/balance",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer sk-moonshot-cn",
+        }),
+      }),
+    )
+  })
+
+  it("auto-detects Kimi international Open Platform balance in USD", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Kimi Open Platform International",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.moonshot.ai",
+      apiKey: "sk-moonshot-intl",
+      telemetryConfig: { mode: "auto" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/v1/users/me/balance")) {
+        return jsonResponse({
+          code: 0,
+          data: {
+            available_balance: 4.25,
+            voucher_balance: 1.25,
+            cash_balance: 3,
+          },
+          status: true,
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.facts?.balances).toEqual([
+      {
+        amount: 4.25,
+        unit: { kind: "money", currency: "USD", decimalPlaces: 2 },
+        semantics: "provider-wallet",
+        grantedAmount: 1.25,
+        toppedUpAmount: 3,
+        isAvailable: true,
+      },
+    ])
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.moonshot.ai/v1/users/me/balance",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer sk-moonshot-intl",
+        }),
+      }),
+    )
+  })
+
+  it("rejects Kimi Open Platform balances without a successful envelope", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "Kimi invalid balance",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.moonshot.cn",
+      apiKey: "sk-moonshot-invalid",
+      telemetryConfig: { mode: "kimiOpenPlatformBalance" },
+    })
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          code: 1001,
+          data: { available_balance: 99 },
+          status: false,
+        }),
+      ),
+    )
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.source).toBeUndefined()
+    expect(snapshot.facts?.balances).toBeUndefined()
+  })
+
+  it("keeps every DeepSeek currency balance in provider order", async () => {
+    const profile = await apiCredentialProfilesStorage.createProfile({
+      name: "DeepSeek USD",
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "sk-deepseek-usd",
+      telemetryConfig: { mode: "deepSeekBalance" },
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/user/balance")) {
+        return jsonResponse({
+          is_available: true,
+          balance_infos: [
+            {
+              currency: "CNY",
+              total_balance: "0",
+              granted_balance: "0",
+              topped_up_balance: "0",
+            },
+            {
+              currency: "USD",
+              total_balance: "10.50",
+              granted_balance: "1.50",
+              topped_up_balance: "9.00",
+            },
+          ],
+        })
+      }
+      return jsonResponse({ data: [] })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
+
+    expect(snapshot.facts?.balances).toEqual([
+      expect.objectContaining({
+        amount: 0,
+        unit: { kind: "money", currency: "CNY", decimalPlaces: 2 },
+      }),
+      expect.objectContaining({
+        amount: 10.5,
+        unit: { kind: "money", currency: "USD", decimalPlaces: 2 },
+      }),
+    ])
+  })
+
   it("refreshes NewAPI token telemetry and persists a healthy snapshot", async () => {
     const profile = await apiCredentialProfilesStorage.createProfile({
       name: "NewAPI",
@@ -93,11 +790,15 @@ describe("api credential profile telemetry", () => {
       expect.objectContaining({
         health: { status: SiteHealthStatus.Healthy },
         source: "newApiTokenUsage",
-        balanceUsd: 7.5,
-        totalUsedUsd: 2.5,
-        totalGrantedUsd: 10,
-        totalAvailableUsd: 7.5,
-        models: { count: 2, preview: ["gpt-4o", "o3"] },
+        facts: expect.objectContaining({
+          models: { count: 2, preview: ["gpt-4o", "o3"] },
+          usage: {
+            totalUsed: expect.objectContaining({ value: 2.5 }),
+            totalGranted: expect.objectContaining({ value: 10 }),
+            totalAvailable: expect.objectContaining({ value: 7.5 }),
+            expiresAt: 1776556800000,
+          },
+        }),
       }),
     )
 
@@ -106,7 +807,11 @@ describe("api credential profile telemetry", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         telemetrySnapshot: expect.objectContaining({
-          balanceUsd: 7.5,
+          facts: expect.objectContaining({
+            usage: expect.objectContaining({
+              totalAvailable: expect.objectContaining({ value: 7.5 }),
+            }),
+          }),
         }),
       }),
     )
@@ -146,21 +851,28 @@ describe("api credential profile telemetry", () => {
       expect.objectContaining({
         health: { status: SiteHealthStatus.Healthy },
         source: "newApiTokenUsage",
-        unlimitedQuota: true,
-        totalUsedUsd: 1.88131,
+        facts: expect.objectContaining({
+          usage: {
+            unlimited: true,
+            totalUsed: expect.objectContaining({ value: 1.88131 }),
+          },
+        }),
       }),
     )
-    expect(snapshot.balanceUsd).toBeUndefined()
-    expect(snapshot.totalGrantedUsd).toBeUndefined()
-    expect(snapshot.totalAvailableUsd).toBeUndefined()
+    expect(snapshot.facts?.usage?.totalGranted).toBeUndefined()
+    expect(snapshot.facts?.usage?.totalAvailable).toBeUndefined()
 
     await expect(
       apiCredentialProfilesStorage.getProfileById(profile.id),
     ).resolves.toEqual(
       expect.objectContaining({
         telemetrySnapshot: expect.objectContaining({
-          unlimitedQuota: true,
-          totalUsedUsd: 1.88131,
+          facts: expect.objectContaining({
+            usage: expect.objectContaining({
+              unlimited: true,
+              totalUsed: expect.objectContaining({ value: 1.88131 }),
+            }),
+          }),
         }),
       }),
     )
@@ -194,13 +906,16 @@ describe("api credential profile telemetry", () => {
     expect(snapshot).toEqual(
       expect.objectContaining({
         source: "newApiTokenUsage",
-        balanceUsd: 0,
-        totalAvailableUsd: 0,
-        totalGrantedUsd: 2,
-        totalUsedUsd: 2.5,
+        facts: expect.objectContaining({
+          usage: {
+            totalAvailable: expect.objectContaining({ value: 0 }),
+            totalGranted: expect.objectContaining({ value: 2 }),
+            totalUsed: expect.objectContaining({ value: 2.5 }),
+          },
+        }),
       }),
     )
-    expect(snapshot.unlimitedQuota).toBeUndefined()
+    expect(snapshot.facts?.usage?.unlimited).toBeUndefined()
   })
 
   it("falls through auto presets after unsupported usage endpoint responses", async () => {
@@ -231,9 +946,18 @@ describe("api credential profile telemetry", () => {
     const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
 
     expect(snapshot.source).toBe("sub2apiUsage")
-    expect(snapshot.balanceUsd).toBe(12)
-    expect(snapshot.todayCostUsd).toBe(1.25)
-    expect(snapshot.todayRequests).toBe(3)
+    expect(snapshot.facts?.balances?.[0]).toEqual(
+      expect.objectContaining({ amount: 12, semantics: "budget-equivalent" }),
+    )
+    expect(snapshot.facts?.usage?.todayCost).toEqual(
+      expect.objectContaining({ value: 1.25 }),
+    )
+    expect(snapshot.facts?.usage?.todayRequests).toEqual(
+      expect.objectContaining({ value: 3 }),
+    )
+    expect(snapshot.facts?.usage?.todayTokens).toEqual(
+      expect.objectContaining({ total: 4000 }),
+    )
     expect(snapshot.attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -282,8 +1006,12 @@ describe("api credential profile telemetry", () => {
       }),
     )
     expect(snapshot.source).toBe("newApiTokenUsage")
-    expect(snapshot.balanceUsd).toBe(7.5)
-    expect(snapshot.totalUsedUsd).toBe(2.5)
+    expect(snapshot.facts?.usage?.totalAvailable).toEqual(
+      expect.objectContaining({ value: 7.5 }),
+    )
+    expect(snapshot.facts?.usage?.totalUsed).toEqual(
+      expect.objectContaining({ value: 2.5 }),
+    )
     expect(snapshot.attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -326,9 +1054,11 @@ describe("api credential profile telemetry", () => {
     const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
 
     expect(snapshot.source).toBe("openaiBilling")
-    expect(snapshot.balanceUsd).toBeUndefined()
-    expect(snapshot.totalGrantedUsd).toBeUndefined()
-    expect(snapshot.totalUsedUsd).toBe(1.88131)
+    expect(snapshot.facts?.balances).toBeUndefined()
+    expect(snapshot.facts?.usage?.totalGranted).toBeUndefined()
+    expect(snapshot.facts?.usage?.totalUsed).toEqual(
+      expect.objectContaining({ value: 1.88131 }),
+    )
     expect(snapshot.attempts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -357,10 +1087,7 @@ describe("api credential profile telemetry", () => {
     expect(snapshot).toEqual(
       expect.objectContaining({
         attempts: [],
-        health: {
-          reason: "No supported telemetry endpoint returned data",
-          status: SiteHealthStatus.Warning,
-        },
+        health: { status: SiteHealthStatus.Warning },
       }),
     )
   })
@@ -399,9 +1126,13 @@ describe("api credential profile telemetry", () => {
 
     expect(snapshot).toEqual(
       expect.objectContaining({
-        expiresAt: 1776556800000,
         source: "customReadOnlyEndpoint",
-        totalUsedUsd: 8.75,
+        facts: expect.objectContaining({
+          usage: {
+            expiresAt: 1776556800000,
+            totalUsed: expect.objectContaining({ value: 8.75 }),
+          },
+        }),
       }),
     )
     expect(snapshot.attempts).toEqual(
@@ -604,10 +1335,7 @@ describe("api credential profile telemetry", () => {
 
     const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
 
-    expect(snapshot.health).toEqual({
-      reason: "Custom endpoint is not configured",
-      status: SiteHealthStatus.Warning,
-    })
+    expect(snapshot.health).toEqual({ status: SiteHealthStatus.Warning })
     expect(snapshot.lastError).toBe("Custom endpoint is not configured")
     expect(snapshot.attempts).toEqual(
       expect.arrayContaining([
@@ -685,7 +1413,7 @@ describe("api credential profile telemetry", () => {
 
     const snapshot = await refreshApiCredentialProfileTelemetry(profile.id)
 
-    expect(snapshot.models).toEqual({ count: 0, preview: [] })
+    expect(snapshot.facts?.models).toEqual({ count: 0, preview: [] })
     expect(snapshot.attempts).toContainEqual(
       expect.objectContaining({
         source: "models",

@@ -28,6 +28,7 @@ import {
 import { AuthTypeEnum, SiteHealthStatus, type DisplaySiteData } from "~/types"
 import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 const { mockTotalListHeightChanged, modelItemSpy } = vi.hoisted(() => ({
   mockTotalListHeightChanged: {
@@ -182,7 +183,7 @@ const ACCOUNT_FIXTURE: DisplaySiteData = {
   token: "example-token",
   userId: "example-user-id",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
 }
 
 const PROFILE_FIXTURE: ApiCredentialProfile = {
@@ -326,7 +327,6 @@ describe("ModelDisplay", () => {
         models={[item]}
         verificationSummariesByKey={{}}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={false}
         handleGroupClick={vi.fn()}
       />,
@@ -342,7 +342,6 @@ describe("ModelDisplay", () => {
         models={[]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -364,7 +363,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -393,7 +391,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -425,7 +422,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -477,7 +473,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         showPriceComparisonGroups={true}
         handleGroupClick={vi.fn()}
@@ -549,7 +544,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         showPriceComparisonGroups={true}
         handleGroupClick={vi.fn()}
@@ -606,7 +600,6 @@ describe("ModelDisplay", () => {
         onVerifyCliSupport={onVerifyCliSupport}
         onOpenModelKeyDialog={onOpenModelKeyDialog}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={handleGroupClick}
         displayCapabilities={{ canVerify: true } as any}
@@ -678,7 +671,6 @@ describe("ModelDisplay", () => {
         ]}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         showPriceComparisonGroups={true}
         handleGroupClick={vi.fn()}
@@ -713,7 +705,6 @@ describe("ModelDisplay", () => {
           [profileSummaryKey]: { status: "failed" } as any,
         }}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={false}
         handleGroupClick={vi.fn()}
       />,
@@ -769,7 +760,6 @@ describe("ModelDisplay", () => {
         models={initialModels}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -787,7 +777,6 @@ describe("ModelDisplay", () => {
         models={refreshedModels}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -840,7 +829,6 @@ describe("ModelDisplay", () => {
         models={initialModels}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -858,7 +846,6 @@ describe("ModelDisplay", () => {
         models={modelsWithoutExpandedRow}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,
@@ -869,7 +856,6 @@ describe("ModelDisplay", () => {
         models={readdedModels}
         verificationSummariesByKey={{}}
         showRealPrice={true}
-        showRatioColumn={true}
         showEndpointTypes={true}
         handleGroupClick={vi.fn()}
       />,

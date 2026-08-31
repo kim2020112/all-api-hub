@@ -15,6 +15,7 @@ import type { DisplaySiteData } from "~/types"
 import { AuthTypeEnum, SiteHealthStatus } from "~/types"
 import type { ApiCredentialProfile } from "~/types/apiCredentialProfiles"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 const createAccountFixture = (siteType: AccountSiteType): DisplaySiteData => ({
   id: `account-${siteType}`,
@@ -31,7 +32,7 @@ const createAccountFixture = (siteType: AccountSiteType): DisplaySiteData => ({
   token: "example-token",
   userId: "example-user-id",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
 })
 
 const PROFILE_FIXTURE: ApiCredentialProfile = {
@@ -94,7 +95,6 @@ describe("modelManagementSources group semantics", () => {
         modelListSource: {
           supportsPricing: true,
           actionPolicy: {
-            supportsRatioDisplay: false,
             supportsGroupFiltering: false,
             supportsAccountSummary: false,
             supportsTokenCompatibility: false,
@@ -106,7 +106,6 @@ describe("modelManagementSources group semantics", () => {
       }),
     ).toMatchObject({
       supportsPricing: true,
-      supportsRatioDisplay: false,
       supportsGroupFiltering: false,
       supportsAccountSummary: false,
       supportsTokenCompatibility: false,
@@ -121,7 +120,6 @@ describe("modelManagementSources group semantics", () => {
     const providerCatalogPolicy = {
       supportsPricing: true,
       actionPolicy: {
-        supportsRatioDisplay: false,
         supportsGroupFiltering: false,
         supportsAccountSummary: false,
         supportsTokenCompatibility: false,
@@ -138,7 +136,6 @@ describe("modelManagementSources group semantics", () => {
       }),
     ).toMatchObject({
       supportsPricing: true,
-      supportsRatioDisplay: false,
       supportsGroupFiltering: false,
       supportsAccountSummary: false,
       supportsCredentialVerification: false,
@@ -154,7 +151,6 @@ describe("modelManagementSources group semantics", () => {
       }),
     ).toMatchObject({
       supportsPricing: true,
-      supportsRatioDisplay: true,
       supportsGroupFiltering: true,
       supportsAccountSummary: true,
       supportsCredentialVerification: false,

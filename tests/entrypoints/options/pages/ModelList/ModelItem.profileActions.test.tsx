@@ -26,6 +26,7 @@ import {
 } from "~/services/verification/verificationResultHistory"
 import { AuthTypeEnum, SiteHealthStatus } from "~/types"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { render, screen } from "~~/tests/test-utils/render"
 
 const mockCreateTab = vi.hoisted(() => vi.fn())
@@ -108,7 +109,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{}}
         groupContext={NOT_APPLICABLE_GROUP_CONTEXT}
@@ -220,7 +220,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{}}
         groupContext={NOT_APPLICABLE_GROUP_CONTEXT}
@@ -273,7 +272,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{}}
         groupContext={NOT_APPLICABLE_GROUP_CONTEXT}
@@ -329,7 +327,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{}}
         groupContext={NOT_APPLICABLE_GROUP_CONTEXT}
@@ -378,7 +375,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     render(
@@ -399,7 +396,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         effectiveGroup="default"
@@ -437,7 +433,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     render(
@@ -458,7 +454,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         effectiveGroup="default"
@@ -496,7 +491,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     render(
@@ -517,7 +512,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={true}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         effectiveGroup="default"
@@ -567,7 +561,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     render(
@@ -594,7 +588,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={true}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         groupContext={NOT_APPLICABLE_GROUP_CONTEXT}
@@ -639,7 +632,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
     const catalogFallbackSource = {
       ...accountSource,
@@ -666,7 +659,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={1}
         showRealPrice={false}
-        showRatioColumn={true}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         effectiveGroup="default"
@@ -713,7 +705,7 @@ describe("ModelItem profile actions", () => {
       token: "token",
       userId: "1",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
     })
 
     render(
@@ -734,7 +726,6 @@ describe("ModelItem profile actions", () => {
         }}
         exchangeRate={7}
         showRealPrice={true}
-        showRatioColumn={false}
         showEndpointTypes={true}
         groupRatios={{ default: 1 }}
         effectiveGroup="default"

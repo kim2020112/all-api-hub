@@ -33,11 +33,11 @@ features:
   - title: "💰 サイト間モデル価格比較"
     details: "各サイトのモデル価格を実質価格に換算し、よりお得なモデルやグループをひと目で見つけられます。"
   - title: "✅ 複数サイトの自動チェックイン"
-    details: "複数サイトへワンクリックまたはスケジュールでチェックインし、毎日のログインなしで特典を自動的に受け取れます。"
+    details: "対応アカウントの毎日のチェックインをワンクリックまたはスケジュールで実行し、毎日のログインなしで特典を自動的に受け取れます。"
   - title: "🧪 API・モデル・CLI 検証"
     details: "API の接続状態、モデルの利用可否、CLI の接続状態をワンクリックでテストし、設定上の問題をすばやく切り分けられます。"
   - title: "🔔 お知らせとタスク結果通知"
-    details: "登録済みサイトのお知らせを一か所で確認し、メンテナンス、モデル、価格などの更新に加えて、自動チェックイン、WebDAV 自動同期、モデル同期の結果もすぐに受け取れます。"
+    details: "登録済みサイトのお知らせを一か所で確認し、メンテナンス、モデル、価格などの更新に加えて、自動チェックイン、WebDAV 自動同期、モデル同期のバックグラウンドスケジュール結果もすぐに受け取れます。"
   - title: "🚀 Web ページからの取り込みとワンクリックエクスポート"
     details: "Web ページから Base URL や API Key をすばやく検出し、よく使う AI クライアントへワンクリックでエクスポートできます。"
   - title: "🛠️ 主要 AI ゲートウェイ対応"
@@ -60,7 +60,7 @@ AI の時代には、節約したり別のモデルを試したりするため�
 
 - **どう始めればよいですか？**：[拡張機能をダウンロードしてインストール](./get-started.md) -> [最初のアカウントを追加](./get-started.md#add-site)
 - **節約したい**：[自動チェックインでクレジットを獲得](./auto-checkin.md) -> [サイト間でモデル価格を比較](./model-list.md)
-- **もっと手間を減らしたい**：[資産の変化をひと目で確認](./balance-history.md) -> [アカウントを他の AI ツールに同期](./get-started.md#quick-export-sites)
+- **もっと手間を減らしたい**：[資産の変化をひと目で確認](./balance-history.md) -> [アカウントを他の AI ツールに同期](./get-started.md#quick-export-sites) -> [バックグラウンドタスク通知を受信](./task-notifications.md)
 
 ### 🛠️ 上級ユーザー（Key コレクター）
 
@@ -79,7 +79,7 @@ AI の時代には、節約したり別のモデルを試したりするため�
 どのアーキテクチャを使っていても、高い確率で対応しています：
 
 - **アカウントサイト互換アーキテクチャ**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub など。
-- **特色あるアカウントプラットフォームと互換実装**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API など。
+- **特色あるアカウントプラットフォームと互換実装**：[OpenRouter](https://openrouter.ai/)、[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API など。
 - **セルフホスト型管理バックエンド**：New API, Sub2API, AxonHub, Claude Code Hub, [Octopus](https://github.com/bestruirui/octopus), Veloera, Done-Hub など。バックエンド管理、移行、一部のモデル同期に利用できます。
 
 > macOS で Safari を使う場合は、先に [Safari インストールガイド](./safari-install.md) を確認してください。
@@ -222,6 +222,19 @@ AI の時代には、節約したり別のモデルを試したりするため�
   </div>
   <p class="readme-sponsor-copy">
     モデル品質の低下、性能制限、料金の不透明さが気になりますか？Infistar.ai で提供するすべてのモデルは実際の API 呼び出しで検証済みです。供給元は公式 API と公式アカウントプールで、10,000 本を超える供給経路を負荷分散し、低遅延とピーク時の安定性を確保しています。ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax など国内外の主要モデルに対応し、テキスト、動画、画像、埋め込み、リランキングなどのフルモーダル機能をカバーします。料金と利用量は明確に確認でき、モデルは公式価格の 10% から利用できます。All API Hub ユーザーは<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">専用リンク</a>から登録してお試しいただけます（<a href="./service-guides/infistar.md">設定ガイド</a>）。
+  </p>
+</div>
+
+<hr class="readme-sponsor-divider">
+
+<div class="readme-sponsor">
+  <div class="readme-sponsor-logo">
+    <a href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+  </div>
+  <p class="readme-sponsor-copy">
+    <strong>APIMart</strong> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は <strong>1 枚 $0.006</strong> から、1 ドルで 160 枚以上の画像を生成できます。画像と動画をひとつの非同期 API でカバーし、タスクを送信して ID を取得、ポーリングまたはコールバックで結果を取得できます。数万枚のバッチ処理もタイムアウトなしで実行でき、モデルを切り替えてもコードの変更は不要です。従量課金・月額料金なし。<a href="https://go.apimart.ai/gh-all-api-hub">こちらのリンク</a>から登録して利用を始められます。
   </p>
 </div>
 

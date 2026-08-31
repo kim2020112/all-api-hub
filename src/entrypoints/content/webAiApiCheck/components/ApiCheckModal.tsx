@@ -8,6 +8,7 @@ import type {
 
 import {
   Button,
+  BUTTON_LOADING_BEHAVIORS,
   DatePicker,
   FormField,
   IconButton,
@@ -102,12 +103,15 @@ export function ApiCheckModal({ t, view, actions, refs }: ApiCheckModalProps) {
                 {t("webAiApiCheck:modal.privacyHint")}
               </div>
             </div>
+            {/* Focus-opened react-tooltip can consume the first dismiss click in Edge's content ShadowRoot. */}
             <IconButton
+              data-testid={WEB_AI_API_CHECK_TEST_IDS.closeButton}
               aria-label={t("common:actions.close")}
               variant="ghost"
               size="sm"
               onClick={actions.close}
               disabled={!view.canClose}
+              disableAutoTooltip
             >
               <X className="h-4 w-4" />
             </IconButton>
@@ -115,6 +119,7 @@ export function ApiCheckModal({ t, view, actions, refs }: ApiCheckModalProps) {
 
           <div
             ref={refs.scrollContainerRef}
+            data-testid={WEB_AI_API_CHECK_TEST_IDS.scrollContainer}
             className="max-h-[calc(90vh-64px)] overflow-y-auto overscroll-contain p-4"
           >
             <div className="space-y-4">
@@ -338,7 +343,7 @@ export function ApiCheckModal({ t, view, actions, refs }: ApiCheckModalProps) {
                             ),
                           },
                         }}
-                        locale={view.datePickerLocale}
+                        language={view.datePickerLanguage}
                         portalContainer={view.popoverPortalContainer}
                         disabled={view.isSavingProfile}
                         naturalInput
@@ -398,6 +403,8 @@ export function ApiCheckModal({ t, view, actions, refs }: ApiCheckModalProps) {
                     view.isRunningAll ? actions.stopRunAll : actions.runAll
                   }
                   disabled={view.isRunAllActionDisabled}
+                  loading={view.isRunningAll}
+                  loadingBehavior={BUTTON_LOADING_BEHAVIORS.Interactive}
                 >
                   {view.isRunningAll
                     ? view.isStoppingRunAll

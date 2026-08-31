@@ -1,14 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SITE_TYPES } from "~/constants/siteType"
+import { ApiError } from "~/services/apiTransport/errors"
+import { fetchApi, fetchApiData } from "~/services/apiTransport/request"
 import { veloeraProvider } from "~/services/checkin/autoCheckin/providers/veloera"
 import { PROTECTION_BYPASS_USER_COMMANDS } from "~/services/protectionBypass/contracts"
 import { AuthTypeEnum, SiteHealthStatus, type SiteAccount } from "~/types"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
+
+const { mockFetchVeloeraCheckInSupport } = vi.hoisted(() => ({
+  mockFetchVeloeraCheckInSupport: vi.fn(),
+}))
 
 vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: vi.fn(),
+  fetchApiData: vi.fn(),
+}))
+
+vi.mock("~/services/apiService/newApiFamily/variants/veloeraCheckIn", () => ({
+  fetchSupportCheckIn: mockFetchVeloeraCheckInSupport,
 }))
 
 const mockAccount: SiteAccount = {
@@ -23,7 +35,7 @@ const mockAccount: SiteAccount = {
   disabled: false,
   excludeFromTotalBalance: false,
   excludeFromTodayIncome: false,
-  checkIn: { enableDetection: true },
+  checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
   health: { status: SiteHealthStatus.Healthy },
   account_info: {
     id: "123",
@@ -59,24 +71,45 @@ const checkInForTest = (
 describe("veloeraProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFetchVeloeraCheckInSupport.mockReset()
+    mockFetchVeloeraCheckInSupport.mockResolvedValue(undefined)
   })
 
-  describe("canCheckIn", () => {
-    it("returns true for valid account", () => {
-      expect(veloeraProvider.canCheckIn(mockAccount)).toBe(true)
+  describe("getReadiness", () => {
+    it("returns ready for a valid account", () => {
+      expect(veloeraProvider.getReadiness(mockAccount)).toEqual({ ready: true })
     })
 
-    it("returns false when enableDetection is false", () => {
-      const account = { ...mockAccount, checkIn: { enableDetection: false } }
-      expect(veloeraProvider.canCheckIn(account)).toBe(false)
+    it("leaves automatic-execution intent to the Module", () => {
+      const account = {
+        ...mockAccount,
+        checkIn: buildCheckInConfig(),
+      }
+      expect(veloeraProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
-    it("returns false when no access token", () => {
+    it("explains when saved credentials are missing", () => {
       const account = {
         ...mockAccount,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(veloeraProvider.canCheckIn(account)).toBe(false)
+      expect(veloeraProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
+    })
+
+    it("defaults legacy accounts without auth type to access-token readiness", () => {
+      const account = {
+        ...mockAccount,
+        authType: undefined,
+        account_info: { ...mockAccount.account_info, access_token: "" },
+      } as unknown as SiteAccount
+
+      expect(veloeraProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
     })
 
     it("allows cookie-auth accounts without an access token", () => {
@@ -86,8 +119,60 @@ describe("veloeraProvider", () => {
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
 
-      expect(veloeraProvider.canCheckIn(account)).toBe(true)
+      expect(veloeraProvider.getReadiness(account)).toEqual({ ready: true })
     })
+  })
+
+  it("uses only the safe GET reader and rejects malformed status", async () => {
+    vi.mocked(fetchApiData)
+      .mockResolvedValueOnce({ can_check_in: true })
+      .mockResolvedValueOnce({})
+
+    await expect(
+      veloeraProvider.detect!({ account: mockAccount, observedAt: 210 }),
+    ).resolves.toMatchObject({
+      detection: { outcome: "matched" },
+      status: { outcome: "known", today: "not_checked" },
+    })
+    await expect(
+      veloeraProvider.detect!({ account: mockAccount, observedAt: 211 }),
+    ).resolves.toEqual({
+      outcome: "unknown",
+      reason: "invalid_response",
+      attemptedAt: 211,
+    })
+    expect(vi.mocked(fetchApiData).mock.calls[0]?.[1]).toMatchObject({
+      endpoint: "/api/user/check_in_status",
+    })
+    expect(fetchApi).not.toHaveBeenCalled()
+  })
+
+  it("uses the public Veloera capability flag before the per-user status", async () => {
+    mockFetchVeloeraCheckInSupport.mockResolvedValueOnce(false)
+
+    await expect(
+      veloeraProvider.detect!({ account: mockAccount, observedAt: 212 }),
+    ).resolves.toMatchObject({
+      detection: { outcome: "matched" },
+      status: { outcome: "known", availability: "disabled" },
+    })
+    expect(fetchApiData).not.toHaveBeenCalled()
+  })
+
+  it("propagates the discovery abort signal to the public support probe", async () => {
+    const controller = new AbortController()
+    mockFetchVeloeraCheckInSupport.mockResolvedValueOnce(false)
+
+    await veloeraProvider.detect!({
+      account: mockAccount,
+      observedAt: 213,
+      signal: controller.signal,
+    })
+
+    expect(mockFetchVeloeraCheckInSupport).toHaveBeenCalledWith(
+      expect.any(Object),
+      controller.signal,
+    )
   })
 
   describe("checkIn", () => {
@@ -167,13 +252,41 @@ describe("veloeraProvider", () => {
       })
     })
 
-    it("maps 404-style error messages to endpoint-not-supported", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      vi.mocked(fetchApi).mockRejectedValueOnce(new Error("404 Not found"))
+    it("uses status readback to recognize an already completed check-in", async () => {
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        success: false,
+        data: null,
+        message: "No action was performed",
+      })
+      mockFetchVeloeraCheckInSupport.mockResolvedValueOnce(true)
+      vi.mocked(fetchApiData).mockResolvedValueOnce({ can_check_in: false })
+
+      await expect(checkInForTest(mockAccount)).resolves.toMatchObject({
+        status: "already_checked",
+        rawMessage: "No action was performed",
+      })
+    })
+
+    it("does not infer endpoint support from unrelated error text", async () => {
+      vi.mocked(fetchApi).mockRejectedValueOnce(
+        new Error("Quota bucket 404 is unavailable"),
+      )
 
       const result = await checkInForTest(mockAccount)
 
       expect(result).toEqual({
+        status: "failed",
+        rawMessage: "Quota bucket 404 is unavailable",
+        messageKey: undefined,
+      })
+    })
+
+    it("maps a structured 404 response to endpoint-not-supported", async () => {
+      vi.mocked(fetchApi).mockRejectedValueOnce(
+        new ApiError("Not found", 404, "/api/user/check_in"),
+      )
+
+      await expect(checkInForTest(mockAccount)).resolves.toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.endpointNotSupported",
       })

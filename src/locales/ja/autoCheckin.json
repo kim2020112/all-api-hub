@@ -7,7 +7,8 @@
       "openFailedManual": "失敗した全アカウントのチェックインページを開く",
       "openManual": "手動チェックイン",
       "openSite": "サイトを開く",
-      "retryAccount": "再試行"
+      "retryAccount": "再試行",
+      "verifyStatus": "状態を確認"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "開発用: 「UI を開いた時に今日のチェックインを事前起動」の条件を評価",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "すべて",
+      "clearAll": "フィルターを解除",
+      "countFiltered": "{{total}} 件中 {{filtered}} 件を表示",
+      "countTotal": "全 {{total}} 件",
       "failed": "失敗",
-      "searchPlaceholder": "アカウント名またはメッセージで検索...",
+      "failedOrSkipped": "失敗または未実行",
+      "searchLabel": "実行結果を検索",
+      "searchPlaceholder": "アカウント名、ID、メッセージで検索...",
       "skipped": "スキップ",
+      "statusLabel": "実行状態で絞り込む",
       "success": "成功"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "直近の自動チェックインに失敗した全アカウントについて、各サイトのチェックインページを開きます。Shift キーを押しながらクリックすると、新しいウィンドウで開きます。",
       "siteTypeCheckinUnsupported": "対処方法: まず「アカウント管理 → アカウント編集」で選択中のサイト種別が実際のサイトと一致しているか確認してください。以前に自動判定された種別であれば、対象サイトに再ログインしてから再度自動判定を行ってください。サイト種別が正しいのにこの表示が続く場合、そのサイトはまだ自動チェックイン未対応の可能性があるため、「サイトを開く」または「手動チェックイン」を利用してください。"
     },
+    "pagination": {
+      "next": "次のページ",
+      "previous": "前のページ",
+      "rowsPerPage": "1 ページの表示件数",
+      "summary": "{{total}} 件中 {{start}}–{{end}} 件を表示"
+    },
     "refresh": "更新",
     "runNow": "今すぐ実行",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "チェックイン済み",
       "failed": "失敗",
       "skipped": "スキップ",
-      "success": "成功"
+      "success": "成功",
+      "uncertain": "確認待ち"
     },
     "table": {
       "accountName": "アカウント名",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "再試行アラームの起動に失敗しました: {{error}}",
       "retryFailed": "再試行に失敗しました: {{error}}",
       "runFailed": "自動チェックインの実行に失敗しました: {{error}}",
+      "statusVerificationFailed": "選択したチェックイン状態を確認できませんでした。もう一度試すか、アカウントサイトを開いてください。",
       "uiOpenPretriggerDidNotStart": "UI 起動時の事前起動は開始されませんでした: {{reason}}",
       "uiOpenPretriggerEvaluationFailed": "UI 起動時の事前起動判定に失敗しました: {{error}}",
       "uiOpenPretriggerIneligible": "UI 起動時の事前起動対象ではありません: {{reason}}",
@@ -109,6 +124,7 @@
       "retryCompleted": "再試行が完了しました。",
       "runCompleted": "自動チェックインが完了しました。",
       "settingsSaved": "自動チェックイン設定を保存しました。",
+      "statusVerified": "選択したチェックイン状態を確認しました。",
       "uiOpenPretriggerEligible": "UI 起動時の事前起動条件を満たしています。"
     }
   },
@@ -122,6 +138,7 @@
     "nativePageStatusUnconfirmed": "ページ上のチェックイン操作はクリックされましたが、対象アカウントの状態を確認できませんでした。チェックインページを開いて手動で確認してください: {{checkInUrl}}",
     "nativePageTargetNotFound": "ページ上でチェックインボタンが見つかりませんでした。チェックインページを開いて手動で完了してください: {{checkInUrl}}",
     "nativePageTriggerFailed": "ページ上のチェックイン操作を実行できませんでした。チェックインページを開いて手動で完了してください: {{checkInUrl}}",
+    "resultPendingConfirmation": "チェックイン結果を確認中",
     "turnstileIncognitoAccessRequired": "プライベート一時ウィンドウで Turnstile トークンを取得するには、拡張機能のシークレット / プライベートウィンドウ実行を許可する必要があります（複数アカウントの場面）。この拡張機能の「シークレットモードでの実行を許可」を有効にして再試行するか、チェックインページを開いて認証を完了してください: {{checkInUrl}}",
     "turnstileManualRequired": "Cloudflare Turnstile 認証が必要です。チェックインページを開いて認証を完了してください: {{checkInUrl}}",
     "unknownError": "不明なエラーが発生しました"
@@ -158,29 +175,59 @@
     "windowStartDesc": "デイリーチェックインを開始できる最も早いローカル時刻です。"
   },
   "skipReasons": {
+    "account_data_missing": "必要なアカウント情報が不足しています。アカウントを再検出してください。",
     "account_disabled": "アカウントは無効です",
+    "account_unavailable": "チェックイン前にアカウントが変更されたか、利用できなくなりました",
     "already_checked_today": "本日はすでにチェック済みです",
+    "authentication_required": "ログインの有効期限が切れているか、ログインが必要です。対象サイトにログインしてから再試行してください。",
     "auto_checkin_disabled": "自動チェックインは無効です",
+    "credentials_missing": "保存済みの認証情報が不足しています。アカウントを再検出するか、認証情報を更新してください。",
     "detection_disabled": "検出は無効です",
+    "method_disabled": "このサイトのチェックイン機能は無効です",
+    "method_not_matched": "選択したチェックイン方法は現在のサイトと一致しません。チェックイン方法を再検出してください。",
+    "method_unavailable": "選択したチェックイン方法は利用できなくなりました。チェックイン方法を再検出してください。",
+    "method_unsupported": "現在のサイトは選択したチェックイン方法に対応していません。",
+    "network_error": "ネットワーク接続の問題でチェックインできませんでした。接続を確認して再試行してください。",
     "no_provider": "このアカウントのサイト種別は現在チェックインに対応していません",
-    "provider_not_ready": "現在のアカウント設定ではチェックインに対応していません"
+    "no_selected_method": "チェックイン方法が選択されていません。アカウント設定で再検出または選択してください。",
+    "permission_denied": "サイトがチェックインを拒否しました。再ログインするか、アカウント権限を確認してください。",
+    "source_unavailable": "対象サイトは一時的に利用できません。しばらくしてから再試行してください。",
+    "status_unavailable": "現在のチェックイン状態を確認できなかったため、チェックインは実行されませんでした",
+    "timeout": "接続がタイムアウトし、チェックインを完了できませんでした。再試行してください。"
   },
   "snapshot": {
     "badges": {
       "disabled": "無効",
       "enabled": "有効",
+      "methodNotSelected": "未選択",
+      "methodSelected": "選択済み",
       "pending": "保留中",
       "providerAvailable": "利用可能",
       "providerUnavailable": "利用不可"
     },
-    "description": "検出が有効なすべてのアカウントと準備状況を表示します。保留中のアカウントは、「今すぐ実行」をクリックするか予定時刻になるとチェックインに参加します。",
+    "description": "前回の実行で記録されたアカウントの準備状況を表示します。保留中のアカウントは、「今すぐ実行」をクリックするか予定時刻になるとチェックインに参加します。",
+    "filters": {
+      "clearAll": "フィルターを解除",
+      "countFiltered": "{{total}} 件中 {{filtered}} 件のアカウントを表示",
+      "countTotal": "{{total}} 件のアカウント",
+      "noMatches": "一致するアカウントはありません",
+      "noMatchesDescription": "検索またはフィルターを調整するか、すべて解除してください。",
+      "readinessAll": "すべての準備状態",
+      "readinessDisabled": "無効",
+      "readinessLabel": "実行準備状態で絞り込む",
+      "readinessReady": "実行可能",
+      "readinessSetupRequired": "設定が必要",
+      "readinessTemporarilyUnavailable": "一時的に利用不可",
+      "readinessUnsupported": "未対応",
+      "searchLabel": "アカウント準備状況を検索",
+      "searchPlaceholder": "アカウント名、ID、未実行理由で検索...",
+      "statusAll": "すべての最新状態",
+      "statusLabel": "最新状態で絞り込む"
+    },
     "table": {
       "autoCheckin": "自動チェックイン",
-      "detection": "検出",
-      "lastResult": "前回結果",
-      "provider": "プロバイダー",
-      "skipReason": "スキップ理由",
-      "status": "状態"
+      "lastResult": "更新日時",
+      "status": "最新状態"
     },
     "title": "アカウント準備状況"
   },
@@ -195,6 +242,7 @@
     "result": {
       "failed": "失敗",
       "partial": "一部成功",
+      "skipped": "未実行",
       "success": "成功"
     },
     "retryDisabled": "再試行は無効です",
@@ -212,5 +260,9 @@
     "dialogDescription": "本日予定されていたデイリー実行が、UI を開いた際に前倒しで起動されました。",
     "dialogTitle": "自動チェックインが完了しました",
     "viewDetails": "詳細を見る"
+  },
+  "workspace": {
+    "label": "自動チェックインデータ",
+    "resultsTab": "実行結果"
   }
 }

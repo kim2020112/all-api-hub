@@ -1,14 +1,10 @@
 import userEvent from "@testing-library/user-event"
-import { de, ptBR } from "date-fns/locale"
 import dayjs from "dayjs"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Calendar } from "~/components/ui/calendar"
 import { DatePicker } from "~/components/ui/DatePicker"
-import {
-  getDatePickerLocale,
-  parseDatePickerValue,
-} from "~/components/ui/datePickerValue"
+import { parseDatePickerValue } from "~/components/ui/datePickerValue"
 import { render, screen, within } from "~~/tests/test-utils/render"
 
 const labels = {
@@ -168,6 +164,31 @@ describe("DatePicker", () => {
     )
 
     expect(onChange).toHaveBeenCalledWith("2026-07-15")
+  })
+
+  it("loads calendar copy for the active app language", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <DatePicker
+        value="2026-07-01"
+        onChange={vi.fn()}
+        labels={labels}
+        language="de-DE"
+      />,
+      {
+        withUserPreferencesProvider: false,
+        withThemeProvider: false,
+      },
+    )
+
+    await user.click(
+      screen.getByRole("button", {
+        name: `${labels.trigger}: 2026-07-01`,
+      }),
+    )
+
+    expect(await screen.findByText("Juli 2026")).toBeVisible()
   })
 
   it("includes the selected value in the trigger accessible name", () => {
@@ -431,6 +452,31 @@ describe("DatePicker", () => {
 })
 
 describe("Calendar", () => {
+  it("keeps navigation controls square at the configured cell size", () => {
+    render(<Calendar mode="single" month={new Date(2026, 6, 1)} />, {
+      withUserPreferencesProvider: false,
+      withThemeProvider: false,
+    })
+
+    const previousMonthButton = screen.getByRole("button", {
+      name: /previous month/i,
+    })
+    const nextMonthButton = screen.getByRole("button", {
+      name: /next month/i,
+    })
+
+    for (const button of [previousMonthButton, nextMonthButton]) {
+      expect(button).toHaveClass("size-(--cell-size)")
+      expect(button).toHaveClass("max-w-none")
+      expect(button).toHaveClass("shrink-0")
+      expect(button).toHaveClass("whitespace-nowrap")
+      expect(button).not.toHaveClass("min-h-9")
+      expect(button).not.toHaveClass("max-w-full")
+      expect(button).not.toHaveClass("shrink")
+      expect(button).not.toHaveClass("whitespace-normal")
+    }
+  })
+
   it("renders dropdown captions with week numbers", () => {
     render(
       <Calendar
@@ -451,16 +497,6 @@ describe("Calendar", () => {
 })
 
 describe("datePickerValue", () => {
-  it("uses Brazilian Portuguese calendar copy for Portuguese locales", () => {
-    expect(getDatePickerLocale("pt-BR")).toBe(ptBR)
-    expect(getDatePickerLocale("pt-PT")).toBe(ptBR)
-  })
-
-  it("uses German calendar copy for German locale variants", () => {
-    expect(getDatePickerLocale("de")).toBe(de)
-    expect(getDatePickerLocale("de-DE")).toBe(de)
-  })
-
   it("returns null for canonical dates with missing month or day parts", () => {
     expect(parseDatePickerValue("2026-00-01")).toBeNull()
     expect(parseDatePickerValue("2026-01-00")).toBeNull()

@@ -41,6 +41,7 @@ import {
 } from "~/types"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { buildSiteAccount } from "~~/tests/test-utils/factories"
 import { act, renderHook, waitFor } from "~~/tests/test-utils/render"
 
@@ -313,7 +314,7 @@ describe("useAccountDialog save and auto-config flows", () => {
       token: "saved-token",
       userId: "12",
       authType: AuthTypeEnum.AccessToken,
-      checkIn: { enableDetection: false },
+      checkIn: buildCheckInConfig(),
       cookieAuthSessionCookie: "",
       ...overrides,
     }) as DisplaySiteData
@@ -388,6 +389,65 @@ describe("useAccountDialog save and auto-config flows", () => {
         ?.protectionBypassExecution,
     ).toEqual(userCommandExecution("add_account", "popup"))
     expect(mockGetCurrentTempWindowRequestSource).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not keep the save command pending while post-save refresh is running", async () => {
+    let resolveRefresh!: (value: {
+      account: SiteAccount
+      refreshed: boolean
+    }) => void
+    const refreshPromise = new Promise<{
+      account: SiteAccount
+      refreshed: boolean
+    }>((resolve) => {
+      resolveRefresh = resolve
+    })
+    vi.spyOn(accountStorage, "refreshAccount").mockReturnValueOnce(
+      refreshPromise as ReturnType<typeof accountStorage.refreshAccount>,
+    )
+    const onPostSaveAccountRefresh = vi.fn().mockResolvedValue(undefined)
+
+    const { result } = renderAddHook({ onPostSaveAccountRefresh })
+
+    await waitFor(() => {
+      expect(result.current.state).toBeTruthy()
+    })
+    await fillStandardAddAccountDraft(result)
+
+    let savePromise!: ReturnType<
+      typeof result.current.handlers.handleSaveAccount
+    >
+    await act(async () => {
+      savePromise = result.current.handlers.handleSaveAccount()
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(accountStorage.refreshAccount).toHaveBeenCalled()
+    })
+
+    const saveCompletedBeforeRefresh = await Promise.race([
+      savePromise.then(() => true),
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => resolve(false), 0)
+      }),
+    ])
+    expect(saveCompletedBeforeRefresh).toBe(true)
+
+    resolveRefresh({
+      account: buildSiteAccount({ id: "saved-account-id" }),
+      refreshed: true,
+    })
+    await act(async () => {
+      await savePromise
+    })
+    expect(onPostSaveAccountRefresh).toHaveBeenCalledWith(["saved-account-id"])
+    expect(mockSendRuntimeMessage).toHaveBeenCalledWith(
+      {
+        action: RuntimeActionIds.AccountRefreshCompleted,
+        updatedAccountIds: ["saved-account-id"],
+      },
+      { maxAttempts: 1 },
+    )
   })
 
   it("captures the current surface again when the warning refresh action is clicked", async () => {
@@ -894,7 +954,7 @@ describe("useAccountDialog save and auto-config flows", () => {
       true,
       false,
       undefined,
-      { deferDataRefresh: true },
+      { deferDataRefresh: true, selectionChanged: false },
     )
     expect(toast.success).toHaveBeenCalledWith(
       "accountDialog:messages.updateSuccess",

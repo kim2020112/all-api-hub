@@ -320,6 +320,7 @@ export const PRODUCT_ANALYTICS_TARGET_KINDS = {
   ManualSignIn: "manual_sign_in",
   ModelFilter: "model_filter",
   ResultFilter: "result_filter",
+  AutoCheckinDataView: "auto_checkin_data_view",
   ModelSource: "model_source",
   OptionsPage: "options_page",
 } as const
@@ -357,6 +358,11 @@ export const PRODUCT_ANALYTICS_MODE_IDS = {
   RetryFailed: "retry_failed",
   TelemetryAuto: "telemetry_auto",
   TelemetryDisabled: "telemetry_disabled",
+  TelemetryDeepSeekBalance: "telemetry_deepseek_balance",
+  TelemetryGlmQuota: "telemetry_glm_quota",
+  TelemetryKimiQuota: "telemetry_kimi_quota",
+  TelemetryKimiOpenPlatformBalance: "telemetry_kimi_open_platform_balance",
+  TelemetryOpenCodeGoUsage: "telemetry_open_code_go_usage",
   TelemetryNewApiTokenUsage: "telemetry_new_api_token_usage",
   TelemetrySub2ApiUsage: "telemetry_sub2api_usage",
   TelemetryOpenAiBilling: "telemetry_openai_billing",
@@ -370,6 +376,8 @@ export const PRODUCT_ANALYTICS_MODE_IDS = {
   GroupFilter: "group_filter",
   AccountFilter: "account_filter",
   StatusFilter: "status_filter",
+  AutoCheckinResultsView: "auto_checkin_results_view",
+  AutoCheckinReadinessView: "auto_checkin_readiness_view",
   ExpandDetails: "expand_details",
   CollapseDetails: "collapse_details",
   ApiVerification: "api_verification",
@@ -430,6 +438,11 @@ export type ProductAnalyticsSortField =
 
 export const PRODUCT_ANALYTICS_TELEMETRY_SOURCES = {
   Models: "models",
+  DeepSeekBalance: "deepSeekBalance",
+  GlmQuota: "glmQuota",
+  KimiQuota: "kimiQuota",
+  KimiOpenPlatformBalance: "kimiOpenPlatformBalance",
+  OpenCodeGoUsage: "openCodeGoUsage",
   OpenAiBilling: "openaiBilling",
   NewApiTokenUsage: "newApiTokenUsage",
   Sub2ApiUsage: "sub2apiUsage",
@@ -501,6 +514,37 @@ export const PRODUCT_ANALYTICS_FEATURE_IDS = {
   WebAiApiCheck: "web_ai_api_check",
   SponsorRecommendations: "sponsor_recommendations",
 } as const
+
+export const PRODUCT_ANALYTICS_CHECK_IN_DISCOVERY_TRIGGERS = [
+  "initial_detection",
+  "redetect",
+] as const
+export type ProductAnalyticsCheckInDiscoveryTrigger =
+  (typeof PRODUCT_ANALYTICS_CHECK_IN_DISCOVERY_TRIGGERS)[number]
+
+export const PRODUCT_ANALYTICS_CHECK_IN_DISCOVERY_DECISIONS = [
+  "resolved",
+  "ambiguous",
+  "unknown",
+  "unsupported",
+] as const
+export type ProductAnalyticsCheckInDiscoveryDecision =
+  (typeof PRODUCT_ANALYTICS_CHECK_IN_DISCOVERY_DECISIONS)[number]
+
+export const PRODUCT_ANALYTICS_CHECK_IN_SELECTION_SOURCES = [
+  "automatic",
+  "manual",
+  "none",
+] as const
+export type ProductAnalyticsCheckInSelectionSource =
+  (typeof PRODUCT_ANALYTICS_CHECK_IN_SELECTION_SOURCES)[number]
+
+export const PRODUCT_ANALYTICS_CHECK_IN_RECOVERY_ACTIONS = [
+  "manual_override",
+  "restore_automatic",
+] as const
+export type ProductAnalyticsCheckInRecoveryAction =
+  (typeof PRODUCT_ANALYTICS_CHECK_IN_RECOVERY_ACTIONS)[number]
 
 export type ProductAnalyticsFeatureId =
   (typeof PRODUCT_ANALYTICS_FEATURE_IDS)[keyof typeof PRODUCT_ANALYTICS_FEATURE_IDS]
@@ -583,6 +627,7 @@ export const PRODUCT_ANALYTICS_ACTION_IDS = {
   AutoFetchApiCredentialModelList: "auto_fetch_api_credential_model_list",
   FetchApiCredentialModelList: "fetch_api_credential_model_list",
   FilterAutoCheckinResults: "filter_auto_checkin_results",
+  SelectAutoCheckinDataView: "select_auto_checkin_data_view",
   FilterAccounts: "filter_accounts",
   FilterManagedSiteModelSyncResults: "filter_managed_site_model_sync_results",
   ImportBackupData: "import_backup_data",
@@ -691,12 +736,15 @@ export const PRODUCT_ANALYTICS_ACTION_IDS = {
   RunApiCredentialProbe: "run_api_credential_probe",
   RunApiCredentialProbeSuite: "run_api_credential_probe_suite",
   RunAccountAutoDetect: "run_account_auto_detect",
+  RedetectCheckInMethods: "redetect_check_in_methods",
+  SetCheckInMethodSelection: "set_check_in_method_selection",
   RunAutoCheckinNow: "run_auto_checkin_now",
   RunTempWindowFetch: "run_temp_window_fetch",
   RunTempWindowTurnstileFetch: "run_temp_window_turnstile_fetch",
   RunPopupQuickCheckin: "run_popup_quick_checkin",
   RunQuickCheckin: "run_quick_checkin",
   RetryAutoCheckinAccount: "retry_auto_checkin_account",
+  VerifyAutoCheckinAccountStatus: "verify_auto_checkin_account_status",
   RetryFailedManagedSiteModelSync: "retry_failed_managed_site_model_sync",
   SaveAccountTokenToApiCredentialProfile:
     "save_account_token_to_api_credential_profile",
@@ -784,6 +832,7 @@ export const PRODUCT_ANALYTICS_SURFACE_IDS = {
   OptionsAutoCheckinActionBar: "options_auto_checkin_action_bar",
   OptionsAutoCheckinEmptyState: "options_auto_checkin_empty_state",
   OptionsAutoCheckinFilterBar: "options_auto_checkin_filter_bar",
+  OptionsAutoCheckinDataWorkspace: "options_auto_checkin_data_workspace",
   OptionsAutoCheckinResultsTable: "options_auto_checkin_results_table",
   OptionsBalanceHistoryPage: "options_balance_history_page",
   OptionsAccountManagementHeader: "options_account_management_header",
@@ -921,13 +970,34 @@ export const PRODUCT_ANALYTICS_AUTO_CHECKIN_RUN_KINDS = {
 export type ProductAnalyticsAutoCheckinRunKind =
   (typeof PRODUCT_ANALYTICS_AUTO_CHECKIN_RUN_KINDS)[keyof typeof PRODUCT_ANALYTICS_AUTO_CHECKIN_RUN_KINDS]
 
+export const PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES = {
+  StrictReadback: "strict_readback",
+  Compatibility: "compatibility",
+} as const
+
+export type ProductAnalyticsAutoCheckinMethodCategory =
+  (typeof PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES)[keyof typeof PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES]
+
 export const PRODUCT_ANALYTICS_AUTO_CHECKIN_SKIP_REASONS = {
   AccountDisabled: "account_disabled",
+  AccountUnavailable: "account_unavailable",
   DetectionDisabled: "detection_disabled",
+  MethodDisabled: "method_disabled",
   AutoCheckinDisabled: "auto_checkin_disabled",
   AlreadyCheckedToday: "already_checked_today",
   NoProvider: "no_provider",
-  ProviderNotReady: "provider_not_ready",
+  NoSelectedMethod: "no_selected_method",
+  MethodUnavailable: "method_unavailable",
+  MethodNotMatched: "method_not_matched",
+  MethodUnsupported: "method_unsupported",
+  AccountDataMissing: "account_data_missing",
+  AuthenticationRequired: "authentication_required",
+  CredentialsMissing: "credentials_missing",
+  NetworkError: "network_error",
+  SourceUnavailable: "source_unavailable",
+  PermissionDenied: "permission_denied",
+  Timeout: "timeout",
+  StatusUnavailable: "status_unavailable",
 } as const
 
 export type ProductAnalyticsAutoCheckinSkipReason =
@@ -1180,6 +1250,11 @@ export type ProductAnalyticsEventPayloadMap = {
     requested_auth_mode?: ProductAnalyticsRequestedAuthMode
     site_type?: ProductAnalyticsSiteType
     fetch_context_kind?: ProductAnalyticsAccountAutoDetectFetchContextKind
+    check_in_discovery_trigger?: ProductAnalyticsCheckInDiscoveryTrigger
+    check_in_discovery_decision?: ProductAnalyticsCheckInDiscoveryDecision
+    check_in_candidate_count?: number
+    check_in_selection_source?: ProductAnalyticsCheckInSelectionSource
+    check_in_recovery_action?: ProductAnalyticsCheckInRecoveryAction
     cache_hit?: boolean
     cache_used?: boolean
     fallback_available?: boolean
@@ -1266,6 +1341,13 @@ export type ProductAnalyticsEventPayloadMap = {
     success_count: number
     failed_count: number
     skipped_count: number
+    uncertain_count: number
+    retryable_failure_count: number
+    reconciliation_checked_count: number
+    reconciliation_not_checked_count: number
+    reconciliation_unknown_count: number
+    reconciliation_unavailable_count: number
+    account_state_durability_failure_count: number
     retry_enabled: boolean
     retry_pending_before: number
     retry_attempted: number
@@ -1279,6 +1361,7 @@ export type ProductAnalyticsEventPayloadMap = {
     site_type?: ProductAnalyticsSiteType
     requested_auth_mode?: ProductAnalyticsRequestedAuthMode
     skip_reason?: ProductAnalyticsAutoCheckinSkipReason
+    method_category?: ProductAnalyticsAutoCheckinMethodCategory
     total_accounts: number
     runnable_accounts: number
     success_count: number

@@ -1,4 +1,4 @@
-import { act, within } from "@testing-library/react"
+import { act, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -43,7 +43,7 @@ const {
   accountSummaryBarPropsSpy,
   addTokenDialogPropsSpy,
   createDisplayAccountApiContextMock,
-  createProfileFromAccountTokenMock,
+  captureProfileFromAccountTokenMock,
   oneTimeSecretDialogPropsSpy,
   oneTimeSecretDialogHarnessState,
   replaceWithinOptionsPageMock,
@@ -63,7 +63,7 @@ const {
   accountSummaryBarPropsSpy: vi.fn(),
   addTokenDialogPropsSpy: vi.fn(),
   createDisplayAccountApiContextMock: vi.fn(),
-  createProfileFromAccountTokenMock: vi.fn(),
+  captureProfileFromAccountTokenMock: vi.fn(),
   oneTimeSecretDialogPropsSpy: vi.fn(),
   oneTimeSecretDialogHarnessState: { disableAutoCopy: false },
   replaceWithinOptionsPageMock: vi.fn(),
@@ -77,10 +77,21 @@ const {
   legacyRetryFailedAccountsSpy: vi.fn(),
 }))
 
-vi.mock("~/services/apiCredentialProfiles/accountTokenImport", () => ({
-  createProfileFromAccountToken: (...args: unknown[]) =>
-    createProfileFromAccountTokenMock(...args),
-}))
+vi.mock(
+  "~/services/apiCredentialProfiles/accountTokenImport",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("~/services/apiCredentialProfiles/accountTokenImport")
+      >()
+
+    return {
+      ...actual,
+      captureProfileFromAccountToken: (...args: unknown[]) =>
+        captureProfileFromAccountTokenMock(...args),
+    }
+  },
+)
 
 vi.mock(
   "~/features/KeyManagement/controllers/useAccountKeyResourceController",
@@ -643,7 +654,7 @@ describe("KeyManagement native page integration", () => {
     accountSummaryBarPropsSpy.mockReset()
     addTokenDialogPropsSpy.mockReset()
     createDisplayAccountApiContextMock.mockReset()
-    createProfileFromAccountTokenMock.mockReset()
+    captureProfileFromAccountTokenMock.mockReset()
     oneTimeSecretDialogPropsSpy.mockReset()
     oneTimeSecretDialogHarnessState.disableAutoCopy = false
     replaceWithinOptionsPageMock.mockReset()
@@ -670,8 +681,9 @@ describe("KeyManagement native page integration", () => {
     startProductAnalyticsActionMock.mockReturnValue({
       complete: trackCompleteMock,
     })
-    createProfileFromAccountTokenMock.mockResolvedValue({
-      name: "Saved profile",
+    captureProfileFromAccountTokenMock.mockResolvedValue({
+      status: "captured",
+      profile: { name: "Saved profile" },
     })
     testI18n.addResource(
       "en",
@@ -855,9 +867,12 @@ describe("KeyManagement native page integration", () => {
             : Promise.reject(new Error("private upstream detail")),
         )
       } else {
-        createProfileFromAccountTokenMock.mockImplementation(() =>
+        captureProfileFromAccountTokenMock.mockImplementation(() =>
           outcome === "success"
-            ? Promise.resolve({ name: "Saved profile" })
+            ? Promise.resolve({
+                status: "captured",
+                profile: { name: "Saved profile" },
+              })
             : Promise.reject(new Error("private upstream detail")),
         )
       }
@@ -1897,9 +1912,11 @@ describe("KeyManagement native page integration", () => {
     expect(screen.getByText("keyManagement:details.empty")).toBeVisible()
     expect(successful.collection.get).not.toHaveBeenCalled()
 
-    await user.type(
+    fireEvent.change(
       screen.getByPlaceholderText("keyManagement:searchPlaceholder"),
-      "Native one",
+      {
+        target: { value: "Native one" },
+      },
     )
     await waitFor(() =>
       expect(accountSummaryBarPropsSpy.mock.lastCall?.[0]).toMatchObject({
@@ -1911,7 +1928,7 @@ describe("KeyManagement native page integration", () => {
         ]),
       }),
     )
-  })
+  }, 30_000)
 
   it("shows a retryable failure instead of an empty inventory when the selected native account load fails", async () => {
     const nativeAccount = createAccount({

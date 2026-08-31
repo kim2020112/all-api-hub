@@ -100,8 +100,7 @@ export const aihubmixAccountCompletion: AccountCompletionCapability = {
         UI_CONSTANTS.EXCHANGE_RATE.DEFAULT,
       authType: AuthTypeEnum.AccessToken,
       checkIn: helpers.createInitialCheckInConfig({
-        enableDetection: checkSupport ?? false,
-        autoCheckInEnabled: true,
+        supported: checkSupport ?? false,
       }),
     }
   },

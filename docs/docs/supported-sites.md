@@ -13,7 +13,8 @@
 | New API | 统一的 AI 模型聚合与分发中心。 | [官网](https://www.newapi.ai/) / [GitHub](https://github.com/QuantumNous/new-api) |
 | one-api | LLM API 管理与分发系统，支持 OpenAI、Azure、Anthropic Claude、Google Gemini、DeepSeek 等主流模型，统一 API 适配，可用于 Key 管理与二次分发。 | [GitHub](https://github.com/songquanpeng/one-api) |
 | Sub2API | Sub2API-CRS2 一站式开源中转服务，让 Claude、OpenAI、Gemini、Antigravity 订阅统一接入，支持拼车共享，更高效分摊成本，原生工具无缝使用。 | [GitHub](https://github.com/Wei-Shaw/sub2api) |
-| AnyRouter | Claude Code 中转站 · 零门槛 · 免费 $50 | [文档](https://docs.anyrouter.top/) / [官网](https://anyrouter.top) |
+| AnyRouter | Claude Code 中转站 · 零门槛 · 免费 $50 | [文档](https://docs.anyrouter.top/) / [官网](https://anyrouter.top/register?aff=tDKX) |
+| AgentRouter | AI API 路由与中转服务平台。 | [官网](https://agentrouter.org/register?aff=TUX6) |
 | one-hub | OpenAI 接口管理与分发系统，改自 songquanpeng/one-api，支持更多模型，加入统计页面，并完善非 OpenAI 模型的函数调用。 | [官网](https://one-hub.xiao5.info/) / [GitHub](https://github.com/MartialBE/one-hub) |
 | Veloera | 本项目已停止维护。 | [GitHub](https://github.com/Veloera/Veloera) |
 | VoAPI | 仅支持老版本兼容部署；新版 VoAPI 的接口和行为与当前插件兼容范围不一致。 | [GitHub](https://github.com/VoAPI/VoAPI) |
@@ -122,6 +123,17 @@
     </a>
     <p>
       如果你担心模型掺水、降智或价格不透明，<strong>Infistar.ai</strong> 在售模型均经过真实调用验真，供给来自官方 API 与官方号池，超 10000 条供应链路进行负载均衡，保证时延和峰时稳定性。覆盖 ChatGPT、Claude、Gemini、Grok、GLM、DeepSeek、Kimi、Qwen、MiniMax 等国内外主流模型，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明清晰可查，模型低至官方价的 10%。All API Hub 用户可通过<a href="https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link">专属入口</a>注册体验（<a href="./service-guides/infistar.md">使用教程</a>）。
+    </p>
+  </section>
+
+  <hr>
+
+  <section class="sponsor-item">
+    <a class="sponsor-logo" href="https://go.apimart.ai/gh-all-api-hub">
+      <img src="../../resources/partners/apimart.png" alt="APIMart">
+    </a>
+    <p>
+      <strong>APIMart</strong> 专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 <strong>$0.006/张</strong>，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码，按量付费、无月费。欢迎通过<a href="https://go.apimart.ai/gh-all-api-hub">此链接</a>注册使用。
     </p>
   </section>
 

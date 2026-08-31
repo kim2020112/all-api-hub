@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Storage } from "@plasmohq/storage"
 
+import { BACKUP_VERSION } from "~/constants/importExport"
 import { accountStorage } from "~/services/accounts/accountStorage"
 import { USER_PREFERENCES_STORAGE_KEYS } from "~/services/core/storageKeys"
 import { ensureLegacyChannelConfigMigrationReady } from "~/services/managedSites/legacyChannelConfigMigration"
@@ -16,6 +17,7 @@ import {
   mergeWebdavBackupPayloadBySelection,
 } from "~/services/webdav/webdavSelectiveSync"
 import { DEFAULT_ACCOUNT_AUTO_REFRESH } from "~/types/accountAutoRefresh"
+import { API_CREDENTIAL_PROFILES_CONFIG_VERSION } from "~/types/apiCredentialProfiles"
 import { DEFAULT_WEBDAV_SETTINGS } from "~/types/webdav"
 
 vi.mock("~/services/managedSites/legacyChannelConfigMigration", () => ({
@@ -154,6 +156,42 @@ describe("filterWebdavBackupPayloadBySelection", () => {
 })
 
 describe("mergeWebdavBackupPayloadBySelection", () => {
+  it("rejects future nested profile configs before replacing the remote backup", () => {
+    expect(() =>
+      mergeWebdavBackupPayloadBySelection({
+        backup: {
+          version: BACKUP_VERSION,
+          timestamp: 2,
+          accounts: { accounts: [], bookmarks: [], last_updated: 2 },
+          preferences: DEFAULT_PREFERENCES,
+          channelConfigs: { schemaVersion: 1, configs: {} },
+          apiCredentialProfiles: {
+            version: API_CREDENTIAL_PROFILES_CONFIG_VERSION,
+            profiles: [],
+            links: [],
+            linkTombstones: [],
+            lastUpdated: 2,
+          },
+        } as any,
+        selection: {
+          accounts: false,
+          bookmarks: false,
+          apiCredentialProfiles: true,
+          preferences: false,
+        },
+        remoteBackup: {
+          version: BACKUP_VERSION,
+          timestamp: 1,
+          apiCredentialProfiles: {
+            version: 999,
+            profiles: [],
+            futureField: { preserve: true },
+          },
+        } as any,
+      }),
+    ).toThrow("Unsupported API credential profiles config version")
+  })
+
   it("omits unselected domains when no remote backup exists", () => {
     const backup: any = {
       version: "2.0",
@@ -292,6 +330,61 @@ describe("mergeWebdavBackupPayloadBySelection", () => {
     expect(payload.tagStore).toEqual(remoteBackup.tagStore)
     expect(payload.apiCredentialProfiles).toEqual(
       remoteBackup.apiCredentialProfiles,
+    )
+  })
+
+  it("preserves an unselected remote account after canonicalizing V6 check-in data", () => {
+    const backup: any = {
+      version: "4.0",
+      timestamp: 456,
+      accounts: { accounts: [], last_updated: 456 },
+      preferences: { lastUpdated: 456 },
+      channelConfigs: { schemaVersion: 1, configs: {} },
+    }
+    const remoteBackup: any = {
+      version: "3.0",
+      timestamp: 123,
+      accounts: {
+        accounts: [
+          {
+            id: "remote-account",
+            site_type: "new-api",
+            configVersion: 6,
+            checkIn: {
+              enableDetection: true,
+              autoCheckInEnabled: true,
+              siteStatus: { isCheckedInToday: false },
+            },
+          },
+        ],
+        last_updated: 123,
+      },
+      preferences: { lastUpdated: 123 },
+      channelConfigs: { schemaVersion: 1, configs: {} },
+    }
+
+    const payload = mergeWebdavBackupPayloadBySelection({
+      backup,
+      selection: {
+        accounts: false,
+        bookmarks: false,
+        apiCredentialProfiles: false,
+        preferences: true,
+      },
+      remoteBackup,
+    })
+
+    expect(payload.version).toBe("4.0")
+    expect((payload.accounts as any).accounts[0]).toMatchObject({
+      id: "remote-account",
+      configVersion: 7,
+      checkIn: {
+        automaticExecutionEnabled: true,
+        selection: { methodId: "new-api:daily-checkin" },
+      },
+    })
+    expect((payload.accounts as any).accounts[0]).not.toHaveProperty(
+      "checkIn.enableDetection",
     )
   })
 
@@ -820,6 +913,29 @@ describe("createWebdavImportPayloadBySelection", () => {
     },
   }
 
+  it("rejects future nested profile configs before building an import payload", () => {
+    expect(() =>
+      createWebdavImportPayloadBySelection({
+        rawBackup: {
+          version: BACKUP_VERSION,
+          timestamp: 200,
+          apiCredentialProfiles: {
+            version: 999,
+            profiles: [],
+            futureField: { preserve: true },
+          },
+        } as any,
+        selection: {
+          accounts: false,
+          bookmarks: false,
+          apiCredentialProfiles: true,
+          preferences: false,
+        },
+        localState: baseLocalState,
+      }),
+    ).toThrow("Unsupported API credential profiles config version")
+  })
+
   it("merges remote account tags with the local tag store during selective import", () => {
     const payload = createWebdavImportPayloadBySelection({
       rawBackup: {
@@ -961,7 +1077,7 @@ describe("createWebdavImportPayloadBySelection", () => {
     })
   })
 
-  it("always emits a canonical V3 payload even for legacy WebDAV backups", () => {
+  it("always emits a canonical V4 payload even for legacy WebDAV backups", () => {
     const payload = createWebdavImportPayloadBySelection({
       rawBackup: {
         timestamp: 200,
@@ -995,7 +1111,7 @@ describe("createWebdavImportPayloadBySelection", () => {
       localState: baseLocalState,
     })
 
-    expect(payload.version).toBe("3.0")
+    expect(payload.version).toBe("4.0")
     expect(payload.apiCredentialProfiles).toBeUndefined()
   })
 })
@@ -1074,7 +1190,13 @@ describe("WebDAV preference convergence", () => {
         tagStore: { version: 1, tagsById: {} },
         preferences: DEFAULT_PREFERENCES,
         channelConfigs: { schemaVersion: 1, configs: {} },
-        apiCredentialProfiles: { version: 2, profiles: [], lastUpdated: 0 },
+        apiCredentialProfiles: {
+          version: 2,
+          profiles: [],
+          links: [],
+          linkTombstones: [],
+          lastUpdated: 0,
+        },
       },
     })
 
@@ -1167,7 +1289,13 @@ describe("WebDAV preference convergence", () => {
         tagStore: { version: 1, tagsById: {} },
         preferences: DEFAULT_PREFERENCES,
         channelConfigs: { schemaVersion: 1, configs: {} },
-        apiCredentialProfiles: { version: 2, profiles: [], lastUpdated: 0 },
+        apiCredentialProfiles: {
+          version: 2,
+          profiles: [],
+          links: [],
+          linkTombstones: [],
+          lastUpdated: 0,
+        },
       },
     })
 

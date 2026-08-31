@@ -8,6 +8,68 @@ This page records major updates for general users (feature changes / experience 
 - **Troubleshooting**: You can enable console logs in "Settings → General → Logs" and report reproduction steps to [Issues](https://github.com/qixing-jk/all-api-hub/issues).
 :::
 
+## 3.59.0
+- **New Features:**
+  - Automatic Check-in method detection: When adding or re-detecting an account, the extension can detect available check-in methods and let you choose one when needed. See [Automatic Check-in](./auto-checkin.md).
+  - Automatic Check-in workspace: The Automatic Check-in page now includes a searchable, filterable, sortable, and paginated workspace for account readiness and execution results. See [Automatic Check-in](./auto-checkin.md).
+  - `Sub2API Pro` check-in method: `Sub2API` now recognizes one additional `Sub2API Pro` check-in method. An account participates in daily automatic check-in only when that method is confirmed usable. See [Automatic Check-in](./auto-checkin.md).
+  - API Credential Library: Read-only balance and usage queries now support `DeepSeek`, `GLM/Z.AI Coding Plan`, `Kimi/Moonshot`, and `OpenCode Go`. When a provider exposes the data, you can view balance, quota, usage, or reset information. See [API Credential Library](./api-credential-profiles.md).
+- **Experience Improvements:**
+  - Settings inputs: Number and time fields save on blur or Enter and revert to the last valid value when input is invalid or saving fails; switches and selects still save immediately.
+- **Performance Optimizations:**
+  - Manual account sorting: The drag-and-drop code now loads only after you explicitly enter sorting mode instead of during normal browsing. See [Sorting Priority Settings](./sorting-priority.md).
+  - Long account lists: Lists are rendered on demand during normal browsing for smoother scrolling. See [Account Management](./account-management.md).
+  - Startup experience: The popup shows a loading skeleton first, while language resources and heavier features such as export load on demand, reducing the blank wait on first open. The target language is prepared before switching, and language switching remains available.
+- **Bug Fixes:**
+  - Automatic Check-in: Results that cannot yet be confirmed are marked `Pending Confirmation`, and `Verify Status` performs a read-only check without automatic retry or duplicate submission; authentication failures, unsupported methods, and temporarily unreadable status are shown separately. See [Automatic Check-in](./auto-checkin.md).
+  - `Sub2API` authentication: Authentication refresh and recovery now more reliably preserve valid credentials, reducing failures caused by lost credentials or an account mismatch.
+  - Model List: Corrected price comparisons and `Optimal Group` badges. Only a unique lowest-priced group is marked optimal, ties are no longer forced into a single group, and the misleading raw ratio display has been removed. See [Model List](./model-list.md).
+  - Popup selects: Selects in account forms now open and remain usable when browser page zoom changes the popup size.
+  - Settings cards: Settings cards remain readable and usable in narrow windows instead of squeezing or overflowing their content.
+  - Dialog actions: Long localized button labels now wrap within the available width, reducing horizontal overflow.
+  - Account saving: Saving an account now completes and closes the form before the background refresh finishes; balance and usage data still update after the refresh.
+  - `Octopus` self-hosted sites: Current deployments that omit the `model` field or still return the legacy `models` list are now supported, so channel lists and new channel creation do not fail as a whole. See [Self-hosted Site Management](./self-hosted-site-management.md).
+
+**Where to find them:**
+- Automatic Check-in: Open **Automatic Check-in** in the settings sidebar; detected methods appear under **Check-in Settings** when editing an account.
+- API Credential Library: Open **API Credential Library** in settings to refresh and view balance and usage.
+- Manual account sorting: Open **Account Management** in settings and enter sorting mode; configure the rules under **Sorting Priority Settings** on the same page.
+
+## 3.58.0
+- **New Features:**
+  - `ModelFlare` accounts: After signing in, you can automatically detect and add your account, view its balance, check in, browse models and pricing, and manage API keys from the extension. If creating the default key requires a group selection, the extension guides you through it directly. See [Account Management](./account-management.md) and [Key Management](./key-management.md).
+  - Web API detection and verification: When copying API details from webpages, documentation, or chat content, the extension can now recognize encoded API keys and keys mixed with spaces, punctuation, or invisible characters, reducing manual cleanup. See [Web API Detection and Verification](./web-ai-api-check.md).
+- **Experience Improvements:**
+  - `New API` self-hosted channels: Creating, editing, deleting, importing, migrating, and synchronizing channels from the extension is now more complete and reliable, without unintentionally changing untouched settings or existing API keys. You can also change a channel's type; after doing so, review its API key, Base URL, and other settings to make sure they suit the new type. See [Self-hosted Site Management](./self-hosted-site-management.md).
+- **Bug Fixes:**
+  - Account list: Sorting, result counts, and bulk actions no longer overlap on mobile devices and in narrow windows, and check-in states are easier to distinguish.
+  - New API account detection: Signed-in accounts on newer or white-label New API sites can now be detected automatically without repeatedly asking you to sign in or failing outright. See [Auto-detection Troubleshooting](./auto-detect.md).
+  - `V-API` accounts: Fixed signed-in accounts not being detected, incorrect group ratios, and API key creation failing while available models were loading. You can now continue creating a key even if the model list temporarily fails to load.
+  - `Sub2API` accounts: Automatically detected accounts now prefer the site name configured by the service instead of frequently showing only the site's domain.
+  - `CC Switch` `Codex` exports: Provider endpoint paths are now preserved instead of being changed into an incorrect address. See [Supported Export Tools and Integration Targets](./supported-export-tools.md).
+  - Web API detection and verification: Fixed the detection dialog sometimes requiring two clicks to close in Edge.
+
+**Where to find them:**
+- `ModelFlare` accounts: Under **Settings → Account Management**, add an account with `https://modelflare.dev`, then run automatic detection from the signed-in page.
+- Web API detection and verification: Select text on a webpage and choose `Check AI API` from the context menu, or use automatic detection on an allowlisted page. Related controls are under **Settings → Basic Settings → Web API Check**.
+- `New API` channel management: Configure New API under **Settings → Self-hosted Site Management**, then open **Settings → Channel Management** to view, edit, migrate, or synchronize channels.
+
+## 3.57.0
+- **New Features:**
+  - API credential and account key associations: OpenRouter and similar sites show the full API key only once at creation time, then display only a masked value in the key list. You can now save the full key to the API Credential Library and associate it with the account key, so it remains available locally for copying, verification, and export instead of having to create a replacement. See [API Credential Library](./api-credential-profiles.md) and [Key Management](./key-management.md).
+  - Model price comparison: Choose a workload such as general chat, code completion, or coding agents to compare estimated prices for the way you use models, or adjust the input, output, and cache shares yourself. Different names for the same model are grouped when they can be matched safely, and offers with incomplete pricing are clearly marked instead of being treated as free. See [Model List](./model-list.md).
+  - Kelivo mobile export: Send an account key, service credential, or saved API credential to Kelivo Mobile without re-entering each provider field. Review or edit the configuration, then import it by QR code or share code using OpenAI Compatible, Anthropic, or Google. QR codes and share codes contain the API key in plain text, so do not capture or share them publicly. See [Supported Export Tools and Integration Targets](./supported-export-tools.md).
+- **Experience Improvements:**
+  - Export actions: Common destinations are now easier to find. Configured self-hosted sites appear as direct import actions, while the remaining destinations are grouped into chat clients, coding agents, and gateway or routing tools. Saved API credentials can also generate Cursor++ provider configurations. See [Quick Export](./quick-export.md).
+- **Bug Fixes:**
+  - Key lists: Fixed some One API, Veloera, OneHub / DoneHub, and other New API-compatible sites showing only part of the key list. Loading also finishes once the complete list is available, avoiding unnecessary wait. See [Key Management](./key-management.md).
+  - `Octopus` self-hosted sites: Recent Octopus releases can now connect successfully for configuration checks, channel management, and model synchronization. Older Octopus sites remain supported. See [Self-hosted Site Management](./self-hosted-site-management.md).
+
+**Where to find them:**
+- Credential associations: Open **Settings → API Credential Library** to review associations, or use a key action under **Settings → Key Management** to save, associate, or open a credential.
+- Model price comparison: Under **Settings → Model List**, select `Compare Prices` at the top of the page, then choose a preset or adjust the shares under `Price comparison`.
+- Kelivo and other export destinations: Open the `Export` menu for an account key, service credential, or saved API credential. Configured self-hosted sites appear as separate actions.
+
 ## 3.56.0
 - **New Features:**
   - Model Pricing: Model List now shows cache-read and cache-write pricing alongside input and output pricing. Only prices actually provided by the service are displayed, so missing data is not mistaken for zero-cost usage. See [Model List](./model-list.md).

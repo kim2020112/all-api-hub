@@ -1,20 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SITE_TYPES } from "~/constants/siteType"
-import { SITE_ROUTE_KINDS } from "~/services/accounts/utils/siteRouteResolver"
-import { ApiError } from "~/services/apiTransport/errors"
+import {
+  resolveAccountSiteRouteUrl,
+  SITE_ROUTE_KINDS,
+} from "~/services/accounts/utils/siteRouteResolver"
+import { API_ERROR_CODES, ApiError } from "~/services/apiTransport/errors"
+import { fetchApi, fetchApiData } from "~/services/apiTransport/request"
+import { autoCheckinMethodRegistry } from "~/services/checkin/autoCheckin/providers"
 import { newApiProvider } from "~/services/checkin/autoCheckin/providers/newApi"
 import { PROTECTION_BYPASS_USER_COMMANDS } from "~/services/protectionBypass/contracts"
 import { AuthTypeEnum, SiteHealthStatus } from "~/types"
+import { CHECKIN_RESULT_STATUS } from "~/types/autoCheckin"
 import { TEMP_WINDOW_REQUEST_SOURCES } from "~/types/tempWindowFetch"
+import { isAllowedIncognitoAccess } from "~/utils/browser/browserApi"
+import {
+  tempWindowTriggerCheckinPageAction,
+  tempWindowTurnstileFetch,
+} from "~/utils/browser/tempWindowFetch"
 import { safeRandomUUID } from "~/utils/core/identifier"
 import { userCommandExecution } from "~~/tests/services/protectionBypass/fixtures"
+import { createAutoCheckinMutationLifecycle } from "~~/tests/test-utils/autoCheckin"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { buildSiteAccount } from "~~/tests/test-utils/factories"
+
+const { mockFetchSupportCheckIn } = vi.hoisted(() => ({
+  mockFetchSupportCheckIn: vi.fn(),
+}))
 
 vi.mock("~/services/apiTransport/request", () => ({
   fetchApi: vi.fn(),
   fetchApiData: vi.fn(),
 }))
+
+vi.mock(
+  "~/services/apiService/newApiFamily/default/accountBootstrap",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("~/services/apiService/newApiFamily/default/accountBootstrap")
+      >()
+    return { ...actual, fetchSupportCheckIn: mockFetchSupportCheckIn }
+  },
+)
 
 vi.mock("~/utils/browser/tempWindowFetch", () => ({
   tempWindowTriggerCheckinPageAction: vi.fn(),
@@ -36,20 +64,20 @@ vi.mock("~/services/accounts/utils/siteRouteResolver", () => ({
     CheckIn: "checkIn",
   },
   resolveAccountSiteRouteUrl: vi.fn(() =>
-    Promise.resolve("https://test.com/console/personal"),
+    Promise.resolve("https://site.example.invalid/console/personal"),
   ),
 }))
 
 const mockAccount = buildSiteAccount({
   id: "test-id",
   site_name: "Test",
-  site_url: "https://test.com",
+  site_url: "https://site.example.invalid",
   site_type: SITE_TYPES.NEW_API,
   authType: AuthTypeEnum.AccessToken,
   exchange_rate: 7.0,
   notes: "",
   tagIds: [],
-  checkIn: { enableDetection: true },
+  checkIn: buildCheckInConfig({ automaticExecutionEnabled: true }),
   health: { status: SiteHealthStatus.Healthy },
   account_info: {
     id: "123",
@@ -78,39 +106,71 @@ const checkInForTest = (
   >[1] = DEFAULT_PROVIDER_CONTEXT,
 ) => newApiProvider.checkIn(account, context)
 
+const mockCheckInStatusSequence = (...checkedInToday: boolean[]) => {
+  const mock = vi.mocked(fetchApiData)
+  for (const checked of checkedInToday) {
+    mock.mockResolvedValueOnce({
+      stats: { checked_in_today: checked },
+    } as any)
+  }
+}
+
 describe("newApiProvider", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    mockFetchSupportCheckIn.mockResolvedValue(undefined)
+    vi.mocked(resolveAccountSiteRouteUrl).mockResolvedValue(
+      "https://site.example.invalid/console/personal",
+    )
     vi.mocked(safeRandomUUID).mockImplementation((prefix?: string) =>
       prefix ? `${prefix}-mock-uuid` : "mock-uuid",
     )
   })
 
-  describe("canCheckIn", () => {
-    it("returns true for valid account", () => {
-      expect(newApiProvider.canCheckIn(mockAccount)).toBe(true)
+  it("registers the shared provider for ModelFlare accounts", () => {
+    expect(
+      autoCheckinMethodRegistry.getCandidates(SITE_TYPES.MODELFLARE),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: newApiProvider }),
+      ]),
+    )
+  })
+
+  describe("getReadiness", () => {
+    it("returns ready for a valid account", () => {
+      expect(newApiProvider.getReadiness(mockAccount)).toEqual({ ready: true })
     })
 
-    it("returns false when enableDetection is false", () => {
-      const account = { ...mockAccount, checkIn: { enableDetection: false } }
-      expect(newApiProvider.canCheckIn(account)).toBe(false)
+    it("leaves automatic-execution intent to the Module", () => {
+      const account = {
+        ...mockAccount,
+        checkIn: buildCheckInConfig(),
+      }
+      expect(newApiProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
-    it("returns false when no user id", () => {
+    it("explains when account data is missing", () => {
       const account = {
         ...mockAccount,
         account_info: { ...mockAccount.account_info, id: "" },
       }
-      expect(newApiProvider.canCheckIn(account)).toBe(false)
+      expect(newApiProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "account_data_missing",
+      })
     })
 
-    it("returns false when token auth but access token is missing", () => {
+    it("explains when saved credentials are missing", () => {
       const account = {
         ...mockAccount,
         authType: AuthTypeEnum.AccessToken,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(newApiProvider.canCheckIn(account)).toBe(false)
+      expect(newApiProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
     })
 
     it("treats missing authType as access-token auth", () => {
@@ -118,7 +178,7 @@ describe("newApiProvider", () => {
         ...mockAccount,
         authType: undefined as any,
       }
-      expect(newApiProvider.canCheckIn(account)).toBe(true)
+      expect(newApiProvider.getReadiness(account)).toEqual({ ready: true })
     })
 
     it("requires an access token when authType is missing", () => {
@@ -127,7 +187,10 @@ describe("newApiProvider", () => {
         authType: undefined as any,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(newApiProvider.canCheckIn(account)).toBe(false)
+      expect(newApiProvider.getReadiness(account)).toEqual({
+        ready: false,
+        reason: "credentials_missing",
+      })
     })
 
     it("allows cookie-auth accounts to check in without an access token", () => {
@@ -136,18 +199,121 @@ describe("newApiProvider", () => {
         authType: AuthTypeEnum.Cookie,
         account_info: { ...mockAccount.account_info, access_token: "" },
       }
-      expect(newApiProvider.canCheckIn(account)).toBe(true)
+      expect(newApiProvider.getReadiness(account)).toEqual({ ready: true })
+    })
+  })
+
+  describe("read-only status", () => {
+    it("uses public site status to classify a disabled deployment independently of error copy", async () => {
+      vi.mocked(fetchApiData).mockRejectedValueOnce(
+        new ApiError(
+          "check-in unavailable",
+          undefined,
+          "/api/user/checkin",
+          API_ERROR_CODES.BUSINESS_ERROR,
+        ),
+      )
+      mockFetchSupportCheckIn.mockResolvedValueOnce(false)
+
+      await expect(
+        newApiProvider.detect!({ account: mockAccount, observedAt: 199 }),
+      ).resolves.toEqual({
+        detection: {
+          outcome: "matched",
+          evidence: { source: "probe", observedAt: 199 },
+        },
+        status: {
+          outcome: "known",
+          availability: "disabled",
+          evidence: { source: "probe", observedAt: 199 },
+        },
+      })
+      expect(mockFetchSupportCheckIn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseUrl: mockAccount.site_url,
+          auth: expect.objectContaining({
+            authType: AuthTypeEnum.AccessToken,
+          }),
+        }),
+        undefined,
+      )
+    })
+
+    it("does not misclassify other business errors while public status remains enabled", async () => {
+      vi.mocked(fetchApiData).mockRejectedValueOnce(
+        new ApiError(
+          "failed to update quota",
+          undefined,
+          "/api/user/checkin",
+          API_ERROR_CODES.BUSINESS_ERROR,
+        ),
+      )
+      mockFetchSupportCheckIn.mockResolvedValueOnce(true)
+
+      await expect(
+        newApiProvider.detect!({ account: mockAccount, observedAt: 200 }),
+      ).resolves.toEqual({
+        outcome: "unknown",
+        reason: "invalid_response",
+        attemptedAt: 200,
+      })
+    })
+
+    it("selects a valid disabled deployment without issuing POST", async () => {
+      vi.mocked(fetchApiData).mockResolvedValueOnce({
+        enabled: false,
+        stats: { checked_in_today: false },
+      } as any)
+
+      await expect(
+        newApiProvider.detect!({ account: mockAccount, observedAt: 200 }),
+      ).resolves.toEqual({
+        detection: {
+          outcome: "matched",
+          evidence: { source: "probe", observedAt: 200 },
+        },
+        status: {
+          outcome: "known",
+          availability: "disabled",
+          today: "not_checked",
+          evidence: { source: "probe", observedAt: 200 },
+        },
+      })
+      expect(fetchApi).not.toHaveBeenCalled()
+    })
+
+    it("treats a malformed status envelope as unknown", async () => {
+      vi.mocked(fetchApiData).mockResolvedValueOnce({
+        enabled: true,
+        stats: {},
+      } as any)
+
+      await expect(
+        newApiProvider.detect!({ account: mockAccount, observedAt: 201 }),
+      ).resolves.toEqual({
+        outcome: "unknown",
+        reason: "invalid_response",
+        attemptedAt: 201,
+      })
+    })
+
+    it("classifies an authenticated status read failure without hiding it", async () => {
+      vi.mocked(fetchApiData).mockRejectedValueOnce(
+        new ApiError("authentication required", 401),
+      )
+
+      await expect(
+        newApiProvider.detect!({ account: mockAccount, observedAt: 202 }),
+      ).resolves.toEqual({
+        outcome: "unknown",
+        reason: "authentication_required",
+        attemptedAt: 202,
+      })
     })
   })
 
   describe("checkIn", () => {
     it("preserves the popup source through native page check-in and status polling", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-        await import("~/utils/browser/tempWindowFetch")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -166,13 +332,11 @@ describe("newApiProvider", () => {
             reasons: [],
             score: 0,
             title: "Check in",
-            url: "https://test.com/console/personal",
+            url: "https://site.example.invalid/console/personal",
           },
         },
       })
-      vi.mocked(fetchApiData).mockResolvedValueOnce({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true)
 
       const result = await checkInForTest(mockAccount, {
         tempWindowRequestSource: TEMP_WINDOW_REQUEST_SOURCES.Popup,
@@ -208,8 +372,8 @@ describe("newApiProvider", () => {
       })
       expect(tempWindowTriggerCheckinPageAction).toHaveBeenCalledWith(
         expect.objectContaining({
-          originUrl: "https://test.com",
-          pageUrl: "https://test.com/console/personal",
+          originUrl: "https://site.example.invalid",
+          pageUrl: "https://site.example.invalid/console/personal",
           siteType: SITE_TYPES.NEW_API,
           expectedUserId: "123",
           accountId: "test-id",
@@ -227,12 +391,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses native page check-in for generic check-in API failures", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-        await import("~/utils/browser/tempWindowFetch")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "server rejected the check-in request",
@@ -243,9 +401,7 @@ describe("newApiProvider", () => {
         reason: "clicked",
         identity: { userId: "123", user: { id: "123" } },
       })
-      vi.mocked(fetchApiData).mockResolvedValueOnce({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true)
 
       const result = await checkInForTest(mockAccount)
 
@@ -255,13 +411,6 @@ describe("newApiProvider", () => {
     })
 
     it("does not treat unrelated authority errors as auth blocks for native fallback", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "upstream authority rejected the dynamic signature",
@@ -272,9 +421,7 @@ describe("newApiProvider", () => {
         reason: "clicked",
         identity: { userId: "123", user: { id: "123" } },
       })
-      vi.mocked(fetchApiData).mockResolvedValueOnce({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true)
 
       const result = await checkInForTest(mockAccount)
 
@@ -283,13 +430,6 @@ describe("newApiProvider", () => {
     })
 
     it("keeps native page action request ids scoped to each provider attempt", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(safeRandomUUID)
         .mockReturnValueOnce("native-checkin-test-id-first")
         .mockReturnValueOnce("native-checkin-test-id-second")
@@ -303,9 +443,7 @@ describe("newApiProvider", () => {
         reason: "clicked",
         identity: { userId: "123", user: { id: "123" } },
       })
-      vi.mocked(fetchApiData).mockResolvedValue({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true, false, true)
 
       await checkInForTest(mockAccount)
       await checkInForTest(mockAccount)
@@ -321,6 +459,47 @@ describe("newApiProvider", () => {
       ])
     })
 
+    it("keeps a failed response when public site status reports check-in disabled", async () => {
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        success: false,
+        message: "check-in unavailable",
+        data: null,
+      })
+      mockFetchSupportCheckIn.mockResolvedValueOnce(false)
+
+      const result = await checkInForTest(mockAccount)
+
+      expect(result).toEqual({
+        status: "failed",
+        rawMessage: "check-in unavailable",
+        messageKey: undefined,
+        data: {
+          success: false,
+          message: "check-in unavailable",
+          data: null,
+        },
+      })
+      expect(tempWindowTriggerCheckinPageAction).not.toHaveBeenCalled()
+      expect(tempWindowTurnstileFetch).not.toHaveBeenCalled()
+    })
+
+    it("keeps a pre-dispatch error failed when public status disables check-in", async () => {
+      vi.mocked(fetchApi).mockRejectedValueOnce(
+        new Error("missing check-in signature header"),
+      )
+      mockFetchSupportCheckIn.mockResolvedValueOnce(false)
+
+      const result = await checkInForTest(mockAccount)
+
+      expect(result).toEqual({
+        status: CHECKIN_RESULT_STATUS.FAILED,
+        rawMessage: "missing check-in signature header",
+        messageKey: undefined,
+      })
+      expect(tempWindowTriggerCheckinPageAction).not.toHaveBeenCalled()
+      expect(tempWindowTurnstileFetch).not.toHaveBeenCalled()
+    })
+
     it.each([
       "check-in endpoint unsupported",
       "unauthorized check-in request",
@@ -332,10 +511,6 @@ describe("newApiProvider", () => {
     ])(
       "does not use native page check-in for blocked failure message: %s",
       async (message) => {
-        const { fetchApi } = await import("~/services/apiTransport/request")
-        const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-          await import("~/utils/browser/tempWindowFetch")
-
         vi.mocked(fetchApi).mockResolvedValueOnce({
           success: false,
           message,
@@ -360,10 +535,6 @@ describe("newApiProvider", () => {
     )
 
     it("does not use native page check-in when the API endpoint rejects POST with 405", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-        await import("~/utils/browser/tempWindowFetch")
-
       const error = new ApiError("请求失败: 405", 405, "/api/user/checkin")
 
       vi.mocked(fetchApi).mockRejectedValueOnce(error)
@@ -380,11 +551,6 @@ describe("newApiProvider", () => {
     })
 
     it("refuses native page check-in when temp page identity is missing", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -401,17 +567,14 @@ describe("newApiProvider", () => {
       expect(result).toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.nativePageIdentityMissing",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         data: { success: false, reason: "identity_missing", identity: null },
       })
     })
 
     it("refuses native page check-in when temp page identity does not match", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -429,7 +592,9 @@ describe("newApiProvider", () => {
       expect(result).toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.nativePageIdentityMismatch",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         data: expect.objectContaining({
           reason: "identity_mismatch",
           expectedUserId: "123",
@@ -438,11 +603,6 @@ describe("newApiProvider", () => {
     })
 
     it("returns manual-required messaging when native page trigger target is missing", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -461,7 +621,7 @@ describe("newApiProvider", () => {
             reasons: [],
             score: 0,
             title: "Check in",
-            url: "https://test.com/console/personal",
+            url: "https://site.example.invalid/console/personal",
           },
         },
       })
@@ -473,17 +633,12 @@ describe("newApiProvider", () => {
         "autoCheckin:providerFallback.nativePageTargetNotFound",
       )
       expect(result.messageParams).toEqual({
-        checkInUrl: "https://test.com/console/personal",
+        checkInUrl: "https://site.example.invalid/console/personal",
       })
       expect(result.rawMessage).toBeUndefined()
     })
 
     it("maps throttled native page actions to trigger failure messaging", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -503,18 +658,13 @@ describe("newApiProvider", () => {
         "autoCheckin:providerFallback.nativePageTriggerFailed",
       )
       expect(result.messageParams).toEqual({
-        checkInUrl: "https://test.com/console/personal",
+        checkInUrl: "https://site.example.invalid/console/personal",
       })
       expect(result.rawMessage).toBe("native action recently attempted")
       expect(result.rawMessage).not.toBe("missing check-in signature header")
     })
 
     it("returns native trigger failure messaging when native page action rejects after response signature failure", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "missing check-in signature header",
@@ -529,7 +679,9 @@ describe("newApiProvider", () => {
       expect(result).toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.nativePageTriggerFailed",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         rawMessage: "temp window closed",
       })
     })
@@ -538,13 +690,6 @@ describe("newApiProvider", () => {
       vi.useFakeTimers()
 
       try {
-        const { fetchApi, fetchApiData } = await import(
-          "~/services/apiTransport/request"
-        )
-        const { tempWindowTriggerCheckinPageAction } = await import(
-          "~/utils/browser/tempWindowFetch"
-        )
-
         vi.mocked(fetchApi).mockResolvedValueOnce({
           success: false,
           message: "missing check-in signature header",
@@ -563,7 +708,7 @@ describe("newApiProvider", () => {
               reasons: [],
               score: 0,
               title: "Check in",
-              url: "https://test.com/console/personal",
+              url: "https://site.example.invalid/console/personal",
             },
           },
         })
@@ -580,7 +725,7 @@ describe("newApiProvider", () => {
           "autoCheckin:providerFallback.nativePageStatusUnconfirmed",
         )
         expect(result.messageParams).toEqual({
-          checkInUrl: "https://test.com/console/personal",
+          checkInUrl: "https://site.example.invalid/console/personal",
         })
         expect(result.rawMessage).toBeUndefined()
       } finally {
@@ -589,15 +734,6 @@ describe("newApiProvider", () => {
     })
 
     it("does not add native page identity matching to Turnstile replay failures", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-        await import("~/utils/browser/tempWindowFetch")
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token invalid",
@@ -621,13 +757,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses native page check-in for thrown dynamic signature errors", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockRejectedValueOnce(
         new Error("missing check-in signature header"),
       )
@@ -646,12 +775,28 @@ describe("newApiProvider", () => {
       expect(tempWindowTriggerCheckinPageAction).toHaveBeenCalledTimes(1)
     })
 
-    it("returns native trigger failure messaging when native page action rejects after thrown signature error", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction } = await import(
-        "~/utils/browser/tempWindowFetch"
+    it("does not start a second mutation after a dispatched request loses its result", async () => {
+      vi.mocked(fetchApi).mockRejectedValueOnce(
+        new Error("missing check-in signature header"),
       )
+      const mutationLifecycle = createAutoCheckinMutationLifecycle()
+      mutationLifecycle.onDispatch()
 
+      const result = await checkInForTest(mockAccount, {
+        ...DEFAULT_PROVIDER_CONTEXT,
+        mutationLifecycle,
+      })
+
+      expect(result).toMatchObject({
+        status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+        rawMessage: "missing check-in signature header",
+      })
+      expect(fetchApiData).not.toHaveBeenCalled()
+      expect(tempWindowTriggerCheckinPageAction).not.toHaveBeenCalled()
+      expect(tempWindowTurnstileFetch).not.toHaveBeenCalled()
+    })
+
+    it("returns native trigger failure messaging when native page action rejects after thrown signature error", async () => {
       vi.mocked(fetchApi).mockRejectedValueOnce(
         new Error("missing check-in signature header"),
       )
@@ -662,14 +807,14 @@ describe("newApiProvider", () => {
       await expect(checkInForTest(mockAccount)).resolves.toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.nativePageTriggerFailed",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         rawMessage: "native page unavailable",
       })
     })
 
     it("returns the default success message key when the upstream check-in succeeds without a message", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: true,
         message: "",
@@ -689,8 +834,6 @@ describe("newApiProvider", () => {
     })
 
     it("treats upstream already-checked responses as already_checked results", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "今日已签到",
@@ -706,15 +849,28 @@ describe("newApiProvider", () => {
       })
     })
 
-    it("uses an incognito Turnstile temp context first for access-token accounts", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
+    it("uses status readback to recognize already checked independently of error copy", async () => {
+      vi.mocked(fetchApi).mockResolvedValueOnce({
+        success: false,
+        message: "No action is necessary today",
+        data: null,
+      })
+      mockFetchSupportCheckIn.mockResolvedValueOnce(true)
+      vi.mocked(fetchApiData).mockResolvedValueOnce({
+        enabled: true,
+        stats: { checked_in_today: true },
+      } as any)
 
+      await expect(checkInForTest(mockAccount)).resolves.toEqual({
+        status: "already_checked",
+        rawMessage: "No action is necessary today",
+        data: null,
+      })
+      expect(tempWindowTriggerCheckinPageAction).not.toHaveBeenCalled()
+      expect(tempWindowTurnstileFetch).not.toHaveBeenCalled()
+    })
+
+    it("uses an incognito Turnstile temp context first for access-token accounts", async () => {
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -738,7 +894,7 @@ describe("newApiProvider", () => {
         ...mockAccount,
         checkIn: {
           ...mockAccount.checkIn,
-          customCheckIn: { url: "https://test.com/custom-checkin" },
+          customCheckIn: { url: "https://site.example.invalid/custom-checkin" },
         },
       }
 
@@ -748,9 +904,9 @@ describe("newApiProvider", () => {
       expect(tempWindowTurnstileFetch).toHaveBeenCalledTimes(1)
       expect(tempWindowTurnstileFetch).toHaveBeenCalledWith(
         expect.objectContaining({
-          originUrl: "https://test.com",
-          pageUrl: "https://test.com/console/personal",
-          fetchUrl: "https://test.com/api/user/checkin",
+          originUrl: "https://site.example.invalid",
+          pageUrl: "https://site.example.invalid/console/personal",
+          fetchUrl: "https://site.example.invalid/api/user/checkin",
           responseType: "json",
           authType: AuthTypeEnum.AccessToken,
           useIncognito: true,
@@ -761,17 +917,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses the theme-aware New API route for Turnstile-assisted verification pages", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-      const { resolveAccountSiteRouteUrl } = await import(
-        "~/services/accounts/utils/siteRouteResolver"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -779,7 +924,7 @@ describe("newApiProvider", () => {
       })
       vi.mocked(isAllowedIncognitoAccess).mockResolvedValueOnce(false)
       vi.mocked(resolveAccountSiteRouteUrl).mockResolvedValueOnce(
-        "https://test.com/profile",
+        "https://site.example.invalid/profile",
       )
       vi.mocked(tempWindowTurnstileFetch).mockResolvedValueOnce({
         success: false,
@@ -791,27 +936,19 @@ describe("newApiProvider", () => {
 
       expect(resolveAccountSiteRouteUrl).toHaveBeenCalledWith(
         {
-          baseUrl: "https://test.com",
+          baseUrl: "https://site.example.invalid",
           siteType: SITE_TYPES.NEW_API,
         },
         SITE_ROUTE_KINDS.CheckIn,
       )
       expect(tempWindowTurnstileFetch).toHaveBeenCalledWith(
         expect.objectContaining({
-          pageUrl: "https://test.com/profile",
+          pageUrl: "https://site.example.invalid/profile",
         }),
       )
     })
 
     it("falls back to normal Turnstile temp context when access-token incognito access is unavailable", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -840,8 +977,6 @@ describe("newApiProvider", () => {
     })
 
     it("defaults missing authType to AccessToken for direct check-in requests", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: true,
         message: "签到成功",
@@ -865,12 +1000,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses cookie-auth temp-context options when Turnstile assistance runs for cookie-auth accounts", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { fetchApiData } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile verify failed",
@@ -930,12 +1059,6 @@ describe("newApiProvider", () => {
     })
 
     it("returns manual-required messaging with the site check-in URL when Turnstile token cannot be obtained", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { fetchApiData } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile 校验失败，请刷新重试！",
@@ -956,7 +1079,7 @@ describe("newApiProvider", () => {
         ...mockAccount,
         checkIn: {
           ...mockAccount.checkIn,
-          customCheckIn: { url: "https://test.com/custom-checkin" },
+          customCheckIn: { url: "https://site.example.invalid/custom-checkin" },
         },
       }
 
@@ -967,18 +1090,11 @@ describe("newApiProvider", () => {
         "autoCheckin:providerFallback.turnstileManualRequired",
       )
       expect(result.messageParams?.checkInUrl).toBe(
-        "https://test.com/console/personal",
+        "https://site.example.invalid/console/personal",
       )
     })
 
     it("returns already-checked when Turnstile token is missing but status confirms checked_in_today", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -991,9 +1107,7 @@ describe("newApiProvider", () => {
         turnstile: { status: "not_present", hasTurnstile: false },
       })
 
-      vi.mocked(fetchApiData).mockResolvedValueOnce({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true)
 
       const result = await checkInForTest(mockAccount)
 
@@ -1004,13 +1118,6 @@ describe("newApiProvider", () => {
     })
 
     it("returns manual-required when Turnstile assistance succeeds but still cannot obtain a usable token", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token invalid",
@@ -1038,7 +1145,9 @@ describe("newApiProvider", () => {
       expect(result).toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.turnstileManualRequired",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         rawMessage: "Turnstile token invalid",
         data: {
           success: false,
@@ -1049,13 +1158,6 @@ describe("newApiProvider", () => {
     })
 
     it("returns already-checked when assisted success payload still shows a non-token-obtained Turnstile status", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile verify failed",
@@ -1074,9 +1176,7 @@ describe("newApiProvider", () => {
         turnstile: { status: "timeout", hasTurnstile: true },
       })
 
-      vi.mocked(fetchApiData).mockResolvedValueOnce({
-        stats: { checked_in_today: true },
-      } as any)
+      mockCheckInStatusSequence(false, true)
 
       const result = await checkInForTest(mockAccount)
 
@@ -1092,13 +1192,6 @@ describe("newApiProvider", () => {
     })
 
     it("surfaces the assisted backend failure when Turnstile replay returns a concrete rejection without widget status", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile verify failed",
@@ -1128,17 +1221,10 @@ describe("newApiProvider", () => {
           data: null,
         },
       })
-      expect(fetchApiData).not.toHaveBeenCalled()
+      expect(fetchApiData).toHaveBeenCalledTimes(1)
     })
 
     it("falls back to the generic failure key when assisted replay returns no usable payload", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile verify failed",
@@ -1160,15 +1246,10 @@ describe("newApiProvider", () => {
         messageKey: "autoCheckin:providerFallback.checkinFailed",
         data: undefined,
       })
-      expect(fetchApiData).not.toHaveBeenCalled()
+      expect(fetchApiData).toHaveBeenCalledTimes(1)
     })
 
     it("falls back to a generic failure when assisted Turnstile fetch fails after token capture without an explicit error", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token invalid",
@@ -1194,11 +1275,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses the assisted error directly when token capture succeeds but replay still fails", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token invalid",
@@ -1226,17 +1302,6 @@ describe("newApiProvider", () => {
     })
 
     it("preserves the popup source across preferred and fallback Turnstile attempts", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -1301,16 +1366,6 @@ describe("newApiProvider", () => {
     })
 
     it("falls back to manual verification when the incognito retry still cannot complete the assisted request", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -1339,7 +1394,9 @@ describe("newApiProvider", () => {
       expect(result).toEqual({
         status: "failed",
         messageKey: "autoCheckin:providerFallback.turnstileManualRequired",
-        messageParams: { checkInUrl: "https://test.com/console/personal" },
+        messageParams: {
+          checkInUrl: "https://site.example.invalid/console/personal",
+        },
         rawMessage: "Turnstile token not available",
         data: {
           success: false,
@@ -1350,16 +1407,6 @@ describe("newApiProvider", () => {
     })
 
     it("prompts to enable incognito access when incognito retry is needed but extension is not allowed in incognito", async () => {
-      const { fetchApi, fetchApiData } = await import(
-        "~/services/apiTransport/request"
-      )
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-      const { isAllowedIncognitoAccess } = await import(
-        "~/utils/browser/browserApi"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token 为空",
@@ -1385,16 +1432,12 @@ describe("newApiProvider", () => {
         "autoCheckin:providerFallback.turnstileIncognitoAccessRequired",
       )
       expect(result.messageParams?.checkInUrl).toBe(
-        "https://test.com/console/personal",
+        "https://site.example.invalid/console/personal",
       )
       expect(tempWindowTurnstileFetch).toHaveBeenCalledTimes(1)
     })
 
     it("does not trigger Turnstile flow for non-Turnstile failures", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTriggerCheckinPageAction, tempWindowTurnstileFetch } =
-        await import("~/utils/browser/tempWindowFetch")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Something went wrong",
@@ -1414,11 +1457,6 @@ describe("newApiProvider", () => {
     })
 
     it("does not treat every Turnstile mention as a Turnstile-required failure", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile challenge rendered on page",
@@ -1441,8 +1479,6 @@ describe("newApiProvider", () => {
     })
 
     it("maps endpoint-style errors from the direct request to endpoint-not-supported", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-
       vi.mocked(fetchApi).mockRejectedValueOnce({
         statusCode: 404,
         message: "Not found",
@@ -1457,11 +1493,6 @@ describe("newApiProvider", () => {
     })
 
     it("returns a generic failed result when the Turnstile-assisted fetch cannot start", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-      const { tempWindowTurnstileFetch } = await import(
-        "~/utils/browser/tempWindowFetch"
-      )
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "Turnstile token invalid",
@@ -1480,8 +1511,6 @@ describe("newApiProvider", () => {
     })
 
     it("uses the generic failure key when the direct request fails without any upstream message", async () => {
-      const { fetchApi } = await import("~/services/apiTransport/request")
-
       vi.mocked(fetchApi).mockResolvedValueOnce({
         success: false,
         message: "",

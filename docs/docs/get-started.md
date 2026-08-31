@@ -52,6 +52,7 @@
 - [AICodeMirror](https://www.aicodemirror.ai/register?invitecode=7IQNR8)：提供 Claude Code / Codex / Gemini CLI 官方高稳定中转服务，通过此链接注册可享首充 8 折，企业客户最高可享 7.5 折。
 - [随想AI中转站](https://sui-xiang.com/)：提供 Claude、Codex、Gemini 等 API 中继服务，按量付费，支持每日签到测试额度、多线路冗余和自动故障切换。[使用教程](./service-guides/suixiang.md)
 - [Infistar.ai](https://infistar.ai/register?aff=ALLAPIHUB&ref_source=link)：在售模型均经真实调用验真，通过超 10000 条官方 API 与官方号池供应链路负载均衡，覆盖文本、视频、图片、嵌入、重排等全模态能力，价格与用量透明，模型低至官方价的 10%。[使用教程](./service-guides/infistar.md)
+- [APIMart](https://go.apimart.ai/gh-all-api-hub)：专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张；图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码，按量付费、无月费。
 - [火山引擎方舟 Coding-Plan](https://dis.chatdesks.cn/chatdesk/hsyqallapihub.html)：Lite 套餐 9.9 元/月起，并有邀请返利及首单优惠。
 :::
 
@@ -60,7 +61,7 @@
 <a id="manual-addition"></a>
 ### 2.2 手动添加（备选）
 
-如果自动识别不成功，可以点击 **“手动添加”**，自行选择站点类型并填写账号信息。所需字段、访问令牌获取位置和注意事项请查看 [手动添加账号指南](./account-management.md#manual-addition)。
+如果自动识别不成功，可以点击 **“手动添加”**，自行选择站点类型并填写账号信息。所需字段、访问令牌获取位置和注意事项请查看 [手动添加账号指南](./add-account.md#manual-addition)。
 
 ---
 
@@ -68,7 +69,7 @@
 
 不论你用的是哪种架构，我们基本都支持：
 - **账号站点兼容架构**：New API, One API, Sub2API, One-Hub, Veloera, Done-Hub 等。
-- **特色账号平台与兼容实现**：OpenRouter, AnyRouter, AIHubMix, Super-API, v-api, Neo-API 等。
+- **特色账号平台与兼容实现**：[OpenRouter](https://openrouter.ai/)、[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API 等。
 - **自建管理后台**：New API, Sub2API, AxonHub, Claude Code Hub, Octopus, Veloera, Done-Hub 等，用于后台管理、迁移和部分模型同步。
 
 ::: tip 兼容性提示
@@ -102,13 +103,13 @@
 - **[网页 API 嗅探](./web-ai-api-check.md)**：在网页内快速识别并测试 API 配置，可保存到 API 凭据库。
 
 ### ⚡ 自动化与信息追踪
-- **[自动签到流](./auto-checkin.md)**：每天自动帮你完成所有站点的签到。
+- **[自动签到流](./auto-checkin.md)**：为已识别且受支持的账号安排每日签到，也可立即执行并查看最近结果。
 - **[网站公告](./site-announcements.md)**：后台抓取已添加站点的公告，集中查看维护、模型变更、价格调整等消息。
 - **[兑换助手](./redemption-assist.md)**：自动识别网页兑换码并一键领取。
 - **[书签收纳管理](./bookmark-management.md)**：集中收藏控制台、文档、充值入口。
 
 ### 🛡️ 稳定性与安全防护
-- **[Cloudflare 过盾助手](./cloudflare-helper.md)**：协助通过验证，确保刷新、签到不中断。
+- **[Cloudflare 过盾助手](./cloudflare-helper.md)**：在需要网页验证时协助继续流程。
 - **[WebDAV 同步与加密](./webdav-sync.md)**：支持跨设备加密备份，数据永不丢失。
 
 ### 🔔 通知渠道

@@ -7,7 +7,8 @@
       "openFailedManual": "Check-in-Seiten für alle Konten mit fehlgeschlagenem automatischem Check-in öffnen",
       "openManual": "Manueller Check-in",
       "openSite": "Website öffnen",
-      "retryAccount": "Wiederholen"
+      "retryAccount": "Wiederholen",
+      "verifyStatus": "Status prüfen"
     },
     "debug": {
       "evaluateUiOpenPretrigger": "Entwickler: Bewerten Sie, ob die Bedingungen „Heutigen Check-in vorab auslösen, wenn die Benutzeroberfläche geöffnet wird“ erfüllt sind",
@@ -33,9 +34,15 @@
     },
     "filters": {
       "all": "Alle",
+      "clearAll": "Filter löschen",
+      "countFiltered": "{{filtered}} von {{total}} angezeigt",
+      "countTotal": "Insgesamt {{total}}",
       "failed": "Fehlgeschlagen",
-      "searchPlaceholder": "Suche nach Kontoname oder Nachricht...",
+      "failedOrSkipped": "Fehlgeschlagen oder übersprungen",
+      "searchLabel": "Ausführungsergebnisse durchsuchen",
+      "searchPlaceholder": "Nach Kontoname, ID oder Nachricht suchen...",
       "skipped": "Übersprungen",
+      "statusLabel": "Nach Ausführungsstatus filtern",
       "success": "Erfolg"
     },
     "hints": {
@@ -46,6 +53,12 @@
       "openFailedManualNewWindow": "Öffnet die Check-in-Seite der Website für jedes Konto, dessen letzter automatischer Check-in fehlgeschlagen ist. Mit Umschalt+Klick werden sie in einem neuen Fenster geöffnet.",
       "siteTypeCheckinUnsupported": "Lösung: Überprüfen Sie unter „Kontoverwaltung → Konto bearbeiten“ zunächst, ob der ausgewählte Website-Typ mit der tatsächlichen Website übereinstimmt. Wenn der Typ zuvor automatisch erkannt wurde, melden Sie sich erneut bei der Ziel-Website an und führen Sie die Erkennung erneut aus. Wenn der Website-Typ korrekt ist, diese Meldung jedoch weiterhin angezeigt wird, unterstützt die Website wahrscheinlich noch kein automatisches Einchecken. Verwenden Sie daher stattdessen „Website öffnen“ oder „Manuelle Check-in-Seite“."
     },
+    "pagination": {
+      "next": "Nächste Seite",
+      "previous": "Vorherige Seite",
+      "rowsPerPage": "Zeilen pro Seite",
+      "summary": "{{start}}–{{end}} von {{total}}"
+    },
     "refresh": "Aktualisieren",
     "runNow": "Jetzt ausführen",
     "statistics": {
@@ -55,7 +68,8 @@
       "alreadyChecked": "Bereits eingecheckt",
       "failed": "Fehlgeschlagen",
       "skipped": "Übersprungen",
-      "success": "Erfolg"
+      "success": "Erfolg",
+      "uncertain": "Bestätigung ausstehend"
     },
     "table": {
       "accountName": "Kontoname",
@@ -84,6 +98,7 @@
       "retryAlarmTriggerFailed": "Wiederholungsalarm konnte nicht ausgelöst werden: {{error}}",
       "retryFailed": "Wiederholung fehlgeschlagen: {{error}}",
       "runFailed": "Fehler beim Ausführen des automatischen Check-ins: {{error}}",
+      "statusVerificationFailed": "Der ausgewählte Check-in-Status konnte nicht verifiziert werden. Versuchen Sie es erneut oder öffnen Sie die Kontoseite.",
       "uiOpenPretriggerDidNotStart": "UI-Open-Pre-Trigger wurde nicht gestartet: {{reason}}",
       "uiOpenPretriggerEvaluationFailed": "Fehler beim Auswerten des UI-Open-Pre-Triggers: {{error}}",
       "uiOpenPretriggerIneligible": "UI-Open-Pre-Trigger ist nicht berechtigt: {{reason}}",
@@ -111,6 +126,7 @@
       "retryCompleted": "Wiederholung abgeschlossen.",
       "runCompleted": "Automatischer Check-in abgeschlossen.",
       "settingsSaved": "Die Einstellungen für den automatischen Check-in wurden gespeichert.",
+      "statusVerified": "Der ausgewählte Check-in-Status wurde geprüft.",
       "uiOpenPretriggerEligible": "UI-Open-Pre-Trigger ist berechtigt."
     }
   },
@@ -124,6 +140,7 @@
     "nativePageStatusUnconfirmed": "Auf die Aktion zum Einchecken der Seite wurde geklickt, der Status des Zielkontos wurde jedoch nicht bestätigt. Bitte öffnen Sie die Check-in-Seite und überprüfen Sie manuell: {{checkInUrl}}",
     "nativePageTargetNotFound": "Der Check-in-Button konnte auf der Seite nicht gefunden werden. Bitte öffnen Sie die Check-in-Seite und schließen Sie den Check-in manuell ab: {{checkInUrl}}",
     "nativePageTriggerFailed": "Die Aktion zum Einchecken der Seite konnte nicht ausgelöst werden. Bitte öffnen Sie die Check-in-Seite und schließen Sie den Check-in manuell ab: {{checkInUrl}}",
+    "resultPendingConfirmation": "Das Check-in-Ergebnis muss noch bestätigt werden",
     "turnstileIncognitoAccessRequired": "Die Erweiterung muss in Inkognito-/privaten Fenstern ausgeführt werden dürfen, um den Turnstile-Token in einem privaten temporären Fenster abzurufen (Szenario mit mehreren Konten). Bitte aktivieren Sie „Inkognito zulassen“ für diese Erweiterung und versuchen Sie es erneut oder öffnen Sie die Check-in-Seite, um die Überprüfung abzuschließen: {{checkInUrl}}",
     "turnstileManualRequired": "Eine Cloudflare-Turnstile-Verifizierung ist erforderlich. Bitte öffnen Sie die Check-in-Seite, um die Verifizierung abzuschließen: {{checkInUrl}}",
     "unknownError": "Ein unbekannter Fehler ist aufgetreten."
@@ -160,29 +177,59 @@
     "windowStartDesc": "Die früheste Ortszeit, zu der der tägliche Check-in beginnen kann."
   },
   "skipReasons": {
+    "account_data_missing": "Erforderliche Kontodaten fehlen. Erkennen Sie das Konto erneut.",
     "account_disabled": "Konto ist deaktiviert",
+    "account_unavailable": "Das Konto wurde vor dem Check-in geändert oder ist nicht mehr verfügbar",
     "already_checked_today": "Heute bereits eingecheckt",
+    "authentication_required": "Die Anmeldung ist abgelaufen oder erforderlich. Melden Sie sich bei der Zielseite an und versuchen Sie es erneut.",
     "auto_checkin_disabled": "Automatischer Check-in deaktiviert",
+    "credentials_missing": "Gespeicherte Zugangsdaten fehlen. Erkennen Sie das Konto erneut oder aktualisieren Sie die Zugangsdaten.",
     "detection_disabled": "Erkennung deaktiviert",
+    "method_disabled": "Die Check-in-Funktion dieser Website ist deaktiviert",
+    "method_not_matched": "Die ausgewählte Check-in-Methode passt nicht mehr zu dieser Website. Erkennen Sie die Methode erneut.",
+    "method_unavailable": "Die ausgewählte Check-in-Methode ist nicht mehr verfügbar. Erkennen Sie die Methode erneut.",
+    "method_unsupported": "Die ausgewählte Check-in-Methode wird von dieser Website nicht unterstützt.",
+    "network_error": "Ein Netzwerkproblem hat den Check-in verhindert. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
     "no_provider": "Der Websitetyp des Kontos unterstützt derzeit keinen Check-in",
-    "provider_not_ready": "Die Kontokonfiguration unterstützt derzeit keinen Check-in"
+    "no_selected_method": "Es ist keine Check-in-Methode ausgewählt. Erkennen oder wählen Sie eine Methode in den Kontoeinstellungen.",
+    "permission_denied": "Die Website hat den Check-in abgelehnt. Melden Sie sich erneut an oder prüfen Sie die Kontoberechtigungen.",
+    "source_unavailable": "Die Zielwebsite ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+    "status_unavailable": "Der aktuelle Check-in-Status konnte nicht bestätigt werden, daher wurde kein Check-in versucht",
+    "timeout": "Die Verbindung wurde vor Abschluss des Check-ins unterbrochen. Versuchen Sie es erneut."
   },
   "snapshot": {
     "badges": {
       "disabled": "Deaktiviert",
       "enabled": "Aktiviert",
+      "methodNotSelected": "Nicht ausgewählt",
+      "methodSelected": "Ausgewählt",
       "pending": "Ausstehend",
       "providerAvailable": "Verfügbar",
       "providerUnavailable": "Nicht verfügbar"
     },
-    "description": "Alle für die Erkennung aktivierten Konten und ihre Bereitschaft sind unten aufgeführt. Ausstehende Konten nehmen am Check-in teil, wenn Sie auf „Jetzt ausführen“ klicken oder wenn die geplante Zeit erreicht ist.",
+    "description": "Zeigt die beim letzten Lauf erfasste Kontobereitschaft. Ausstehende Konten nehmen am Check-in teil, wenn Sie auf „Jetzt ausführen“ klicken oder wenn die geplante Zeit erreicht ist.",
+    "filters": {
+      "clearAll": "Filter löschen",
+      "countFiltered": "{{filtered}} von {{total}} Konten angezeigt",
+      "countTotal": "{{total}} Konten",
+      "noMatches": "Keine passenden Konten",
+      "noMatchesDescription": "Passen Sie Suche oder Filter an oder löschen Sie alle Filter.",
+      "readinessAll": "Alle Bereitschaftsstatus",
+      "readinessDisabled": "Deaktiviert",
+      "readinessLabel": "Nach Ausführungsbereitschaft filtern",
+      "readinessReady": "Ausführbar",
+      "readinessSetupRequired": "Einrichtung erforderlich",
+      "readinessTemporarilyUnavailable": "Vorübergehend nicht verfügbar",
+      "readinessUnsupported": "Nicht unterstützt",
+      "searchLabel": "Kontobereitschaft durchsuchen",
+      "searchPlaceholder": "Nach Kontoname, ID oder Grund suchen...",
+      "statusAll": "Alle letzten Status",
+      "statusLabel": "Nach letztem Status filtern"
+    },
     "table": {
       "autoCheckin": "Automatischer Check-in",
-      "detection": "Erkennung",
-      "lastResult": "Letztes Ergebnis",
-      "provider": "Anbieter",
-      "skipReason": "Grund für das Überspringen",
-      "status": "Status"
+      "lastResult": "Aktualisiert",
+      "status": "Letzter Status"
     },
     "title": "Kontobereitschaft"
   },
@@ -197,6 +244,7 @@
     "result": {
       "failed": "Fehlgeschlagen",
       "partial": "Teilweise",
+      "skipped": "Nicht ausgeführt",
       "success": "Erfolg"
     },
     "retryDisabled": "Wiederholung deaktiviert",
@@ -214,5 +262,9 @@
     "dialogDescription": "Der heute geplante tägliche Lauf wurde früh ausgelöst, als die Benutzeroberfläche geöffnet wurde.",
     "dialogTitle": "Automatischer Check-in abgeschlossen",
     "viewDetails": "Details anzeigen"
+  },
+  "workspace": {
+    "label": "Auto-Check-in-Daten",
+    "resultsTab": "Ausführungsergebnisse"
   }
 }

@@ -169,6 +169,16 @@ const telemetryModeByConfigMode: Record<
     PRODUCT_ANALYTICS_MODE_IDS.TelemetryAuto,
   [API_CREDENTIAL_TELEMETRY_MODES.Disabled]:
     PRODUCT_ANALYTICS_MODE_IDS.TelemetryDisabled,
+  [API_CREDENTIAL_TELEMETRY_MODES.DeepSeekBalance]:
+    PRODUCT_ANALYTICS_MODE_IDS.TelemetryDeepSeekBalance,
+  [API_CREDENTIAL_TELEMETRY_MODES.GlmQuota]:
+    PRODUCT_ANALYTICS_MODE_IDS.TelemetryGlmQuota,
+  [API_CREDENTIAL_TELEMETRY_MODES.KimiQuota]:
+    PRODUCT_ANALYTICS_MODE_IDS.TelemetryKimiQuota,
+  [API_CREDENTIAL_TELEMETRY_MODES.KimiOpenPlatformBalance]:
+    PRODUCT_ANALYTICS_MODE_IDS.TelemetryKimiOpenPlatformBalance,
+  [API_CREDENTIAL_TELEMETRY_MODES.OpenCodeGoUsage]:
+    PRODUCT_ANALYTICS_MODE_IDS.TelemetryOpenCodeGoUsage,
   [API_CREDENTIAL_TELEMETRY_MODES.NewApiTokenUsage]:
     PRODUCT_ANALYTICS_MODE_IDS.TelemetryNewApiTokenUsage,
   [API_CREDENTIAL_TELEMETRY_MODES.Sub2ApiUsage]:
@@ -187,6 +197,16 @@ const telemetrySourceBySnapshotSource: Partial<
 > = {
   [API_CREDENTIAL_TELEMETRY_SOURCES.Models]:
     PRODUCT_ANALYTICS_TELEMETRY_SOURCES.Models,
+  [API_CREDENTIAL_TELEMETRY_SOURCES.DeepSeekBalance]:
+    PRODUCT_ANALYTICS_TELEMETRY_SOURCES.DeepSeekBalance,
+  [API_CREDENTIAL_TELEMETRY_SOURCES.GlmQuota]:
+    PRODUCT_ANALYTICS_TELEMETRY_SOURCES.GlmQuota,
+  [API_CREDENTIAL_TELEMETRY_SOURCES.KimiQuota]:
+    PRODUCT_ANALYTICS_TELEMETRY_SOURCES.KimiQuota,
+  [API_CREDENTIAL_TELEMETRY_SOURCES.KimiOpenPlatformBalance]:
+    PRODUCT_ANALYTICS_TELEMETRY_SOURCES.KimiOpenPlatformBalance,
+  [API_CREDENTIAL_TELEMETRY_SOURCES.OpenCodeGoUsage]:
+    PRODUCT_ANALYTICS_TELEMETRY_SOURCES.OpenCodeGoUsage,
   [API_CREDENTIAL_TELEMETRY_SOURCES.OpenAiBilling]:
     PRODUCT_ANALYTICS_TELEMETRY_SOURCES.OpenAiBilling,
   [API_CREDENTIAL_TELEMETRY_SOURCES.NewApiTokenUsage]:
@@ -211,16 +231,12 @@ const analyticsStatusByHealthStatus: Record<
  * Detects whether a telemetry snapshot includes any usage-facing metrics.
  */
 function hasTelemetryUsageData(snapshot: ApiCredentialTelemetrySnapshot) {
-  return (
-    snapshot.balanceUsd !== undefined ||
-    snapshot.todayCostUsd !== undefined ||
-    snapshot.todayRequests !== undefined ||
-    snapshot.todayTokens !== undefined ||
-    snapshot.unlimitedQuota === true ||
-    snapshot.totalUsedUsd !== undefined ||
-    snapshot.totalGrantedUsd !== undefined ||
-    snapshot.totalAvailableUsd !== undefined ||
-    snapshot.expiresAt !== undefined
+  const facts = snapshot.facts
+  return Boolean(
+    facts?.balances?.length ||
+      facts?.quota?.windows?.length ||
+      facts?.usage ||
+      facts?.models,
   )
 }
 
@@ -288,8 +304,8 @@ function getApiCredentialTelemetryAnalyticsInsights(
       : {}),
     ...(typeof successCount === "number" ? { successCount } : {}),
     ...(typeof failureCount === "number" ? { failureCount } : {}),
-    ...(typeof snapshot.models?.count === "number"
-      ? { modelCount: snapshot.models.count }
+    ...(typeof snapshot.facts?.models?.count === "number"
+      ? { modelCount: snapshot.facts.models.count }
       : {}),
     usageDataPresent: hasTelemetryUsageData(snapshot),
   }

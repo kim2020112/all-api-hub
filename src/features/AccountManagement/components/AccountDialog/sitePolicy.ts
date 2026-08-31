@@ -19,7 +19,6 @@ export interface AccountDialogSitePolicy {
   forceAccessTokenAuth: boolean
   allowCookieAuthSession: boolean
   allowCookieAutoImport: boolean
-  allowBuiltInCheckInDetection: boolean
   allowSub2ApiRefreshTokenState: boolean
   openSub2ApiTokenDialogPostSave: boolean
   deferSuccessForOneTimeKeyPostSaveFlow: boolean
@@ -94,8 +93,6 @@ export function getAccountDialogSitePolicy(
     requireUsername: productProfile.identity.usernameRequired,
     allowCookieAuthSession: productProfile.auth.supportsCookieAuth,
     allowCookieAutoImport: productProfile.auth.supportsCookieAuth,
-    allowBuiltInCheckInDetection:
-      productProfile.auth.supportsBuiltInCheckInDetection,
     allowSub2ApiRefreshTokenState:
       productProfile.supplementalAuth.kind ===
       ACCOUNT_SITE_SUPPLEMENTAL_AUTH_KINDS.Sub2ApiRefreshToken,
@@ -119,13 +116,6 @@ export function normalizeAccountDialogDraftForSitePolicy(params: {
     cookieAuthSessionCookie: policy.allowCookieAuthSession
       ? draft.cookieAuthSessionCookie
       : "",
-    checkIn: {
-      ...draft.checkIn,
-      enableDetection: policy.allowBuiltInCheckInDetection,
-      autoCheckInEnabled: policy.allowBuiltInCheckInDetection
-        ? draft.checkIn.autoCheckInEnabled
-        : false,
-    },
     sub2apiUseRefreshToken: policy.allowSub2ApiRefreshTokenState
       ? draft.sub2apiUseRefreshToken
       : false,
@@ -236,8 +226,6 @@ function arePolicyDraftFieldsEquivalent(
   return (
     left.authType === right.authType &&
     left.cookieAuthSessionCookie === right.cookieAuthSessionCookie &&
-    left.checkIn.enableDetection === right.checkIn.enableDetection &&
-    left.checkIn.autoCheckInEnabled === right.checkIn.autoCheckInEnabled &&
     left.sub2apiUseRefreshToken === right.sub2apiUseRefreshToken &&
     left.sub2apiRefreshToken === right.sub2apiRefreshToken &&
     left.sub2apiTokenExpiresAt === right.sub2apiTokenExpiresAt

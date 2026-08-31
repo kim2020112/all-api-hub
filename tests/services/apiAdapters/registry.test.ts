@@ -7,6 +7,7 @@ import {
   type SiteType,
 } from "~/constants/siteType"
 import { getAccountSiteDefinition } from "~/services/accountSiteDefinitions"
+import { INVENTORY_SECRET_AVAILABILITIES } from "~/services/apiAdapters/contracts/keyManagement"
 import { getSiteTypeCapabilities } from "~/services/apiAdapters/registry"
 
 const expectTokenProvisioningCapability = (
@@ -152,6 +153,7 @@ describe("apiAdapters registry", () => {
     for (const siteType of [
       SITE_TYPES.ONE_API,
       SITE_TYPES.NEW_API,
+      SITE_TYPES.MODELFLARE,
       SITE_TYPES.ANYROUTER,
       SITE_TYPES.VELOERA,
       SITE_TYPES.ONE_HUB,
@@ -274,7 +276,9 @@ describe("apiAdapters registry", () => {
     expect(capabilities.account).not.toHaveProperty("credential")
     expect(capabilities.account?.data?.fetchData).toBeTypeOf("function")
     expect(capabilities.account?.refresh?.refreshAccount).toBeTypeOf("function")
-    expect(capabilities.account?.keyResources).toEqual({
+    expect(capabilities.account?.keyResources).toMatchObject({
+      inventorySecretAvailability:
+        INVENTORY_SECRET_AVAILABILITIES.CreateResponseOnly,
       open: expect.any(Function),
     })
     expect(capabilities.account?.keyResourceManagement).toBe(
@@ -329,6 +333,12 @@ describe("apiAdapters registry", () => {
       expect(capabilities.siteType).toBe(siteType)
       expectManagedSiteCapabilities(capabilities)
     }
+  })
+
+  it("keeps ModelFlare account-only despite sharing the New API family", () => {
+    expect(
+      getSiteTypeCapabilities(SITE_TYPES.MODELFLARE).managedSites,
+    ).toBeUndefined()
   })
 
   it("returns managed-only capabilities without account capabilities", () => {

@@ -1,6 +1,6 @@
 import type { DragEndEvent } from "@dnd-kit/core"
 import type { TFunction } from "i18next"
-import { ChevronDown, ChevronUp, Inbox, Plus } from "lucide-react"
+import { Inbox, Info, Plus } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import toast from "react-hot-toast"
 import { useTranslation } from "react-i18next"
@@ -14,15 +14,9 @@ import {
   Checkbox,
   DestructiveConfirmDialog,
   EmptyState,
-  IconButton,
   TagFilter,
 } from "~/components/ui"
-import {
-  DATA_TYPE_BALANCE,
-  DATA_TYPE_CONSUMPTION,
-  DATA_TYPE_CREATED_AT,
-  DATA_TYPE_INCOME,
-} from "~/constants"
+import { DATA_TYPE_CREATED_AT } from "~/constants"
 import { ACCOUNT_SITE_TITLE_RULES } from "~/constants/siteType"
 import { useUserPreferencesContext } from "~/contexts/UserPreferencesContext"
 import { NewcomerSponsorRecommendationsSection } from "~/features/AccountManagement/components/NewcomerSponsorRecommendationsSection"
@@ -73,12 +67,14 @@ import {
   getTodayMetricPresentation,
 } from "~/utils/core/formatters"
 import { formatMoneyFixed } from "~/utils/core/money"
+import { showWarningToast } from "~/utils/core/toastHelpers"
 
 import CopyKeyDialog from "../CopyKeyDialog"
 import DelAccountDialog from "../DelAccountDialog"
 import { InviteLinkManualCopyDialog } from "../InviteLinkManualCopyDialog"
 import AccountFilterBar from "./AccountFilterBar"
 import { NonSortableAccountListItem } from "./AccountListBaseItem"
+import { AccountListHeader } from "./AccountListHeader"
 import { AccountListInitialLoadingState } from "./AccountListLoadingState"
 import AccountSearchInput from "./AccountSearchInput"
 import {
@@ -86,9 +82,13 @@ import {
   getAccountCheckInFilterValue,
   type AccountCheckInFilterValue,
 } from "./checkInFilter"
+import * as accountListDndRuntimeLoader from "./loadAccountListDndRuntime"
+import { VirtualizedAccountList } from "./VirtualizedAccountList"
 
 interface AccountListProps {
   initialSearchQuery?: string
+  reorderUnavailableReason?: string
+  virtualScrollParent?: HTMLElement | null
 }
 
 type AccountListResultItem = {
@@ -135,26 +135,42 @@ interface AccountListFilterAggregation {
 }
 
 type DndLoadState = "inactive" | "loading" | "ready"
-type RequestIdleCallbackHandle = number
-type RequestIdleCallbackDeadline = {
-  didTimeout: boolean
-  timeRemaining: () => number
-}
-type RequestIdleCallbackFn = (
-  callback: (deadline: RequestIdleCallbackDeadline) => void,
-) => RequestIdleCallbackHandle
-type CancelIdleCallbackFn = (handle: RequestIdleCallbackHandle) => void
-
-/**
- * Lazily loads the account list drag-and-drop runtime for manual ordering mode.
- */
-function loadAccountListDndRuntime() {
-  return import("./AccountListDndRuntime")
-}
 
 type AccountListDndRuntime = Awaited<
-  ReturnType<typeof loadAccountListDndRuntime>
+  ReturnType<typeof accountListDndRuntimeLoader.loadAccountListDndRuntime>
 >
+
+const ACCOUNT_REORDER_TOAST_ID = "account-reorder"
+const ACCOUNT_REORDER_BOUNDARY_TOAST_ID = "account-reorder-boundary"
+
+/** Projects current account records through a session-owned ID order. */
+function projectAccountsByIdOrder(
+  accounts: DisplaySiteData[],
+  orderedIds: string[],
+) {
+  const accountById = new Map(accounts.map((account) => [account.id, account]))
+  const projectedAccounts = orderedIds.flatMap((id) => {
+    const account = accountById.get(id)
+    if (!account) return []
+    accountById.delete(id)
+    return [account]
+  })
+
+  return [...projectedAccounts, ...accountById.values()]
+}
+
+/** Replaces only visible slots while retaining filtered-out account positions. */
+function replaceVisibleAccountOrder(
+  allIds: string[],
+  nextVisibleIds: string[],
+) {
+  const visibleIdSet = new Set(nextVisibleIds)
+  let visibleIndex = 0
+
+  return allIds.map((id) =>
+    visibleIdSet.has(id) ? nextVisibleIds[visibleIndex++] : id,
+  )
+}
 
 const ACCOUNT_REFRESH_FILTER_OPTION_ORDER: AccountRefreshFilterValue[] = [
   "never-synced",
@@ -408,7 +424,11 @@ function FilteredTodayMetric({
 /**
  * Master list view for user accounts, including search, tagging, sorting, filtering, and manual reordering controls.
  */
-export default function AccountList({ initialSearchQuery }: AccountListProps) {
+export default function AccountList({
+  initialSearchQuery,
+  reorderUnavailableReason,
+  virtualScrollParent,
+}: AccountListProps) {
   const { t } = useTranslation(["account", "common"])
   const isSmallScreen = useIsSmallScreen()
   const isDesktop = useIsDesktop()
@@ -422,6 +442,7 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     sortField,
     sortOrder,
     handleReorder,
+    pinnedAccountIds,
     tags,
     tagCountsById,
     isManualSortFeatureEnabled,
@@ -438,6 +459,11 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
   const [copyKeyDialogAccount, setCopyKeyDialogAccount] =
     useState<DisplaySiteData | null>(null)
   const [isBulkMode, setIsBulkMode] = useState(false)
+  const [isReorderMode, setIsReorderMode] = useState(false)
+  const [isReorderSaving, setIsReorderSaving] = useState(false)
+  const [reorderAccountIds, setReorderAccountIds] = useState<string[] | null>(
+    null,
+  )
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [isBulkDisabling, setIsBulkDisabling] = useState(false)
@@ -458,6 +484,7 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
   const [dndLoadState, setDndLoadState] = useState<DndLoadState>("inactive")
   const dndLoadPromiseRef = useRef<Promise<AccountListDndRuntime> | null>(null)
   const dndRuntimeRef = useRef<AccountListDndRuntime | null>(null)
+  const isReorderSavingRef = useRef(false)
   const isMountedRef = useRef(true)
   const inviteLinkCopyAbortControllerRef = useRef<AbortController | null>(null)
 
@@ -465,6 +492,7 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     useAccountSearch(displayData, initialSearchQuery)
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
       inviteLinkCopyAbortControllerRef.current?.abort()
@@ -479,6 +507,18 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     setCopyKeyDialogAccount(site)
   }
 
+  const accountsInDisplayOrder = useMemo(
+    () =>
+      reorderAccountIds === null
+        ? sortedData
+        : projectAccountsByIdOrder(displayData, reorderAccountIds),
+    [displayData, reorderAccountIds, sortedData],
+  )
+  const pinnedAccountIdSet = useMemo(
+    () => new Set(pinnedAccountIds),
+    [pinnedAccountIds],
+  )
+
   const baseResults = useMemo<AccountListResultItem[]>(() => {
     if (inSearchMode) {
       return searchResults.map((result) => ({
@@ -487,8 +527,11 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
       }))
     }
 
-    return sortedData.map((account) => ({ account, highlights: undefined }))
-  }, [inSearchMode, searchResults, sortedData])
+    return accountsInDisplayOrder.map((account) => ({
+      account,
+      highlights: undefined,
+    }))
+  }, [accountsInDisplayOrder, inSearchMode, searchResults])
 
   const filterState = useMemo<AccountListFilterState>(
     () => ({
@@ -527,9 +570,18 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
   useEffect(() => {
     if (displayData.length === 0) {
       setIsBulkMode(false)
+      setIsReorderMode(false)
+      setReorderAccountIds(null)
       setSelectedAccountIds([])
     }
   }, [displayData.length])
+
+  useEffect(() => {
+    if (inSearchMode || !isManualSortFeatureEnabled) {
+      setIsReorderMode(false)
+      setReorderAccountIds(null)
+    }
+  }, [inSearchMode, isManualSortFeatureEnabled])
 
   const tagFilterOptions = useMemo(() => {
     if (tags.length === 0) {
@@ -603,6 +655,8 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
           return t("filter.checkIn.not-checked-in")
         case "outdated":
           return t("filter.checkIn.outdated")
+        case "status-unavailable":
+          return t("filter.checkIn.status-unavailable")
         case "unsupported":
         default:
           return t("filter.checkIn.unsupported")
@@ -704,15 +758,35 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     siteTypeFilter !== null ||
     refreshStatusFilter !== null ||
     disabledFilter !== null
-  const dragDisabled = inSearchMode || !isManualSortFeatureEnabled || isBulkMode
+  const showPinnedReorderHint =
+    isReorderMode &&
+    filteredSites.some((account) => pinnedAccountIdSet.has(account.id)) &&
+    filteredSites.some((account) => !pinnedAccountIdSet.has(account.id))
+  const dragDisabled =
+    !isReorderMode ||
+    inSearchMode ||
+    !isManualSortFeatureEnabled ||
+    isBulkMode ||
+    isReorderSaving
   const handleLabel = t("account:list.dragHandle")
   const isBulkBusy =
     isBulkDeleting || isBulkDisabling || isBulkCopyingInviteLinks
   const shouldRenderSortableList =
+    isReorderMode &&
     isManualSortFeatureEnabled &&
-    !dragDisabled &&
     dndLoadState === "ready" &&
     dndRuntimeRef.current !== null
+
+  const resolvedReorderDisabledReason = isReorderMode
+    ? null
+    : reorderUnavailableReason ??
+      (isBulkMode
+        ? t("account:list.reorderUnavailableWhileBulk")
+        : inSearchMode
+          ? t("account:list.reorderUnavailableWhileSearch")
+          : !isManualSortFeatureEnabled
+            ? t("account:list.reorderUnavailableInSettings")
+            : null)
 
   const sortedIds = useMemo(
     () => displayedResults.map((item) => item.account.id),
@@ -744,6 +818,8 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
       ...accountListAnalyticsBaseContext,
       actionId: PRODUCT_ANALYTICS_ACTION_IDS.EnterAccountBulkMode,
     })
+    setIsReorderMode(false)
+    setReorderAccountIds(null)
     setIsBulkMode(true)
   }
 
@@ -1055,7 +1131,13 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
   }
 
   const onDragEnd = (event: DragEndEvent) => {
-    if (dragDisabled) return
+    if (
+      dragDisabled ||
+      reorderAccountIds === null ||
+      isReorderSavingRef.current
+    ) {
+      return
+    }
     const { active, over } = event
     if (!over || active.id === over.id) return
 
@@ -1063,15 +1145,53 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     const newIndex = sortedIds.indexOf(over.id as string)
     if (oldIndex === -1 || newIndex === -1) return
 
+    const activeIsPinned = pinnedAccountIdSet.has(active.id as string)
+    const crossedPinBoundary = sortedIds
+      .slice(Math.min(oldIndex, newIndex), Math.max(oldIndex, newIndex) + 1)
+      .some((id) => pinnedAccountIdSet.has(id) !== activeIsPinned)
+
+    if (crossedPinBoundary) {
+      showWarningToast(t("account:list.reorderPinnedBoundary"), {
+        id: ACCOUNT_REORDER_BOUNDARY_TOAST_ID,
+      })
+      return
+    }
+
     const itemCount = sortedIds.length
     const analyticsContext = {
       ...accountListAnalyticsBaseContext,
       actionId: PRODUCT_ANALYTICS_ACTION_IDS.ReorderAccounts,
     }
     const tracker = startProductAnalyticsAction(analyticsContext)
-    const newOrder = moveAccountId(sortedIds, oldIndex, newIndex)
-    void Promise.resolve(handleReorder(newOrder))
+    const previousAccountIds = accountsInDisplayOrder.map(
+      (account) => account.id,
+    )
+    const nextVisibleIds = moveAccountId(sortedIds, oldIndex, newIndex)
+    const nextAccountIds = replaceVisibleAccountOrder(
+      previousAccountIds,
+      nextVisibleIds,
+    )
+    const clearsFieldSort = sortField !== null
+
+    isReorderSavingRef.current = true
+    setIsReorderSaving(true)
+    setReorderAccountIds(nextAccountIds)
+
+    void Promise.resolve(handleReorder(nextVisibleIds))
       .then(() => {
+        if (clearsFieldSort) {
+          clearSortConfig()
+        }
+        toast.success(
+          t(
+            clearsFieldSort
+              ? "account:list.reorderSuccessFieldSortCleared"
+              : "account:list.reorderSuccess",
+          ),
+          {
+            id: ACCOUNT_REORDER_TOAST_ID,
+          },
+        )
         tracker.complete(PRODUCT_ANALYTICS_RESULTS.Success, {
           insights: {
             sourceKind: PRODUCT_ANALYTICS_SOURCE_KINDS.Manual,
@@ -1080,6 +1200,10 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
         })
       })
       .catch(() => {
+        setReorderAccountIds(previousAccountIds)
+        toast.error(t("account:list.reorderFailed"), {
+          id: ACCOUNT_REORDER_TOAST_ID,
+        })
         tracker.complete(PRODUCT_ANALYTICS_RESULTS.Failure, {
           errorCategory: PRODUCT_ANALYTICS_ERROR_CATEGORIES.Unknown,
           insights: {
@@ -1087,6 +1211,12 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
             itemCount,
           },
         })
+      })
+      .finally(() => {
+        isReorderSavingRef.current = false
+        if (isMountedRef.current) {
+          setIsReorderSaving(false)
+        }
       })
   }
 
@@ -1111,7 +1241,8 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
 
     setDndLoadState("loading")
 
-    const loadPromise = loadAccountListDndRuntime()
+    const loadPromise = accountListDndRuntimeLoader
+      .loadAccountListDndRuntime()
       .then((runtime) => {
         dndRuntimeRef.current = runtime
         dndLoadPromiseRef.current = Promise.resolve(runtime)
@@ -1132,59 +1263,35 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     return loadPromise
   }, [dndLoadState, isManualSortFeatureEnabled])
 
-  const handleActivateDnd = useCallback(() => {
-    if (dragDisabled || !isManualSortFeatureEnabled) {
-      return
-    }
+  const handleReorderModeEnter = useCallback(() => {
+    if (resolvedReorderDisabledReason !== null) return
 
-    void ensureDndReady()
-  }, [dragDisabled, ensureDndReady, isManualSortFeatureEnabled])
-
-  useEffect(() => {
-    if (
-      !isManualSortFeatureEnabled ||
-      dragDisabled ||
-      !hasAccounts ||
-      dndLoadState !== "inactive"
-    ) {
-      return
-    }
-
-    const requestIdleCallbackFn = (
-      globalThis as typeof globalThis & {
-        requestIdleCallback?: RequestIdleCallbackFn
+    setReorderAccountIds(sortedData.map((account) => account.id))
+    setIsReorderMode(true)
+    void ensureDndReady().catch(() => {
+      if (isMountedRef.current) {
+        setIsReorderMode(false)
+        setReorderAccountIds(null)
+        toast.error(t("account:list.reorderLoadFailed"))
       }
-    ).requestIdleCallback
-    const cancelIdleCallbackFn = (
-      globalThis as typeof globalThis & {
-        cancelIdleCallback?: CancelIdleCallbackFn
-      }
-    ).cancelIdleCallback
+    })
+  }, [ensureDndReady, resolvedReorderDisabledReason, sortedData, t])
 
-    if (typeof requestIdleCallbackFn === "function") {
-      const idleHandle = requestIdleCallbackFn(() => {
-        void ensureDndReady()
-      })
+  const handleReorderModeExit = useCallback(() => {
+    if (isReorderSavingRef.current) return
+    setIsReorderMode(false)
+    setReorderAccountIds(null)
+  }, [])
 
-      return () => {
-        cancelIdleCallbackFn?.(idleHandle)
-      }
-    }
-
-    const timeoutHandle = window.setTimeout(() => {
-      void ensureDndReady()
-    }, 0)
-
-    return () => {
-      window.clearTimeout(timeoutHandle)
-    }
-  }, [
-    dndLoadState,
-    dragDisabled,
-    ensureDndReady,
-    hasAccounts,
-    isManualSortFeatureEnabled,
-  ])
+  const handleListSort = useCallback(
+    (field: SortField) => {
+      if (isReorderSavingRef.current) return
+      setIsReorderMode(false)
+      setReorderAccountIds(null)
+      handleSort(field)
+    },
+    [handleSort],
+  )
 
   const maxTagFilterLines = isSmallScreen ? 2 : isDesktop ? 3 : 2
 
@@ -1229,88 +1336,67 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
     )
   }
 
-  const renderSortButton = (field: SortField, label: string) => (
-    <IconButton
-      onClick={() => handleSort(field)}
-      variant="ghost"
-      size="none"
-      disabled={inSearchMode}
-      aria-label={`${t("account:list.sort")} ${label}`}
-      className="space-x-0.5 text-[10px] font-medium sm:space-x-1 sm:text-xs"
-    >
-      <span>{label}</span>
-      {sortField === field &&
-        (sortOrder === "asc" ? (
-          <ChevronUp className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-        ) : (
-          <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-        ))}
-    </IconButton>
-  )
-
-  const listContent = (
-    <CardList>
-      {displayedResults.map((item) => {
-        const selectionControl = isBulkMode ? (
-          <Checkbox
-            data-testid={getAccountManagementSelectionCheckboxTestId(
-              item.account.id,
-            )}
-            checked={selectedIdSet.has(item.account.id)}
-            onCheckedChange={(checked) =>
-              handleToggleAccountSelection(item.account.id, Boolean(checked))
-            }
-            aria-label={t("account:bulk.selectAccount", {
-              accountName: item.account.name,
-            })}
-            disabled={isBulkBusy}
-          />
-        ) : undefined
-
-        if (shouldRenderSortableList && dndRuntimeRef.current !== null) {
-          const { SortableAccountListItem } = dndRuntimeRef.current
-
-          return (
-            <SortableAccountListItem
-              key={item.account.id}
-              site={item.account}
-              showCreatedAt={sortField === DATA_TYPE_CREATED_AT}
-              className={cn(
-                detectedAccount?.id === item.account.id &&
-                  "rounded-lg border-l-4 border-l-blue-500 bg-blue-50 dark:border-l-blue-400 dark:bg-blue-900/50",
-              )}
-              highlights={item.highlights}
-              onDeleteWithDialog={handleDeleteWithDialog}
-              onCopyKey={handleCopyKeyWithDialog}
-              isDragDisabled={dragDisabled}
-              handleLabel={handleLabel}
-              showHandle={isManualSortFeatureEnabled && !isBulkMode}
-              selectionControl={selectionControl}
-            />
-          )
+  const renderAccountListItem = (item: AccountListResultItem) => {
+    const selectionControl = isBulkMode ? (
+      <Checkbox
+        data-testid={getAccountManagementSelectionCheckboxTestId(
+          item.account.id,
+        )}
+        checked={selectedIdSet.has(item.account.id)}
+        onCheckedChange={(checked) =>
+          handleToggleAccountSelection(item.account.id, Boolean(checked))
         }
+        aria-label={t("account:bulk.selectAccount", {
+          accountName: item.account.name,
+        })}
+        disabled={isBulkBusy}
+      />
+    ) : undefined
 
-        return (
-          <NonSortableAccountListItem
-            key={item.account.id}
-            site={item.account}
-            showCreatedAt={sortField === DATA_TYPE_CREATED_AT}
-            className={cn(
-              detectedAccount?.id === item.account.id &&
-                "rounded-lg border-l-4 border-l-blue-500 bg-blue-50 dark:border-l-blue-400 dark:bg-blue-900/50",
-            )}
-            highlights={item.highlights}
-            onDeleteWithDialog={handleDeleteWithDialog}
-            onCopyKey={handleCopyKeyWithDialog}
-            isDragDisabled={dragDisabled}
-            handleLabel={handleLabel}
-            showHandle={isManualSortFeatureEnabled && !isBulkMode}
-            onActivateDnd={handleActivateDnd}
-            selectionControl={selectionControl}
-          />
-        )
-      })}
-    </CardList>
+    if (shouldRenderSortableList && dndRuntimeRef.current !== null) {
+      const { SortableAccountListItem } = dndRuntimeRef.current
+
+      return (
+        <SortableAccountListItem
+          key={item.account.id}
+          site={item.account}
+          showCreatedAt={sortField === DATA_TYPE_CREATED_AT}
+          className={cn(
+            detectedAccount?.id === item.account.id &&
+              "rounded-lg border-l-4 border-l-blue-500 bg-blue-50 dark:border-l-blue-400 dark:bg-blue-900/50",
+          )}
+          highlights={item.highlights}
+          onDeleteWithDialog={handleDeleteWithDialog}
+          onCopyKey={handleCopyKeyWithDialog}
+          isDragDisabled={dragDisabled}
+          handleLabel={handleLabel}
+          showHandle
+          selectionControl={selectionControl}
+        />
+      )
+    }
+
+    return (
+      <NonSortableAccountListItem
+        key={item.account.id}
+        site={item.account}
+        showCreatedAt={sortField === DATA_TYPE_CREATED_AT}
+        className={cn(
+          detectedAccount?.id === item.account.id &&
+            "rounded-lg border-l-4 border-l-blue-500 bg-blue-50 dark:border-l-blue-400 dark:bg-blue-900/50",
+        )}
+        highlights={item.highlights}
+        onDeleteWithDialog={handleDeleteWithDialog}
+        onCopyKey={handleCopyKeyWithDialog}
+        isDragDisabled
+        handleLabel={handleLabel}
+        showHandle={false}
+        selectionControl={selectionControl}
+      />
+    )
+  }
+  const renderUnvirtualizedList = () => (
+    <CardList>{displayedResults.map(renderAccountListItem)}</CardList>
   )
   const DndWrapper = dndRuntimeRef.current?.AccountListDndWrapper
 
@@ -1327,6 +1413,7 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
             <div className="flex flex-col gap-1.5 sm:gap-2 lg:flex-row lg:items-center lg:gap-3">
               <div className="min-w-0 lg:w-72 lg:shrink-0 xl:w-80">
                 <AccountSearchInput
+                  disabled={isReorderMode}
                   value={query}
                   onChange={setQuery}
                   onClear={clearSearch}
@@ -1508,83 +1595,39 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
           </div>
         </div>
 
-        {/* Header */}
-        <div className="dark:border-dark-bg-tertiary dark:bg-dark-bg-secondary sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-3 py-2 sm:px-5">
-          <div className="flex items-center justify-between gap-2 sm:gap-4">
-            {/* Account Name Column */}
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <div className="flex min-w-0 items-center gap-0.5">
-                {renderSortButton("name", t("account:list.header.account"))}
-                <div className="dark:text-dark-text-tertiary text-[10px] text-gray-400 sm:text-xs">
-                  /
-                </div>
-                <div className="dark:text-dark-text-tertiary flex items-center text-[9px] text-gray-400 sm:text-[10px]">
-                  {renderSortButton(
-                    DATA_TYPE_CREATED_AT,
-                    t("account:list.header.createdAt"),
-                  )}
-                </div>
-              </div>
-              <span className="text-[10px] font-medium sm:text-xs">
-                {t("common:total") + ": " + displayedResults.length}
-              </span>
-              {sortField !== null && !inSearchMode ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 shrink-0 px-2 text-xs"
-                  onClick={clearSortConfig}
-                  aria-label={t("account:list.clearSort")}
-                >
-                  {t("account:list.clearSort")}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant={isBulkMode ? "secondary" : "outline"}
-                size="sm"
-                className="h-7 shrink-0 px-2 text-xs"
-                onClick={isBulkMode ? handleBulkModeExit : handleBulkModeEnter}
-                disabled={isBulkBusy}
-              >
-                {isBulkMode ? t("account:bulk.exit") : t("account:bulk.manage")}
-              </Button>
-            </div>
+        <AccountListHeader
+          displayedResultCount={displayedResults.length}
+          inSearchMode={inSearchMode}
+          isBulkBusy={isBulkBusy}
+          isBulkMode={isBulkMode}
+          isReorderLoading={
+            isReorderMode && (dndLoadState === "loading" || isReorderSaving)
+          }
+          isReorderMode={isReorderMode}
+          onBulkModeEnter={handleBulkModeEnter}
+          onBulkModeExit={handleBulkModeExit}
+          onClearSort={clearSortConfig}
+          onReorderModeEnter={handleReorderModeEnter}
+          onReorderModeExit={handleReorderModeExit}
+          onSort={handleListSort}
+          reorderDisabledReason={resolvedReorderDisabledReason}
+          showTodayCashflow={showTodayCashflow}
+          sortField={sortField}
+          sortOrder={sortOrder}
+        />
 
-            {/* Balance & Consumption Column */}
-            <div className="flex shrink-0 items-end gap-0.5">
-              <div className="flex items-center">
-                {renderSortButton(
-                  DATA_TYPE_BALANCE,
-                  t("account:list.header.balance"),
-                )}
-              </div>
-              {showTodayCashflow && (
-                <>
-                  <div className="dark:text-dark-text-tertiary text-[10px] text-gray-400 sm:text-xs">
-                    /
-                  </div>
-                  <div className="dark:text-dark-text-tertiary flex items-center text-[9px] text-gray-400 sm:text-[10px]">
-                    {renderSortButton(
-                      DATA_TYPE_CONSUMPTION,
-                      t("account:list.header.todayConsumption"),
-                    )}
-                  </div>
-                  <div className="dark:text-dark-text-tertiary text-[10px] text-gray-400 sm:text-xs">
-                    /
-                  </div>
-                  <div className="dark:text-dark-text-tertiary flex items-center text-[9px] text-gray-400 sm:text-[10px]">
-                    {renderSortButton(
-                      DATA_TYPE_INCOME,
-                      t("account:list.header.todayIncome"),
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
+        {showPinnedReorderHint ? (
+          <div
+            className="dark:border-dark-bg-tertiary flex items-center gap-2 border-b border-blue-100 bg-blue-50/80 px-3 py-1.5 text-xs leading-5 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
+            role="note"
+          >
+            <Info
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400"
+            />
+            <span>{t("account:list.reorderPinnedHint")}</span>
           </div>
-        </div>
+        ) : null}
 
         {/* Account List or No Results */}
         {showFilteredSummary && displayedResults.length === 0 ? (
@@ -1594,10 +1637,17 @@ export default function AccountList({ initialSearchQuery }: AccountListProps) {
           />
         ) : shouldRenderSortableList && DndWrapper ? (
           <DndWrapper sortedIds={sortedIds} onDragEnd={onDragEnd}>
-            {listContent}
+            {renderUnvirtualizedList()}
           </DndWrapper>
+        ) : isReorderMode ? (
+          renderUnvirtualizedList()
         ) : (
-          listContent
+          <VirtualizedAccountList
+            getItemKey={(item) => item.account.id}
+            items={displayedResults}
+            renderItem={renderAccountListItem}
+            scrollParent={virtualScrollParent}
+          />
         )}
       </CardContent>
 

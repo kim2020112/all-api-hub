@@ -45,8 +45,7 @@ export const sub2ApiAccountCompletion: AccountCompletionCapability = {
         UI_CONSTANTS.EXCHANGE_RATE.DEFAULT,
       authType: AuthTypeEnum.AccessToken,
       checkIn: helpers.createInitialCheckInConfig({
-        enableDetection: false,
-        autoCheckInEnabled: false,
+        supported: false,
       }),
       ...(detected.sub2apiAuth ? { sub2apiAuth: detected.sub2apiAuth } : {}),
     }

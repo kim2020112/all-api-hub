@@ -4,6 +4,7 @@ import {
   AUTO_DETECT_FETCH_CONTEXT_KINDS,
   AUTO_DETECT_STRATEGIES,
 } from "~/constants/autoDetect"
+import { AUTO_CHECKIN_METHOD_IDS } from "~/constants/checkIn"
 import { OPENROUTER_BOOTSTRAP_ATTEMPT_OUTCOMES } from "~/constants/openRouterBootstrap"
 import { MENU_ITEM_IDS } from "~/constants/optionsMenuIds"
 import { SITE_TYPES } from "~/constants/siteType"
@@ -11,6 +12,7 @@ import {
   PRODUCT_ANALYTICS_ACCOUNT_AUTO_DETECT_FAILURE_REASONS,
   PRODUCT_ANALYTICS_ACTION_IDS,
   PRODUCT_ANALYTICS_API_TYPES,
+  PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES,
   PRODUCT_ANALYTICS_AUTO_CHECKIN_SCHEDULE_MODES,
   PRODUCT_ANALYTICS_EDITOR_MODES,
   PRODUCT_ANALYTICS_ENTRYPOINTS,
@@ -1142,6 +1144,36 @@ describe("product analytics privacy filtering", () => {
     })
   })
 
+  it("keeps only controlled check-in discovery and selection insights", () => {
+    expect(
+      sanitizeProductAnalyticsEvent(
+        PRODUCT_ANALYTICS_EVENTS.FeatureActionCompleted,
+        {
+          feature_id: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+          action_id: PRODUCT_ANALYTICS_ACTION_IDS.SetCheckInMethodSelection,
+          result: PRODUCT_ANALYTICS_RESULTS.Success,
+          check_in_discovery_trigger: "redetect",
+          check_in_discovery_decision: "ambiguous",
+          check_in_candidate_count: 2,
+          check_in_selection_source: "manual",
+          check_in_recovery_action: "manual_override",
+          method_id: "private-method",
+          url: "https://private.example.invalid",
+          account_id: "private-account",
+        },
+      ),
+    ).toEqual({
+      feature_id: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
+      action_id: PRODUCT_ANALYTICS_ACTION_IDS.SetCheckInMethodSelection,
+      result: PRODUCT_ANALYTICS_RESULTS.Success,
+      check_in_discovery_trigger: "redetect",
+      check_in_discovery_decision: "ambiguous",
+      check_in_candidate_count: 2,
+      check_in_selection_source: "manual",
+      check_in_recovery_action: "manual_override",
+    })
+  })
+
   it("keeps action completion diagnostics and rejects raw failure reason strings", () => {
     const sanitized = sanitizeProductAnalyticsEvent(
       PRODUCT_ANALYTICS_EVENTS.FeatureActionCompleted,
@@ -1424,6 +1456,13 @@ describe("product analytics privacy filtering", () => {
         success_count: 5,
         failed_count: 2,
         skipped_count: 3,
+        uncertain_count: 1,
+        retryable_failure_count: 1,
+        reconciliation_checked_count: 1,
+        reconciliation_not_checked_count: 0,
+        reconciliation_unknown_count: 1,
+        reconciliation_unavailable_count: 0,
+        account_state_durability_failure_count: 1,
         retry_enabled: true,
         retry_pending_before: 0,
         retry_attempted: 0,
@@ -1448,6 +1487,13 @@ describe("product analytics privacy filtering", () => {
       success_count: 5,
       failed_count: 2,
       skipped_count: 3,
+      uncertain_count: 1,
+      retryable_failure_count: 1,
+      reconciliation_checked_count: 1,
+      reconciliation_not_checked_count: 0,
+      reconciliation_unknown_count: 1,
+      reconciliation_unavailable_count: 0,
+      account_state_durability_failure_count: 1,
       retry_enabled: true,
       retry_pending_before: 0,
       retry_attempted: 0,
@@ -1465,7 +1511,10 @@ describe("product analytics privacy filtering", () => {
         entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
         site_type: "new-api",
         requested_auth_mode: "access_token",
-        skip_reason: "provider_not_ready",
+        skip_reason: "method_disabled",
+        method_category:
+          PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES.StrictReadback,
+        method_id: AUTO_CHECKIN_METHOD_IDS.Sub2ApiProDailyCheckIn,
         total_accounts: 4,
         runnable_accounts: 2,
         success_count: 1,
@@ -1482,13 +1531,33 @@ describe("product analytics privacy filtering", () => {
       entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
       site_type: "new-api",
       requested_auth_mode: "access_token",
-      skip_reason: "provider_not_ready",
+      skip_reason: "method_disabled",
+      method_category:
+        PRODUCT_ANALYTICS_AUTO_CHECKIN_METHOD_CATEGORIES.StrictReadback,
       total_accounts: 4,
       runnable_accounts: 2,
       success_count: 1,
       failed_count: 1,
       skipped_count: 2,
     })
+  })
+
+  it("drops an Auto Check-in method category outside the reviewed enum", () => {
+    expect(
+      sanitizeProductAnalyticsEvent(
+        PRODUCT_ANALYTICS_EVENTS.AutoCheckinAccountGroupCaptured,
+        {
+          run_kind: "daily",
+          entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Background,
+          method_category: "future_category",
+          total_accounts: 1,
+          runnable_accounts: 1,
+          success_count: 1,
+          failed_count: 0,
+          skipped_count: 0,
+        },
+      ),
+    ).not.toHaveProperty("method_category")
   })
 
   it("keeps managed-site channel analytics dimensions as fixed enums and counts", () => {

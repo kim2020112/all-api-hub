@@ -229,6 +229,17 @@ GitHub Stable 和 Nightly 属于手动安装通道，不会自动更新；可 St
 <hr>
 
 <div>
+  <a href="https://go.apimart.ai/gh-all-api-hub">
+    <img src="resources/partners/apimart.png" alt="APIMart" width="180" align="left" hspace="10" vspace="4">
+  </a>
+  <p>
+    APIMart 是专注 AI 图片/视频生成的低价 API 平台，GPT-Image-2 低至 $0.006/张，1 美元可出图 160+ 张。图片、视频一套异步 API 通吃，提交任务拿 ID、回调取结果，跑批万张不超时、换模型不改代码。按量付费、无月费。欢迎通过<a href="https://go.apimart.ai/gh-all-api-hub">此链接</a>注册使用。
+  </p>
+</div>
+
+<hr>
+
+<div>
   <p>
     <a href="https://dis.chatdesks.cn/chatdesk/hsyqallapihub.html">
       <img src="resources/partners/volcengine.png" alt="火山引擎方舟 Coding-Plan" width="100%">
@@ -260,7 +271,7 @@ GitHub Stable 和 Nightly 属于手动安装通道，不会自动更新；可 St
 ### 🧩 强大的兼容性
 不论你用的是哪种架构，我们基本都支持：
 - **账号站点兼容架构**：[new-api](https://github.com/QuantumNous/new-api)、[one-api](https://github.com/songquanpeng/one-api)、[Sub2API](https://github.com/Wei-Shaw/sub2api)、[one-hub](https://github.com/MartialBE/one-hub)、[Veloera](https://github.com/Veloera/Veloera)、[done-hub](https://github.com/deanxv/done-hub) 等
-- **特色账号平台与兼容实现**：[AnyRouter](https://anyrouter.top)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API 等
+- **特色账号平台与兼容实现**：[AnyRouter](https://anyrouter.top/register?aff=tDKX)、[AgentRouter](https://agentrouter.org/register?aff=TUX6)、[AIHubMix](https://aihubmix.com/?aff=W3DN)、Super-API、v-api、Neo-API 等
 - **自建管理后台**：[new-api](https://github.com/QuantumNous/new-api)、[AxonHub](https://github.com/looplj/axonhub)、[Claude Code Hub](https://github.com/ding113/claude-code-hub)、[Octopus](https://github.com/bestruirui/octopus)、[Veloera](https://github.com/Veloera/Veloera)、[done-hub](https://github.com/deanxv/done-hub) 等，用于渠道管理、迁移和部分模型同步
 - **查看完整列表**：👉 [支持的站点](https://all-api-hub.qixing1217.top/supported-sites.html)
 

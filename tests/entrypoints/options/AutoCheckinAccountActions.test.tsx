@@ -7,6 +7,7 @@ import {
   PRODUCT_ANALYTICS_ENTRYPOINTS,
   PRODUCT_ANALYTICS_ERROR_CATEGORIES,
   PRODUCT_ANALYTICS_FEATURE_IDS,
+  PRODUCT_ANALYTICS_MODE_IDS,
   PRODUCT_ANALYTICS_RESULTS,
   PRODUCT_ANALYTICS_SURFACE_IDS,
   PRODUCT_ANALYTICS_TARGET_KINDS,
@@ -401,6 +402,152 @@ describe("AutoCheckin account actions", () => {
     )
   })
 
+  it("keeps verification successful when the follow-up account refresh fails", async () => {
+    const user = userEvent.setup()
+    const browserApi = await import("~/utils/browser/browserApi")
+    const sendRuntimeMessageSpy = vi
+      .spyOn(browserApi, "sendRuntimeMessage")
+      .mockImplementation(async (message: any) => {
+        if (message === AutoCheckinMessageTypes.GetStatus) {
+          return {
+            success: true,
+            data: {
+              perAccount: {
+                alpha: {
+                  accountId: "alpha",
+                  accountName: "Alpha",
+                  status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+                  reconciliation: "unknown",
+                  timestamp: 1700000000000,
+                },
+              },
+            },
+          }
+        }
+
+        if (message === AutoCheckinMessageTypes.VerifyAccountStatus) {
+          return { success: true }
+        }
+
+        if (message === AutoCheckinMessageTypes.GetAccountInfo) {
+          return { success: false, error: "refresh failed" }
+        }
+
+        return { success: true }
+      })
+
+    render(<AutoCheckin routeParams={{}} />)
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(sendRuntimeMessageSpy).toHaveBeenCalledWith(
+        AutoCheckinMessageTypes.VerifyAccountStatus,
+        { accountId: "alpha" },
+      )
+      expect(toast.success).toHaveBeenCalledWith(
+        "autoCheckin:messages.success.statusVerified",
+      )
+      expect(completeProductAnalyticsActionMock).toHaveBeenCalledWith(
+        PRODUCT_ANALYTICS_RESULTS.Success,
+        expect.any(Object),
+      )
+    })
+    expect(toast.error).not.toHaveBeenCalledWith(
+      "autoCheckin:messages.error.statusVerificationFailed",
+    )
+  })
+
+  it("reports a verification response failure without exposing its error text", async () => {
+    const user = userEvent.setup()
+    const browserApi = await import("~/utils/browser/browserApi")
+    vi.spyOn(browserApi, "sendRuntimeMessage").mockImplementation(
+      async (message: any) => {
+        if (message === AutoCheckinMessageTypes.GetStatus) {
+          return {
+            success: true,
+            data: {
+              perAccount: {
+                alpha: {
+                  accountId: "alpha",
+                  accountName: "Alpha",
+                  status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+                  reconciliation: "unknown",
+                  timestamp: 1700000000000,
+                },
+              },
+            },
+          }
+        }
+        if (message === AutoCheckinMessageTypes.VerifyAccountStatus) {
+          return { success: false, error: "backend detail" }
+        }
+        return { success: true }
+      },
+    )
+
+    render(<AutoCheckin routeParams={{}} />)
+    await user.click(
+      await screen.findByRole("button", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "autoCheckin:messages.error.statusVerificationFailed",
+      )
+    })
+    expect(toast.error).not.toHaveBeenCalledWith("backend detail")
+  })
+
+  it("reports a thrown verification request with the localized fallback", async () => {
+    const user = userEvent.setup()
+    const browserApi = await import("~/utils/browser/browserApi")
+    vi.spyOn(browserApi, "sendRuntimeMessage").mockImplementation(
+      async (message: any) => {
+        if (message === AutoCheckinMessageTypes.GetStatus) {
+          return {
+            success: true,
+            data: {
+              perAccount: {
+                alpha: {
+                  accountId: "alpha",
+                  accountName: "Alpha",
+                  status: CHECKIN_RESULT_STATUS.UNCERTAIN,
+                  reconciliation: "unknown",
+                  timestamp: 1700000000000,
+                },
+              },
+            },
+          }
+        }
+        if (message === AutoCheckinMessageTypes.VerifyAccountStatus) {
+          throw new Error("backend detail")
+        }
+        return { success: true }
+      },
+    )
+
+    render(<AutoCheckin routeParams={{}} />)
+    await user.click(
+      await screen.findByRole("button", {
+        name: "autoCheckin:execution.actions.verifyStatus",
+      }),
+    )
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "autoCheckin:messages.error.statusVerificationFailed",
+      )
+    })
+    expect(toast.error).not.toHaveBeenCalledWith("backend detail")
+  })
+
   it("shows an error when manual sign-in page opening fails and restores the button state", async () => {
     const user = userEvent.setup()
     const browserApi = await import("~/utils/browser/browserApi")
@@ -443,13 +590,17 @@ describe("AutoCheckin account actions", () => {
 
     render(<AutoCheckin routeParams={{}} />)
 
-    const openButton = await screen.findByRole("button", {
+    const moreButton = await screen.findByRole("button", {
+      name: "common:actions.more",
+    })
+    await user.click(moreButton)
+    const openMenuItem = await screen.findByRole("menuitem", {
       name: "autoCheckin:execution.actions.openManual",
     })
-    await user.click(openButton)
+    await user.click(openMenuItem)
 
     await waitFor(() => {
-      expect(openButton).toBeDisabled()
+      expect(moreButton).toBeDisabled()
     })
 
     await waitFor(() => {
@@ -463,7 +614,7 @@ describe("AutoCheckin account actions", () => {
       )
     })
     await waitFor(() => {
-      expect(openButton).not.toBeDisabled()
+      expect(moreButton).not.toBeDisabled()
     })
     expect(trackProductAnalyticsActionCompletedMock).toHaveBeenCalledWith({
       featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AutoCheckin,
@@ -554,30 +705,40 @@ describe("AutoCheckin account actions", () => {
 
     const alphaRow = await screen.findByText("Alpha")
     const betaRow = await screen.findByText("Beta")
-    const alphaButton = within(alphaRow.closest("tr") as HTMLElement).getByRole(
-      "button",
-      {
-        name: "autoCheckin:execution.actions.openSite",
-      },
-    )
-    const betaButton = within(betaRow.closest("tr") as HTMLElement).getByRole(
-      "button",
-      {
-        name: "autoCheckin:execution.actions.openSite",
-      },
-    )
+    const alphaMoreButton = within(
+      alphaRow.closest("tr") as HTMLElement,
+    ).getByRole("button", { name: "common:actions.more" })
+    const betaMoreButton = within(
+      betaRow.closest("tr") as HTMLElement,
+    ).getByRole("button", { name: "common:actions.more" })
 
-    await user.click(alphaButton)
+    await user.click(alphaMoreButton)
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: "autoCheckin:execution.actions.openSite",
+      }),
+    )
 
     await waitFor(() => {
-      expect(alphaButton).toBeDisabled()
+      expect(alphaMoreButton).toBeDisabled()
     })
 
-    await user.click(alphaButton)
-    await user.click(betaButton)
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("menuitem", {
+          name: "autoCheckin:execution.actions.openSite",
+        }),
+      ).not.toBeInTheDocument()
+    })
+    await user.click(betaMoreButton)
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: "autoCheckin:execution.actions.openSite",
+      }),
+    )
 
     await waitFor(() => {
-      expect(betaButton).toBeDisabled()
+      expect(betaMoreButton).toBeDisabled()
     })
 
     await waitFor(() => {
@@ -631,8 +792,8 @@ describe("AutoCheckin account actions", () => {
     openResolvers.get("beta")?.()
 
     await waitFor(() => {
-      expect(alphaButton).not.toBeDisabled()
-      expect(betaButton).not.toBeDisabled()
+      expect(alphaMoreButton).not.toBeDisabled()
+      expect(betaMoreButton).not.toBeDisabled()
     })
     expect(trackProductAnalyticsActionCompletedMock).toHaveBeenCalledWith({
       featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AutoCheckin,
@@ -701,13 +862,18 @@ describe("AutoCheckin account actions", () => {
 
     render(<AutoCheckin routeParams={{}} />)
 
-    const openButton = await screen.findByRole("button", {
-      name: "autoCheckin:execution.actions.openSite",
+    const moreButton = await screen.findByRole("button", {
+      name: "common:actions.more",
     })
-    await user.click(openButton)
+    await user.click(moreButton)
+    await user.click(
+      await screen.findByRole("menuitem", {
+        name: "autoCheckin:execution.actions.openSite",
+      }),
+    )
 
     await waitFor(() => {
-      expect(openButton).toBeDisabled()
+      expect(moreButton).toBeDisabled()
     })
 
     await waitFor(() => {
@@ -721,7 +887,7 @@ describe("AutoCheckin account actions", () => {
       )
     })
     await waitFor(() => {
-      expect(openButton).not.toBeDisabled()
+      expect(moreButton).not.toBeDisabled()
     })
     expect(trackProductAnalyticsActionCompletedMock).toHaveBeenCalledWith({
       featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AutoCheckin,
@@ -801,7 +967,10 @@ describe("AutoCheckin account actions", () => {
     render(<AutoCheckin routeParams={{}} />)
 
     await user.click(
-      await screen.findByRole("button", {
+      await screen.findByRole("button", { name: "common:actions.more" }),
+    )
+    await user.click(
+      await screen.findByRole("menuitem", {
         name: "account:actions.disableAccount",
       }),
     )
@@ -814,8 +983,11 @@ describe("AutoCheckin account actions", () => {
         "messages:toast.success.accountDisabled",
       )
     })
+    await user.click(
+      screen.getByRole("button", { name: "common:actions.more" }),
+    )
     expect(
-      screen.queryByRole("button", {
+      screen.queryByRole("menuitem", {
         name: "account:actions.disableAccount",
       }),
     ).not.toBeInTheDocument()
@@ -874,7 +1046,10 @@ describe("AutoCheckin account actions", () => {
     render(<AutoCheckin routeParams={{}} />)
 
     await user.click(
-      await screen.findByRole("button", {
+      await screen.findByRole("button", { name: "common:actions.more" }),
+    )
+    await user.click(
+      await screen.findByRole("menuitem", {
         name: "account:actions.disableAccount",
       }),
     )
@@ -949,7 +1124,10 @@ describe("AutoCheckin account actions", () => {
     render(<AutoCheckin routeParams={{}} />)
 
     await user.click(
-      await screen.findByRole("button", {
+      await screen.findByRole("button", { name: "common:actions.more" }),
+    )
+    await user.click(
+      await screen.findByRole("menuitem", {
         name: "account:actions.delete",
       }),
     )
@@ -1038,7 +1216,10 @@ describe("AutoCheckin account actions", () => {
     render(<AutoCheckin routeParams={{}} />)
 
     await user.click(
-      await screen.findByRole("button", {
+      await screen.findByRole("button", { name: "common:actions.more" }),
+    )
+    await user.click(
+      await screen.findByRole("menuitem", {
         name: "account:actions.delete",
       }),
     )
@@ -1202,9 +1383,19 @@ describe("AutoCheckin account actions", () => {
         screen.getByText("autoCheckin:execution.empty.noResults"),
       ).toBeInTheDocument()
     })
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "autoCheckin:execution.filters.clearAll",
+      }),
+    )
+
+    expect(await screen.findByText("Already Account")).toBeVisible()
+    expect(screen.getByText("Skipped Account")).toBeVisible()
+    expect(screen.getByText("Failed Account")).toBeVisible()
   })
 
-  it("renders account snapshots from status data", async () => {
+  it("defaults to the visible account-readiness view when no execution history exists", async () => {
     const browserApi = await import("~/utils/browser/browserApi")
 
     vi.spyOn(browserApi, "sendRuntimeMessage").mockResolvedValue({
@@ -1226,10 +1417,85 @@ describe("AutoCheckin account actions", () => {
 
     render(<AutoCheckin routeParams={{}} />)
 
+    const readinessTab = await screen.findByRole("tab", {
+      name: /autoCheckin:snapshot\.title/i,
+    })
+    expect(readinessTab).toHaveAttribute("aria-selected", "true")
     expect(
-      await screen.findByText("autoCheckin:snapshot.title"),
-    ).toBeInTheDocument()
-    expect(screen.getByText("Snapshot Account")).toBeInTheDocument()
+      screen.getByRole("tab", {
+        name: /autoCheckin:workspace\.resultsTab/i,
+      }),
+    ).toHaveAttribute("aria-selected", "false")
+    expect(await screen.findByText("Snapshot Account")).toBeVisible()
+  })
+
+  it("keeps account readiness discoverable beside existing execution results", async () => {
+    const user = userEvent.setup()
+    const browserApi = await import("~/utils/browser/browserApi")
+
+    vi.spyOn(browserApi, "sendRuntimeMessage").mockResolvedValue({
+      success: true,
+      data: {
+        perAccount: {
+          result: {
+            accountId: "result",
+            accountName: "Result Account",
+            status: CHECKIN_RESULT_STATUS.SUCCESS,
+            timestamp: 2,
+          },
+        },
+        accountsSnapshot: [
+          {
+            accountId: "snapshot",
+            accountName: "Snapshot Account",
+            detectionEnabled: true,
+            autoCheckinEnabled: true,
+            providerAvailable: true,
+          },
+        ],
+      },
+    } as any)
+
+    render(<AutoCheckin routeParams={{}} />)
+
+    const resultsTab = await screen.findByRole("tab", {
+      name: /autoCheckin:workspace\.resultsTab/i,
+    })
+    expect(resultsTab).toHaveAttribute("aria-selected", "true")
+    await user.type(
+      screen.getByRole("textbox", {
+        name: "autoCheckin:execution.filters.searchLabel",
+      }),
+      "Result",
+    )
+    const readinessTab = screen.getByRole("tab", {
+      name: /autoCheckin:snapshot\.title/i,
+    })
+    expect(readinessTab).toBeVisible()
+    expect(screen.queryByText("Snapshot Account")).not.toBeVisible()
+
+    await user.click(readinessTab)
+
+    expect(await screen.findByText("Snapshot Account")).toBeVisible()
+    expect(trackProductAnalyticsActionCompletedMock).toHaveBeenCalledWith({
+      featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AutoCheckin,
+      actionId: PRODUCT_ANALYTICS_ACTION_IDS.SelectAutoCheckinDataView,
+      surfaceId: PRODUCT_ANALYTICS_SURFACE_IDS.OptionsAutoCheckinDataWorkspace,
+      entrypoint: PRODUCT_ANALYTICS_ENTRYPOINTS.Options,
+      result: PRODUCT_ANALYTICS_RESULTS.Success,
+      insights: {
+        targetKind: PRODUCT_ANALYTICS_TARGET_KINDS.AutoCheckinDataView,
+        mode: PRODUCT_ANALYTICS_MODE_IDS.AutoCheckinReadinessView,
+        resultCount: 1,
+      },
+    })
+
+    await user.click(resultsTab)
+    expect(
+      screen.getByRole("textbox", {
+        name: "autoCheckin:execution.filters.searchLabel",
+      }),
+    ).toHaveValue("Result")
   })
 
   it("keeps existing results rendered while a manual refresh is loading", async () => {

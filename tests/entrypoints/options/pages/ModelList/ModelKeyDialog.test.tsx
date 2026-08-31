@@ -15,6 +15,7 @@ import {
 } from "~/services/productAnalytics/contracts"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import { AuthTypeEnum } from "~/types"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import {
   act,
   render,
@@ -34,6 +35,7 @@ const {
   completeProductAnalyticsActionMock,
   trackProductAnalyticsActionStartedMock,
   createApiCredentialProfileMock,
+  captureApiCredentialProfileMock,
 } = vi.hoisted(() => ({
   fetchAccountTokensMock: vi.fn(),
   adapterCreateTokenMock: vi.fn(),
@@ -45,6 +47,7 @@ const {
   completeProductAnalyticsActionMock: vi.fn(),
   trackProductAnalyticsActionStartedMock: vi.fn(),
   createApiCredentialProfileMock: vi.fn(),
+  captureApiCredentialProfileMock: vi.fn(),
 }))
 
 vi.mock("react-hot-toast", () => ({
@@ -111,15 +114,17 @@ vi.mock("~/services/productAnalytics/actions", () => ({
     trackProductAnalyticsActionStartedMock(...args),
 }))
 
-vi.mock(
-  "~/services/apiCredentialProfiles/apiCredentialProfilesStorage",
-  () => ({
-    apiCredentialProfilesStorage: {
-      createProfile: (...args: unknown[]) =>
-        createApiCredentialProfileMock(...args),
+vi.mock("~/services/apiCredentialProfiles/apiCredentialProfileLinks", () => ({
+  apiCredentialProfileLinks: {
+    capture: async (input: { profile: unknown }) => {
+      captureApiCredentialProfileMock(input)
+      return {
+        status: "captured",
+        profile: await createApiCredentialProfileMock(input.profile),
+      }
     },
-  }),
-)
+  },
+}))
 
 const ACCOUNT = {
   id: "acc-1",
@@ -130,7 +135,7 @@ const ACCOUNT = {
   token: "token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
   tagIds: ["tag-a"],
 } as any
 
@@ -199,6 +204,7 @@ describe("ModelKeyDialog", () => {
     completeProductAnalyticsActionMock.mockReset()
     trackProductAnalyticsActionStartedMock.mockReset()
     createApiCredentialProfileMock.mockReset()
+    captureApiCredentialProfileMock.mockReset()
     startProductAnalyticsActionMock.mockReturnValue({
       complete: completeProductAnalyticsActionMock,
     })
@@ -546,6 +552,17 @@ describe("ModelKeyDialog", () => {
         tagIds: AIHUBMIX_ACCOUNT.tagIds,
       })
     })
+    expect(captureApiCredentialProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locator: {
+          source: "account_token",
+          accountId: AIHUBMIX_ACCOUNT.id,
+          siteType: SITE_TYPES.AIHUBMIX,
+          tokenId: 8,
+        },
+        linkedBy: "creation-response",
+      }),
+    )
     expect(toastSuccessMock).toHaveBeenCalledWith(
       "keyManagement:messages.savedToApiProfiles",
     )

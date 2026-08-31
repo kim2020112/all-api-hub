@@ -1,3 +1,4 @@
+import { SITE_TYPES } from "~/constants/siteType"
 import { UI_CONSTANTS } from "~/constants/ui"
 import type {
   AccountData,
@@ -20,6 +21,7 @@ import { REQUEST_CONFIG } from "~/services/apiTransport/constant"
 import { ApiError } from "~/services/apiTransport/errors"
 import { fetchApiData } from "~/services/apiTransport/request"
 import type { ApiServiceRequest } from "~/services/apiTransport/type"
+import { refreshSelectedStatus } from "~/services/checkin/autoCheckin/refresh"
 import { LogType } from "~/services/history/usageHistory/usageLogModel"
 import type {
   LogStatResponseData,
@@ -633,28 +635,6 @@ export async function fetchTodayIncome(
   }
 }
 
-export const resolveCheckInSiteStatus = (
-  checkIn: CheckInConfig,
-  canCheckIn: boolean | undefined,
-) => {
-  const didDetectCheckInStatus =
-    checkIn?.enableDetection === true && typeof canCheckIn === "boolean"
-
-  if (!didDetectCheckInStatus) {
-    return {
-      ...(checkIn.siteStatus ?? {}),
-      isCheckedInToday: checkIn.siteStatus?.isCheckedInToday,
-      lastDetectedAt: checkIn.siteStatus?.lastDetectedAt,
-    }
-  }
-
-  return {
-    ...(checkIn.siteStatus ?? {}),
-    isCheckedInToday: !canCheckIn,
-    lastDetectedAt: Date.now(),
-  }
-}
-
 /**
  * Fetch the default New API-family account snapshot.
  */
@@ -671,11 +651,13 @@ export async function fetchAccountData(
     undefined,
     timestampRange,
   )
-  const checkInPromise = resolvedCheckIn?.enableDetection
-    ? fetchCheckInStatus(request)
-    : Promise.resolve<boolean | undefined>(undefined)
+  const checkInPromise = refreshSelectedStatus({
+    config: resolvedCheckIn,
+    siteType: request.siteType ?? SITE_TYPES.NEW_API,
+    request,
+  })
 
-  const [quota, todayUsage, todayIncome, canCheckIn] = await Promise.all([
+  const [quota, todayUsage, todayIncome, checkIn] = await Promise.all([
     quotaPromise,
     todayUsagePromise,
     todayIncomePromise,
@@ -690,10 +672,7 @@ export async function fetchAccountData(
       ...todayUsage.todayStatsAvailability,
       ...todayIncome.todayStatsAvailability,
     },
-    checkIn: {
-      ...resolvedCheckIn,
-      siteStatus: resolveCheckInSiteStatus(resolvedCheckIn, canCheckIn),
-    },
+    checkIn,
   }
 }
 

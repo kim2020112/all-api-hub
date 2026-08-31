@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next"
 
 import AccountList from "~/features/AccountManagement/components/AccountList"
+import { ACCOUNT_MANAGEMENT_TEST_IDS } from "~/features/AccountManagement/testIds"
 import type { ApiCredentialProfilesPopupViewHandle } from "~/features/ApiCredentialProfiles/components/ApiCredentialProfilesPopupView"
 import { useBookmarkDialogContext } from "~/features/SiteBookmarks/hooks/BookmarkDialogStateContext"
 import { useAddAccountHandler } from "~/hooks/useAddAccountHandler"
@@ -58,6 +59,11 @@ interface PopupViewConfig {
   preload?: () => void
 }
 
+interface PopupViewRegistryOptions {
+  isPopup?: boolean
+  scrollParent?: HTMLElement | null
+}
+
 /**
  * Compact placeholder for lazily loaded popup stats cards.
  */
@@ -83,7 +89,10 @@ function PopupContentFallback() {
 /**
  * Builds popup view definitions, including lazy-loaded secondary tabs and their preload hooks.
  */
-export function usePopupViewRegistry(): Record<PopupViewType, PopupViewConfig> {
+export function usePopupViewRegistry({
+  isPopup = false,
+  scrollParent,
+}: PopupViewRegistryOptions = {}): Record<PopupViewType, PopupViewConfig> {
   const { t } = useTranslation([
     "account",
     "bookmark",
@@ -92,6 +101,11 @@ export function usePopupViewRegistry(): Record<PopupViewType, PopupViewConfig> {
   ])
   const { handleAddAccountClick } = useAddAccountHandler()
   const { openAddBookmark } = useBookmarkDialogContext()
+  // Native action-popup pointer lifecycles do not reliably deliver dnd-kit drag
+  // completion, so keep reordering discoverable there but direct users elsewhere.
+  const reorderUnavailableReason = isPopup
+    ? t("account:list.reorderUnavailableInPopup")
+    : undefined
 
   const apiCredentialProfilesViewRef =
     useRef<ApiCredentialProfilesPopupViewHandle>(null)
@@ -121,7 +135,13 @@ export function usePopupViewRegistry(): Record<PopupViewType, PopupViewConfig> {
         featureId: PRODUCT_ANALYTICS_FEATURE_IDS.AccountManagement,
         actionId: PRODUCT_ANALYTICS_ACTION_IDS.OpenCreateAccountDialog,
       },
-      content: <AccountList />,
+      primaryActionTestId: ACCOUNT_MANAGEMENT_TEST_IDS.addAccountButton,
+      content: (
+        <AccountList
+          reorderUnavailableReason={reorderUnavailableReason}
+          virtualScrollParent={scrollParent}
+        />
+      ),
     },
     bookmarks: {
       showRefresh: false,

@@ -14,6 +14,7 @@ import { MODEL_LIST_SORT_MODES } from "~/features/ModelList/sortModes"
 import { MODEL_LIST_SOURCE_KINDS } from "~/services/modelList/pricingModel"
 import { AuthTypeEnum, SiteHealthStatus, type DisplaySiteData } from "~/types"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 
 const mockUseAccountData = vi.fn()
 const mockUseApiCredentialProfiles = vi.fn()
@@ -65,7 +66,7 @@ const ACCOUNT: DisplaySiteData = {
   token: "token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
 }
 
 const SECOND_ACCOUNT: DisplaySiteData = {
@@ -712,7 +713,6 @@ describe("useModelListData", () => {
     expect(result.current.sourceCapabilities).toMatchObject({
       supportsRuntimeModelList: true,
       supportsPricing: false,
-      supportsRatioDisplay: false,
       supportsGroupFiltering: false,
       supportsAccountSummary: false,
       supportsTokenCompatibility: true,
@@ -787,7 +787,6 @@ describe("useModelListData", () => {
     expect(result.current.sourceCapabilities).toMatchObject({
       supportsRuntimeModelList: true,
       supportsPricing: true,
-      supportsRatioDisplay: true,
       supportsGroupFiltering: true,
       supportsAccountSummary: false,
       supportsTokenCompatibility: true,
@@ -892,7 +891,6 @@ describe("useModelListData", () => {
               provider: SITE_TYPES.OPENROUTER,
               supportsPricing: true,
               actionPolicy: {
-                supportsRatioDisplay: false,
                 supportsGroupFiltering: false,
                 supportsAccountSummary: false,
                 supportsTokenCompatibility: false,
@@ -927,7 +925,6 @@ describe("useModelListData", () => {
 
     expect(result.current.sourceCapabilities).toMatchObject({
       supportsPricing: true,
-      supportsRatioDisplay: false,
       supportsGroupFiltering: false,
       supportsAccountSummary: false,
       supportsCredentialVerification: false,
@@ -966,7 +963,6 @@ describe("useModelListData", () => {
               provider: SITE_TYPES.OPENROUTER,
               supportsPricing: true,
               actionPolicy: {
-                supportsRatioDisplay: false,
                 supportsGroupFiltering: false,
                 supportsAccountSummary: false,
                 supportsTokenCompatibility: false,
@@ -1001,7 +997,6 @@ describe("useModelListData", () => {
 
     expect(result.current.sourceCapabilities).toMatchObject({
       supportsPricing: true,
-      supportsRatioDisplay: true,
       supportsGroupFiltering: true,
       supportsAccountSummary: true,
       supportsBatchCredentialVerification: true,

@@ -9,7 +9,11 @@ import { DIALOG_MODES } from "~/constants/dialogModes"
 import { SITE_TYPES } from "~/constants/siteType"
 import * as accountOperations from "~/services/accounts/accountOperations"
 import { accountStorage } from "~/services/accounts/accountStorage"
-import { TOKEN_QUICK_CREATE_RESOLUTION_KINDS } from "~/services/accounts/tokenQuickCreateResolution"
+import * as tokenQuickCreateResolution from "~/services/accounts/tokenQuickCreateResolution"
+import {
+  TOKEN_QUICK_CREATE_RESOLUTION_KINDS,
+  type DefaultTokenQuickCreateResolution,
+} from "~/services/accounts/tokenQuickCreateResolution"
 import { MANAGED_RESOURCE_KINDS } from "~/services/accountSiteDefinitions/contracts"
 import { MANAGED_RESOURCE_CREATE_SEED_KINDS } from "~/services/apiAdapters/contracts/managedResourceNative"
 import { TOKEN_PROVISIONING_BLOCK_REASONS } from "~/services/apiAdapters/contracts/tokenProvisioning"
@@ -39,6 +43,7 @@ import {
 } from "~/types/accountTodayStats"
 import type { ChannelFormData, ManagedSiteChannel } from "~/types/managedSite"
 import { buildCompleteTodayStatsAvailability } from "~~/tests/test-utils/accountTodayStats"
+import { buildCheckInConfig } from "~~/tests/test-utils/checkIn"
 import { createDeferred } from "~~/tests/test-utils/deferred"
 import { act, renderHook, waitFor } from "~~/tests/test-utils/render"
 
@@ -64,9 +69,17 @@ const ensureAccountApiTokenSpy = vi.spyOn(
   "ensureAccountApiToken",
 )
 const resolveDefaultTokenQuickCreateResolutionSpy = vi.spyOn(
-  accountOperations,
+  tokenQuickCreateResolution,
   "resolveDefaultTokenQuickCreateResolution",
 )
+
+const buildSelectionRequiredResolution =
+  (): DefaultTokenQuickCreateResolution => ({
+    kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
+    allowedGroups: ["default", "vip"],
+    suggestedGroup: "default",
+    groups: {},
+  })
 
 const buildSiteAccount = (
   overrides: Partial<SiteAccount> = {},
@@ -98,9 +111,7 @@ const buildSiteAccount = (
   disabled: false,
   excludeFromTotalBalance: false,
   authType: AuthTypeEnum.AccessToken,
-  checkIn: {
-    enableDetection: false,
-  },
+  checkIn: buildCheckInConfig(),
   ...overrides,
   user_updated_at: overrides.user_updated_at ?? overrides.updated_at ?? 0,
   excludeFromTodayIncome: overrides.excludeFromTodayIncome === true,
@@ -123,7 +134,7 @@ const buildDisplaySiteData = (
   token: "access-token",
   userId: "1",
   authType: AuthTypeEnum.AccessToken,
-  checkIn: { enableDetection: false },
+  checkIn: buildCheckInConfig(),
   ...overrides,
 })
 
@@ -234,6 +245,8 @@ const buildManagedSiteServiceMock = (
   ...overrides,
 })
 
+const nativeOpenCreateEditorMock = vi.fn()
+
 const renderChannelDialogHook = async () => {
   const rendered = renderHook(() => ({
     dialog: useChannelDialog(),
@@ -276,6 +289,44 @@ describe("useChannelDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+
+    nativeOpenCreateEditorMock.mockImplementation(async (options: any) => ({
+      fields: [],
+      initialValues: { name: options.seed?.name ?? "Imported channel" },
+      validate: vi.fn(() => ({ valid: true as const })),
+      submit: vi.fn(),
+    }))
+    registrationSpy = vi
+      .spyOn(nativeResourceRegistry, "getManagedResourceRegistration")
+      .mockImplementation((siteType, kind) => {
+        if (
+          siteType !== SITE_TYPES.NEW_API &&
+          siteType !== SITE_TYPES.SUB2API
+        ) {
+          return null
+        }
+
+        return {
+          siteType,
+          kind,
+          createSeedKinds: [
+            MANAGED_RESOURCE_CREATE_SEED_KINDS.ManagedChannelImport,
+          ],
+          open: vi.fn(async () => ({
+            capabilities: {
+              canSearch: true,
+              canCreate: true,
+              canUpdate: true,
+              canDelete: true,
+            },
+            list: vi.fn(),
+            get: vi.fn(),
+            openCreateEditor: nativeOpenCreateEditorMock,
+            openEditEditor: vi.fn(),
+            delete: vi.fn(),
+          })),
+        }
+      })
 
     mockToastLoading.mockReturnValue("toast-id")
     getAccountByIdSpy.mockResolvedValue(buildSiteAccount())
@@ -1004,10 +1055,9 @@ describe("useChannelDialog", () => {
     getAccountByIdSpy.mockResolvedValue(
       buildSiteAccount({ site_type: "sub2api" }),
     )
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = renderHook(() => ({
       dialog: useChannelDialog(),
@@ -1071,10 +1121,9 @@ describe("useChannelDialog", () => {
     mockFetchAccountTokens
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([buildApiToken()])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = renderHook(() => ({
       dialog: useChannelDialog(),
@@ -1183,6 +1232,8 @@ describe("useChannelDialog", () => {
         }),
     )
     const mockService = buildManagedSiteServiceMock({
+      siteType: SITE_TYPES.SUB2API,
+      messagesKey: "sub2api",
       prepareChannelFormData: prepareChannelFormDataMock,
     })
     getManagedSiteServiceSpy.mockResolvedValue(
@@ -1237,10 +1288,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: SITE_TYPES.SUB2API }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     let shouldContinueCalls = 0
     const { result } = await renderChannelDialogHook()
@@ -1289,6 +1339,8 @@ describe("useChannelDialog", () => {
         }),
     )
     const mockService = buildManagedSiteServiceMock({
+      siteType: SITE_TYPES.SUB2API,
+      messagesKey: "sub2api",
       prepareChannelFormData: prepareChannelFormDataMock,
     })
     getManagedSiteServiceSpy.mockResolvedValue(
@@ -1300,10 +1352,9 @@ describe("useChannelDialog", () => {
     mockFetchAccountTokens
       .mockResolvedValueOnce([existingToken, undefined] as ApiToken[])
       .mockResolvedValueOnce([createdToken, existingToken])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -1333,9 +1384,12 @@ describe("useChannelDialog", () => {
     )
     expect(result.current.context.state).toMatchObject({
       isOpen: true,
-      initialValues: {
-        key: createdToken.key,
+      nativeCreate: {
+        siteType: SITE_TYPES.SUB2API,
       },
+    })
+    expect(nativeOpenCreateEditorMock).toHaveBeenLastCalledWith({
+      seed: expect.objectContaining({ credential: createdToken.key }),
     })
     expect(mockToastError).not.toHaveBeenCalled()
   })
@@ -1353,6 +1407,8 @@ describe("useChannelDialog", () => {
         }),
     )
     const mockService = buildManagedSiteServiceMock({
+      siteType: SITE_TYPES.SUB2API,
+      messagesKey: "sub2api",
       prepareChannelFormData: prepareChannelFormDataMock,
     })
     getManagedSiteServiceSpy.mockResolvedValue(
@@ -1362,10 +1418,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: SITE_TYPES.SUB2API }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -1394,9 +1449,12 @@ describe("useChannelDialog", () => {
     )
     expect(result.current.context.state).toMatchObject({
       isOpen: true,
-      initialValues: {
-        key: createdToken.key,
+      nativeCreate: {
+        siteType: SITE_TYPES.SUB2API,
       },
+    })
+    expect(nativeOpenCreateEditorMock).toHaveBeenLastCalledWith({
+      seed: expect.objectContaining({ credential: createdToken.key }),
     })
     expect(mockToastError).not.toHaveBeenCalled()
   })
@@ -1423,10 +1481,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: "sub2api" }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -1556,10 +1613,9 @@ describe("useChannelDialog", () => {
     mockFetchAccountTokens
       .mockResolvedValueOnce([existingToken, undefined] as ApiToken[])
       .mockResolvedValueOnce([existingToken, ambiguousTokenA, ambiguousTokenB])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -1602,10 +1658,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: SITE_TYPES.SUB2API }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([]).mockResolvedValueOnce(null)
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -1653,10 +1708,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: SITE_TYPES.SUB2API }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     let shouldContinue = true
     const { result } = await renderChannelDialogHook()
@@ -1701,10 +1755,9 @@ describe("useChannelDialog", () => {
       buildSiteAccount({ site_type: SITE_TYPES.SUB2API }),
     )
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     let shouldContinueCalls = 0
     const { result } = await renderChannelDialogHook()
@@ -1762,10 +1815,9 @@ describe("useChannelDialog", () => {
     mockFetchAccountTokens
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([createdToken, existingToken])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     let shouldContinueCalls = 0
     const { result } = await renderChannelDialogHook()
@@ -1845,10 +1897,9 @@ describe("useChannelDialog", () => {
     const onSuccess = vi.fn(async () => {})
 
     mockFetchAccountTokens.mockResolvedValueOnce([])
-    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce({
-      kind: TOKEN_QUICK_CREATE_RESOLUTION_KINDS.SelectionRequired,
-      allowedGroups: ["default", "vip"],
-    })
+    resolveDefaultTokenQuickCreateResolutionSpy.mockResolvedValueOnce(
+      buildSelectionRequiredResolution(),
+    )
 
     const { result } = await renderChannelDialogHook()
 
@@ -2118,8 +2169,9 @@ describe("useChannelDialog", () => {
 
     expect(searchChannelMock).toHaveBeenCalledOnce()
     expect(result.current.context.duplicateChannelWarning.isOpen).toBe(false)
-    expect(result.current.context.state).toMatchObject({
-      isOpen: true,
+    expect(result.current.context.state.isOpen).toBe(true)
+    expect(result.current.context.state.nativeCreate).toMatchObject({
+      siteType: SITE_TYPES.NEW_API,
       advisoryWarning: {
         kind: "reviewSuggested",
         title: "channelDialog:warnings.reviewSuggested.title",
@@ -2171,8 +2223,8 @@ describe("useChannelDialog", () => {
     })
 
     expect(searchChannelMock).toHaveBeenCalledOnce()
-    expect(result.current.context.state).toMatchObject({
-      isOpen: true,
+    expect(result.current.context.state.nativeCreate).toMatchObject({
+      siteType: SITE_TYPES.NEW_API,
       advisoryWarning: {
         kind: "verificationRequired",
         title: "channelDialog:warnings.verificationRequired.title",
@@ -2246,9 +2298,12 @@ describe("useChannelDialog", () => {
     )
     expect(result.current.context.state).toMatchObject({
       isOpen: true,
-      initialValues: {
-        key: "sk-ensured-token",
+      nativeCreate: {
+        siteType: SITE_TYPES.NEW_API,
       },
+    })
+    expect(nativeOpenCreateEditorMock).toHaveBeenLastCalledWith({
+      seed: expect.objectContaining({ credential: "sk-ensured-token" }),
     })
 
     await act(async () => {
@@ -2431,12 +2486,16 @@ describe("useChannelDialog", () => {
     expect(prepareChannelFormDataMock).toHaveBeenCalledTimes(1)
     expect(result.current.context.state).toMatchObject({
       isOpen: true,
-      initialValues: {
-        key: "sk-credential",
-        base_url: "https://upstream.example.com",
+      nativeCreate: {
+        siteType: SITE_TYPES.NEW_API,
       },
-      initialModels: ["gpt-4"],
-      initialGroups: ["default"],
+    })
+    expect(nativeOpenCreateEditorMock).toHaveBeenLastCalledWith({
+      seed: expect.objectContaining({
+        credential: "sk-credential",
+        baseUrl: "https://upstream.example.com",
+        models: ["gpt-4"],
+      }),
     })
 
     await act(async () => {

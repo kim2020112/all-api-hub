@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority"
 import React from "react"
 
+import Tooltip, { TooltipContext } from "~/components/Tooltip"
 import { useProductAnalyticsActionTracking } from "~/hooks/useProductAnalyticsActionTracking"
 import { cn } from "~/lib/utils"
 import type { ProductAnalyticsScopedActionConfig } from "~/services/productAnalytics/actionConfig"
@@ -48,7 +49,13 @@ export interface IconButtonProps
   loading?: boolean
   "aria-label": string
   disableAutoTitle?: boolean
+  /** Disables the default Tooltip when the caller owns the surrounding affordance. */
+  disableAutoTooltip?: boolean
+  /** Overrides the default Tooltip copy derived from title or aria-label. */
+  tooltip?: React.ReactNode
   analyticsAction?: ProductAnalyticsScopedActionConfig
+  /** Internal marker injected by Tooltip for its direct managed child. */
+  "data-tooltip-anchor-id"?: string
 }
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -61,7 +68,10 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       children,
       disabled,
       disableAutoTitle,
+      disableAutoTooltip,
+      tooltip,
       analyticsAction,
+      "data-tooltip-anchor-id": managedTooltipAnchorId,
       onClick,
       "aria-busy": ariaBusy,
       ...props
@@ -85,7 +95,18 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       trackingProps.onClick(event)
     }
 
-    return (
+    const hasExplicitTooltip = tooltip !== undefined && tooltip !== null
+    const tooltipAnchorId = React.useContext(TooltipContext)
+    const isTooltipManaged = Boolean(
+      tooltipAnchorId &&
+        (props.id === tooltipAnchorId ||
+          managedTooltipAnchorId === tooltipAnchorId),
+    )
+    const shouldRenderTooltip = !disableAutoTooltip && !isTooltipManaged
+    const tooltipContent = hasExplicitTooltip
+      ? tooltip
+      : props.title ?? props["aria-label"]
+    const button = (
       <button
         className={cn(iconButtonVariants({ variant, size, className }))}
         ref={ref}
@@ -94,7 +115,11 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         {...props}
         aria-busy={loading ? true : ariaBusy}
         title={
-          disableAutoTitle ? props.title : props.title ?? props["aria-label"]
+          shouldRenderTooltip || isTooltipManaged
+            ? undefined
+            : disableAutoTitle
+              ? props.title
+              : props.title ?? props["aria-label"]
         }
       >
         {loading ? (
@@ -123,6 +148,18 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
           children
         )}
       </button>
+    )
+
+    return shouldRenderTooltip ? (
+      <Tooltip
+        content={tooltipContent}
+        anchorAsChild
+        includeAccessibleDescription={hasExplicitTooltip}
+      >
+        {button}
+      </Tooltip>
+    ) : (
+      button
     )
   },
 )

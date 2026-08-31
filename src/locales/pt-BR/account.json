@@ -115,6 +115,7 @@
       "not-checked-in": "Não fez check-in",
       "outdated": "Status desatualizado",
       "placeholder": "Status do check-in",
+      "status-unavailable": "Status indisponível",
       "unsupported": "Não suportado"
     },
     "disabled": {
@@ -224,10 +225,22 @@
       "todayConsumption": "Consumo de hoje",
       "todayIncome": "Renda de hoje"
     },
+    "reorder": "Reordenar",
+    "reorderDone": "Concluir reordenação",
+    "reorderFailed": "Não foi possível salvar a ordem das contas. A ordem anterior foi restaurada. Tente novamente.",
+    "reorderLoadFailed": "Não foi possível iniciar a reordenação. Tente novamente.",
+    "reorderPinnedBoundary": "Contas fixadas e não fixadas são ordenadas separadamente. Altere primeiro o status de fixação para mover a conta entre os grupos.",
+    "reorderPinnedHint": "Contas fixadas e não fixadas são ordenadas dentro de seus próprios grupos.",
+    "reorderSuccess": "Ordem das contas salva.",
+    "reorderSuccessFieldSortCleared": "Ordem das contas salva. A ordenação por campo ativa foi removida para aplicar sua ordem manual.",
+    "reorderUnavailableInPopup": "A reordenação não está disponível no pop-up. Abra o painel lateral ou a página de gerenciamento de contas.",
+    "reorderUnavailableInSettings": "Ative a ordem manual nas prioridades de classificação.",
+    "reorderUnavailableWhileBulk": "Saia do modo em lote antes de reordenar as contas.",
+    "reorderUnavailableWhileSearch": "Limpe a pesquisa antes de reordenar as contas.",
     "site": {
       "checkedInToday": "Check-in hoje, clique para visualizar",
       "checkInStatusOutdated": "O status do check-in não foi detectado hoje (horário da última verificação: {{time}}). Clique para atualizar",
-      "checkInUnsupported": "O site pode não suportar check-in",
+      "checkInStatusUnavailable": "O check-in é compatível, mas o status de hoje não pode ser consultado automaticamente",
       "currentSite": "Site atual",
       "currentSiteExists": "Mesmo site da guia atual",
       "disabled": "Desativado",
