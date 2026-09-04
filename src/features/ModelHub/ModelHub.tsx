@@ -1,3 +1,5 @@
+/* eslint-disable jsdoc/require-jsdoc */
+
 import {
   KeyRound,
   Pencil,
@@ -26,6 +28,7 @@ import {
   FormField,
   Input,
   Modal,
+  SearchableSelect,
   Spinner,
 } from "~/components/ui"
 import {
@@ -38,22 +41,28 @@ import { formatQuota } from "~/features/KeyManagement/utils"
 import { useAccountData } from "~/hooks/useAccountData"
 import {
   createDisplayAccountApiContext,
+  fetchDisplayAccountRuntimeKeys,
+  resolveDisplayAccountRuntimeKeySecret,
   resolveDisplayAccountTokenForSecret,
 } from "~/services/accounts/utils/apiServiceRequest"
 import type { UserGroupInfo } from "~/services/accountTokens/tokenProvisioningModel"
 import { apiCredentialProfilesStorage } from "~/services/apiCredentialProfiles/apiCredentialProfilesStorage"
 import { fetchApiCredentialModelIds } from "~/services/apiCredentialProfiles/modelCatalog"
 import type { ProductCanonicalModel } from "~/services/modelList/pricingModel"
-import { isTokenCompatibleWithModel } from "~/services/models/utils/tokenModelCompatibility"
 import { API_TYPES } from "~/services/verification/aiApiVerification"
 import type { AccountToken, ApiToken, DisplaySiteData } from "~/types"
 
 import { useModelData } from "../ModelList/hooks/useModelData"
 import {
+  createAccountTokenModelListSourceIdentity,
   createAllAccountsSource,
   type ModelListGroupSemantics,
 } from "../ModelList/modelManagementSources"
-import { runModelHubBenchmark, sanitizeBenchmarkError } from "./benchmark"
+import {
+  runModelHubBenchmark,
+  runModelHubConnectivityCheck,
+  sanitizeBenchmarkError,
+} from "./benchmark"
 import { dedupeOfferingsByBusinessKey } from "./dedupe"
 import {
   aggregateModelCatalogRows,
@@ -72,20 +81,26 @@ import {
 import {
   createEmptyModelHubManualOverride,
   createModelHubGroupOverrideKey,
+  createModelHubTestResultKey,
   getModelHubBenchmarkResults,
   getModelHubManualOverrides,
   getModelHubManualSources,
   getModelHubPreferences,
+  getModelHubTestGroups,
   inferModelHubModelType,
   normalizeModelHubModelName,
   normalizeModelHubSourceUrl,
   removeModelHubManualOverride,
   removeModelHubManualSource,
+  removeModelHubTestBenchmarkResults,
   saveModelHubBenchmarkResult,
+  saveModelHubBenchmarkResults,
   saveModelHubManualOverride,
   saveModelHubManualSource,
   saveModelHubPreferences,
+  updateModelHubTestGroups,
   type FavoriteModel,
+  type ModelHubBenchmarkResult,
   type ModelHubBenchmarkResultStore,
   type ModelHubBillingUnit,
   type ModelHubManualOverride,
@@ -93,8 +108,16 @@ import {
   type ModelHubManualSource,
   type ModelHubManualSourceModel,
   type ModelHubModelType,
+  type ModelHubTestGroup,
+  type ModelHubTestGroupStore,
   type ModelHubViewMode,
+  type ModelHubWorkspace,
 } from "./storage"
+import {
+  createTokenBoundOfferingId,
+  findCompatibleOfferingTokens,
+  resolveTokenBoundGroupName,
+} from "./tokenRows"
 
 type TypeFilter = "all" | ModelHubModelType
 type AllSection = "catalog" | "manual"
@@ -109,7 +132,6 @@ interface AccountOffering extends AccountOfferingProjection {
   groupRatioSource: "automatic" | "manual" | "unavailable"
   multiplier: number | null
   accountUsername: string
-  compatibleTokens?: AccountToken[]
   selectedToken?: AccountToken
   selectedTokenUsable?: boolean
 }
@@ -139,25 +161,6 @@ const BILLING_OPTIONS: Array<[ModelHubBillingUnit, string]> = [
   ["unknown", "未知"],
 ]
 const CATALOG_PAGE_SIZE = 50
-const GENERIC_GROUP_NAMES = new Set(["", "default", "通用", "默认分组"])
-
-function isGenericGroup(groupName: string) {
-  return GENERIC_GROUP_NAMES.has(normalizeModelHubModelName(groupName))
-}
-
-function compatibleTokensForOffering(
-  tokens: readonly AccountToken[],
-  offering: Pick<AccountOffering, "groupName" | "modelName">,
-) {
-  return tokens.filter((token) =>
-    isTokenCompatibleWithModel(token, {
-      id: offering.modelName,
-      enableGroups: isGenericGroup(offering.groupName)
-        ? undefined
-        : [offering.groupName],
-    }),
-  )
-}
 
 function isTokenExpired(token: AccountToken) {
   return token.expired_time > 0 && token.expired_time <= Date.now() / 1000
@@ -171,12 +174,7 @@ function isTokenUsable(token: AccountToken) {
   return !isTokenExpired(token) && !isTokenQuotaExhausted(token)
 }
 
-function selectOfferingToken(
-  tokens: AccountToken[],
-  preferredTokenId: number | undefined,
-) {
-  const preferred = tokens.find((token) => token.id === preferredTokenId)
-  if (preferred && isTokenUsable(preferred)) return preferred
+function selectUsableToken(tokens: readonly AccountToken[]) {
   return (
     [...tokens]
       .filter(isTokenUsable)
@@ -184,9 +182,7 @@ function selectOfferingToken(
         (left, right) =>
           Number(right.unlimited_quota) - Number(left.unlimited_quota) ||
           right.remain_quota - left.remain_quota,
-      )[0] ??
-    preferred ??
-    tokens[0]
+      )[0] ?? tokens[0]
   )
 }
 
@@ -198,8 +194,44 @@ function groupsForModel(
     new Set(model.enable_groups.map((group) => group.trim()).filter(Boolean)),
   )
   return groups.length
-    ? groups
-    : [semantics === "account-or-runtime-key" ? "默认分组" : "通用"]
+    ? groups.map((name) => ({ name, isFallback: false }))
+    : [
+        {
+          name: semantics === "account-or-runtime-key" ? "默认分组" : "通用",
+          isFallback: true,
+        },
+      ]
+}
+
+function testGroupIdentityForRow(row: AllModelRow) {
+  const sourceId =
+    row.sourceType === "account"
+      ? row.tokenId !== undefined
+        ? `${row.accountId}:token:${row.tokenId}`
+        : `${row.sourceId}:${row.accountId}`
+      : row.manualSourceId
+  return `${row.sourceType}:${sourceId}:${normalizeModelHubModelName(row.groupName)}`
+}
+
+function testSourceIdentityForRow(row: AllModelRow) {
+  if (row.sourceType !== "account" || row.tokenId === undefined) {
+    return row.sourceType === "account" ? row.sourceIdentity : undefined
+  }
+  return createAccountTokenModelListSourceIdentity({
+    accountId: row.accountId,
+    tokenId: row.tokenId,
+  })
+}
+
+function findGroupInfo(
+  groups: Record<string, UserGroupInfo> | undefined,
+  groupName: string,
+) {
+  if (!groups) return undefined
+  const normalizedName = normalizeModelHubModelName(groupName)
+  return Object.entries(groups).find(
+    ([name]) => normalizeModelHubModelName(name) === normalizedName,
+  )?.[1]
 }
 
 function nonNegative(value: string): number | undefined {
@@ -273,21 +305,22 @@ function ModelHub() {
     accounts: isConfigLoading ? [] : includedAccounts,
   })
 
-  const [viewMode, setViewMode] = useState<ModelHubViewMode>("favorites")
+  const [viewMode, setViewMode] = useState<ModelHubWorkspace>("favorites")
   const [favorites, setFavorites] = useState<FavoriteModel[]>([])
   const [manualSources, setManualSources] = useState<ModelHubManualSource[]>([])
   const [overrides, setOverrides] = useState<ModelHubManualOverrideStore>({})
   const [benchmarks, setBenchmarks] = useState<ModelHubBenchmarkResultStore>({})
+  const [testGroups, setTestGroups] = useState<ModelHubTestGroupStore>({})
   const [isSourceManagerOpen, setIsSourceManagerOpen] = useState(false)
-  const [selectedTokenIds, setSelectedTokenIds] = useState<
-    Record<string, number>
-  >({})
   const [favoriteType, setFavoriteType] = useState<TypeFilter>("text")
   const [selectedFavoriteName, setSelectedFavoriteName] = useState("")
   const [favoriteSearch, setFavoriteSearch] = useState("")
   const [favoriteSort, setFavoriteSort] = useState<FavoriteSort>("ratio")
   const [favoriteTag, setFavoriteTag] = useState("all")
   const [selectedOfferingIds, setSelectedOfferingIds] = useState<Set<string>>(
+    new Set(),
+  )
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(
     new Set(),
   )
   const [batchTagMode, setBatchTagMode] = useState<"add" | "remove" | null>(
@@ -317,9 +350,24 @@ function ModelHub() {
   const [deletingSource, setDeletingSource] =
     useState<ModelHubManualSource | null>(null)
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set())
+  const [connectivityIds, setConnectivityIds] = useState<Set<string>>(new Set())
+  const [isRefreshingConnectivity, setIsRefreshingConnectivity] =
+    useState(false)
+  const [testBatchProgress, setTestBatchProgress] = useState<{
+    completed: number
+    total: number
+  } | null>(null)
+  const cancelTestBatchRef = useRef(false)
   const [groupInfoByAccount, setGroupInfoByAccount] = useState<
     Record<string, Record<string, UserGroupInfo>>
   >({})
+  const [groupInfoLoadingAccountIds, setGroupInfoLoadingAccountIds] = useState<
+    Set<string>
+  >(new Set())
+  const [groupInfoFailedAccountIds, setGroupInfoFailedAccountIds] = useState<
+    Set<string>
+  >(new Set())
+  const [groupInfoRetryVersion, setGroupInfoRetryVersion] = useState(0)
   const requestedGroupInfoAccountIds = useRef(new Set<string>())
   const [batchTestRows, setBatchTestRows] = useState<FavoriteOffering[] | null>(
     null,
@@ -352,22 +400,48 @@ function ModelHub() {
       getModelHubManualSources(),
       getModelHubManualOverrides(),
       getModelHubBenchmarkResults(),
+      getModelHubTestGroups(),
     ])
-      .then(([preferences, sources, storedOverrides, storedBenchmarks]) => {
-        if (!active) return
-        setViewMode(preferences.viewMode)
-        setFavorites(preferences.favoriteModels)
-        setExcludedSourceUrls(new Set(preferences.excludedSourceUrls))
-        setSelectedTokenIds(preferences.selectedTokenIds)
-        setManualSources(Object.values(sources))
-        setOverrides(storedOverrides)
-        setBenchmarks(storedBenchmarks)
-      })
+      .then(
+        ([
+          preferences,
+          sources,
+          storedOverrides,
+          storedBenchmarks,
+          storedTestGroups,
+        ]) => {
+          if (!active) return
+          setViewMode(preferences.viewMode)
+          setFavorites(preferences.favoriteModels)
+          setExcludedSourceUrls(new Set(preferences.excludedSourceUrls))
+          setManualSources(Object.values(sources))
+          setOverrides(storedOverrides)
+          setBenchmarks(storedBenchmarks)
+          setTestGroups(storedTestGroups)
+        },
+      )
       .finally(() => active && setIsConfigLoading(false))
     return () => {
       active = false
     }
   }, [])
+
+  const testTargetsByAccount = useMemo(() => {
+    const targets = new Map<string, Map<string, Set<string>>>()
+    if (viewMode !== "testing") return targets
+    for (const group of Object.values(testGroups)) {
+      if (group.sourceType !== "account") continue
+      const targetKey = `${group.sourceId}:${group.accountId ?? group.sourceId}`
+      const byGroup = targets.get(targetKey) ?? new Map<string, Set<string>>()
+      const groupKey = normalizeModelHubModelName(group.groupName)
+      const models = byGroup.get(groupKey) ?? new Set<string>()
+      for (const model of group.models) models.add(model.normalizedName)
+      if (group.selectedModel) models.add(group.selectedModel)
+      byGroup.set(groupKey, models)
+      targets.set(targetKey, byGroup)
+    }
+    return targets
+  }, [testGroups, viewMode])
 
   const accountOfferings = useMemo<AccountOffering[]>(() => {
     const displayById = new Map(
@@ -382,6 +456,13 @@ function ModelHub() {
     )
     for (const context of pricingContexts) {
       const account = displayById.get(context.account.id) ?? context.account
+      const sourceId = context.sourceIdentity?.id ?? account.id
+      const testTargetKey = `${sourceId}:${account.id}`
+      const testTargets = testTargetsByAccount.get(testTargetKey)
+      if (viewMode === "testing" && !testTargets) continue
+      const testModelNames = testTargets
+        ? new Set([...testTargets.values()].flatMap((models) => [...models]))
+        : null
       const raw = rawById.get(account.id)
       const tokenId =
         context.sourceIdentity && "tokenId" in context.sourceIdentity
@@ -392,13 +473,26 @@ function ModelHub() {
         if (viewMode === "favorites" && !favoriteNames.has(normalizedName)) {
           continue
         }
-        for (const groupName of groupsForModel(
+        if (viewMode === "testing" && !testModelNames?.has(normalizedName))
+          continue
+        for (const group of groupsForModel(
           model,
           selectedSource.groupSemantics,
         )) {
+          const groupName = group.name
+          if (
+            viewMode === "testing" &&
+            !testTargets
+              ?.get(normalizeModelHubModelName(groupName))
+              ?.has(normalizedName)
+          )
+            continue
           const id = createModelHubOfferingKey({
             sourceType: "account",
-            stableSourceId: account.id,
+            stableSourceId:
+              context.sourceIdentity?.kind === "provider-catalog"
+                ? `${sourceId}:account:${account.id}`
+                : sourceId,
             modelName: model.model_name,
             groupName,
           })
@@ -419,7 +513,8 @@ function ModelHub() {
             id,
             sourceType: "account",
             accountId: account.id,
-            sourceId: context.sourceIdentity?.id ?? account.id,
+            sourceId,
+            sourceIdentity: context.sourceIdentity,
             ...(tokenId !== undefined ? { tokenId } : {}),
             modelName: model.model_name,
             normalizedName,
@@ -427,10 +522,13 @@ function ModelHub() {
             providerName: account.name,
             accountUsername: account.username,
             groupName,
-            ...(groupInfoByAccount[account.id]?.[groupName]?.desc
+            ...(group.isFallback ? { groupIsFallback: true } : {}),
+            ...(findGroupInfo(groupInfoByAccount[account.id], groupName)?.desc
               ? {
-                  groupDescription:
-                    groupInfoByAccount[account.id][groupName].desc,
+                  groupDescription: findGroupInfo(
+                    groupInfoByAccount[account.id],
+                    groupName,
+                  )!.desc,
                 }
               : {}),
             groupRatio,
@@ -462,6 +560,7 @@ function ModelHub() {
     overrides,
     pricingContexts,
     selectedSource.groupSemantics,
+    testTargetsByAccount,
     viewMode,
   ])
 
@@ -470,9 +569,18 @@ function ModelHub() {
       new Map(favorites.map((favorite) => [favorite.normalizedName, favorite])),
     [favorites],
   )
+  const visibleManualSources = useMemo(() => {
+    if (viewMode !== "testing") return manualSources
+    const sourceIds = new Set(
+      Object.values(testGroups)
+        .filter((group) => group.sourceType === "manual")
+        .map((group) => group.sourceId),
+    )
+    return manualSources.filter((source) => sourceIds.has(source.id))
+  }, [manualSources, testGroups, viewMode])
   const allRows = useMemo(
-    () => buildAllModelRows(accountOfferings, manualSources),
-    [accountOfferings, manualSources],
+    () => buildAllModelRows(accountOfferings, visibleManualSources),
+    [accountOfferings, visibleManualSources],
   )
   const visibleFavorites = useMemo(
     () =>
@@ -528,43 +636,100 @@ function ModelHub() {
     return result
   }, [accountTokens])
 
-  const actionableFavoriteRows = useMemo<FavoriteOffering[]>(
-    () =>
-      activeFavoriteRows.flatMap<FavoriteOffering>((row) => {
-        if (row.sourceType === "manual") return [row]
-        const inventory = tokenInventories[row.accountId]
-        if (inventory?.status !== "loaded") return []
-        const tokens = compatibleTokensForOffering(
-          tokensByAccount.get(row.accountId) ?? [],
-          row,
-        )
-        if (tokens.length === 0) return []
-        const selectedToken = selectOfferingToken(
-          tokens,
-          selectedTokenIds[row.id],
-        )
-        return [
-          {
-            ...row,
-            compatibleTokens: tokens,
-            selectedToken,
-            selectedTokenUsable: selectedToken
-              ? isTokenUsable(selectedToken)
-              : false,
-          },
-        ]
-      }),
-    [activeFavoriteRows, selectedTokenIds, tokenInventories, tokensByAccount],
+  const expandAccountOfferingByTokens = useCallback(
+    (row: AccountOffering): AccountOffering[] => {
+      if (row.selectedToken) return [row]
+      const inventory = tokenInventories[row.accountId]
+      if (inventory?.status !== "loaded") return []
+
+      return findCompatibleOfferingTokens(
+        tokensByAccount.get(row.accountId) ?? [],
+        row,
+      ).map((token) => {
+        const groupName = resolveTokenBoundGroupName(row, token)
+        const groupOverride =
+          overrides[createModelHubGroupOverrideKey(row.accountId, groupName)]
+        const manualGroupRatio = groupOverride?.manualMultiplier ?? null
+        const usesDerivedGroup = groupName !== row.groupName
+        const groupRatio = usesDerivedGroup ? manualGroupRatio : row.groupRatio
+        const groupDescription =
+          findGroupInfo(groupInfoByAccount[row.accountId], groupName)?.desc ??
+          (usesDerivedGroup ? undefined : row.groupDescription)
+        const boundRow: AccountOffering = {
+          ...row,
+          id: createTokenBoundOfferingId(row.id, token.id),
+          tokenId: token.id,
+          groupName,
+          groupIsFallback: false,
+          groupRatio,
+          groupRatioSource: usesDerivedGroup
+            ? manualGroupRatio !== null
+              ? "manual"
+              : "unavailable"
+            : row.groupRatioSource,
+          multiplier: groupRatio,
+          selectedToken: token,
+          selectedTokenUsable: isTokenUsable(token),
+        }
+        if (groupDescription) boundRow.groupDescription = groupDescription
+        else delete boundRow.groupDescription
+        return boundRow
+      })
+    },
+    [groupInfoByAccount, overrides, tokenInventories, tokensByAccount],
   )
+
+  const expandRowsByTokens = useCallback(
+    (rows: readonly AllModelRow[]): AllModelRow[] =>
+      rows.flatMap<AllModelRow>((row) =>
+        row.sourceType === "manual"
+          ? [row]
+          : expandAccountOfferingByTokens(row as AccountOffering),
+      ),
+    [expandAccountOfferingByTokens],
+  )
+
+  const actionableFavoriteRows = useMemo<FavoriteOffering[]>(
+    () => expandRowsByTokens(activeFavoriteRows) as FavoriteOffering[],
+    [activeFavoriteRows, expandRowsByTokens],
+  )
+  const testGroupIds = useMemo(
+    () => new Set(Object.keys(testGroups)),
+    [testGroups],
+  )
+  const isRowAddedToTest = useCallback(
+    (row: AllModelRow) => {
+      const rows = expandRowsByTokens([row])
+      return (
+        rows.length > 0 &&
+        rows.every((candidate) =>
+          testGroupIds.has(testGroupIdentityForRow(candidate)),
+        )
+      )
+    },
+    [expandRowsByTokens, testGroupIds],
+  )
+
+  const relevantGroupInfoAccountKey = useMemo(() => {
+    if (viewMode !== "favorites") return ""
+    return Array.from(
+      new Set(
+        activeFavoriteRows.flatMap((row) =>
+          row.sourceType === "account" ? [row.accountId] : [],
+        ),
+      ),
+    )
+      .sort()
+      .join("\u0000")
+  }, [activeFavoriteRows, viewMode])
 
   useEffect(() => {
     let active = true
-    let settled = false
     const requestedAccountIds = requestedGroupInfoAccountIds.current
     const relevantAccountIds = new Set(
-      actionableFavoriteRows.flatMap((row) =>
-        row.sourceType === "account" ? [row.accountId] : [],
-      ),
+      relevantGroupInfoAccountKey
+        ? relevantGroupInfoAccountKey.split("\u0000")
+        : [],
     )
     const targetAccounts = includedAccounts.filter(
       (account) =>
@@ -572,44 +737,66 @@ function ModelHub() {
         !requestedAccountIds.has(account.id),
     )
     targetAccounts.forEach((account) => requestedAccountIds.add(account.id))
+    setGroupInfoLoadingAccountIds((current) => {
+      const next = new Set(current)
+      targetAccounts.forEach((account) => next.add(account.id))
+      return next
+    })
     if (targetAccounts.length === 0) return undefined
-    void Promise.all(
-      targetAccounts.map(async (account) => {
+    const pendingAccountIds = new Set(
+      targetAccounts.map((account) => account.id),
+    )
+    const controllers = targetAccounts.map((account) => {
+      const controller = new AbortController()
+      void (async () => {
         try {
           const context = createDisplayAccountApiContext(account)
-          const groups = await context.keyManagement?.userGroups?.fetch(
-            context.request,
-          )
-          return { accountId: account.id, groups: groups ?? {}, success: true }
+          const groups = await context.keyManagement?.userGroups?.fetch({
+            ...context.request,
+            abortSignal: controller.signal,
+            requestTimeoutMs: 8000,
+          })
+          if (!active) return
+          setGroupInfoByAccount((current) => ({
+            ...current,
+            [account.id]: groups ?? {},
+          }))
+          setGroupInfoFailedAccountIds((current) => {
+            const next = new Set(current)
+            next.delete(account.id)
+            return next
+          })
         } catch {
-          return { accountId: account.id, groups: {}, success: false }
+          if (!active) return
+          setGroupInfoFailedAccountIds((current) =>
+            new Set(current).add(account.id),
+          )
+        } finally {
+          pendingAccountIds.delete(account.id)
+          if (active) {
+            setGroupInfoLoadingAccountIds((current) => {
+              const next = new Set(current)
+              next.delete(account.id)
+              return next
+            })
+          }
         }
-      }),
-    ).then((results) => {
-      if (!active) return
-      settled = true
-      const successfulEntries = results
-        .filter((result) => result.success)
-        .map((result) => [result.accountId, result.groups] as const)
-      results
-        .filter((result) => !result.success)
-        .forEach((result) => requestedAccountIds.delete(result.accountId))
-      if (successfulEntries.length > 0) {
-        setGroupInfoByAccount((current) => ({
-          ...current,
-          ...Object.fromEntries(successfulEntries),
-        }))
-      }
+      })()
+      return controller
     })
     return () => {
       active = false
-      if (!settled) {
-        targetAccounts.forEach((account) =>
-          requestedAccountIds.delete(account.id),
-        )
-      }
+      controllers.forEach((controller) => controller.abort())
+      pendingAccountIds.forEach((accountId) =>
+        requestedAccountIds.delete(accountId),
+      )
+      setGroupInfoLoadingAccountIds((current) => {
+        const next = new Set(current)
+        pendingAccountIds.forEach((accountId) => next.delete(accountId))
+        return next
+      })
     }
-  }, [actionableFavoriteRows, includedAccounts])
+  }, [groupInfoRetryVersion, includedAccounts, relevantGroupInfoAccountKey])
   const availableFavoriteTags = useMemo(
     () =>
       Array.from(
@@ -637,15 +824,15 @@ function ModelHub() {
   const persistFavorites = useCallback(
     async (next: FavoriteModel[]) => {
       const saved = await saveModelHubPreferences({
-        viewMode,
+        viewMode: viewMode === "testing" ? "favorites" : viewMode,
         sortMode: "name",
         favoriteModels: next,
         excludedSourceUrls: [...excludedSourceUrls],
-        selectedTokenIds,
+        selectedTokenIds: {},
       })
       setFavorites(saved.favoriteModels)
     },
-    [excludedSourceUrls, selectedTokenIds, viewMode],
+    [excludedSourceUrls, viewMode],
   )
 
   const changeView = (next: ModelHubViewMode) => {
@@ -655,37 +842,472 @@ function ModelHub() {
       sortMode: "name",
       favoriteModels: favorites,
       excludedSourceUrls: [...excludedSourceUrls],
-      selectedTokenIds,
+      selectedTokenIds: {},
     })
+  }
+
+  const testGroupIdForRow = testGroupIdentityForRow
+
+  const accountById = new Map(accounts.map((account) => [account.id, account]))
+
+  const mergeRowsIntoTestGroups = (
+    currentStore: ModelHubTestGroupStore,
+    rowsToAdd: AllModelRow[],
+  ) => {
+    const nextStore = { ...currentStore }
+    let nextOrder =
+      Object.values(currentStore).reduce(
+        (maximum, group) => Math.max(maximum, group.order),
+        -1,
+      ) + 1
+    const updatedAt = Date.now()
+    for (const row of rowsToAdd) {
+      const id = testGroupIdForRow(row)
+      const current = nextStore[id]
+      const sourceIdentity = testSourceIdentityForRow(row)
+      const model = {
+        modelName: row.modelName,
+        normalizedName: row.normalizedName,
+        type: row.type,
+        enabled: true,
+      }
+      const models = current?.models.some(
+        (item) => item.normalizedName === model.normalizedName,
+      )
+        ? current.models
+        : [...(current?.models ?? []), model]
+      nextStore[id] = {
+        id,
+        sourceType: row.sourceType,
+        sourceId:
+          row.sourceType === "account" ? row.sourceId : row.manualSourceId,
+        ...(row.sourceType === "account"
+          ? {
+              accountId: row.accountId,
+              ...(sourceIdentity ? { sourceIdentity } : {}),
+            }
+          : {}),
+        ...(row.sourceType === "manual" ? { profileId: row.profileId } : {}),
+        providerName: row.providerName,
+        baseUrl:
+          row.sourceType === "manual"
+            ? row.baseUrl
+            : accountById.get(row.accountId)?.baseUrl ?? "",
+        groupName: row.groupName,
+        groupRatio: row.groupRatio,
+        priceUsd: row.sourceType === "manual" ? row.priceUsd ?? null : null,
+        balanceUsd: row.balanceUsd,
+        models,
+        selectedModel: current?.selectedModel ?? model.normalizedName,
+        order: current?.order ?? nextOrder++,
+        ...(current?.lastConnectivity
+          ? { lastConnectivity: current.lastConnectivity }
+          : {}),
+        updatedAt,
+      }
+    }
+    return nextStore
+  }
+
+  const addRowsToTest = async (rowsToAdd: AllModelRow[], notify = true) => {
+    const uniqueRows = new Map<string, AllModelRow>()
+    for (const row of expandRowsByTokens(rowsToAdd)) {
+      const groupId = testGroupIdForRow(row)
+      uniqueRows.set(`${groupId}:${row.normalizedName}`, row)
+    }
+    if (uniqueRows.size === 0) {
+      if (notify) toast.error("没有已加载且可用于该模型的 API 密钥")
+      return
+    }
+    const groupCount = new Set(
+      [...uniqueRows.values()].map((row) => testGroupIdForRow(row)),
+    ).size
+    const saved = await updateModelHubTestGroups((currentStore) =>
+      mergeRowsIntoTestGroups(currentStore, [...uniqueRows.values()]),
+    )
+    setTestGroups(saved)
+    if (notify) {
+      toast.success(
+        `已加入 ${groupCount} 个测试分组，${uniqueRows.size} 个模型`,
+      )
+    }
+  }
+
+  const addToTestGroup = (row: AllModelRow, notify = true) =>
+    addRowsToTest([row], notify)
+
+  const resolveTestGroupApiKey = useCallback(
+    async (group: ModelHubTestGroup) => {
+      if (group.sourceType === "manual") {
+        const profile = group.profileId
+          ? await apiCredentialProfilesStorage.getProfileById(group.profileId)
+          : null
+        if (!profile?.apiKey) throw new Error("手动来源凭据缺失")
+        return profile.apiKey
+      }
+      const accountId =
+        group.accountId ??
+        (group.sourceIdentity && "accountId" in group.sourceIdentity
+          ? group.sourceIdentity.accountId
+          : undefined) ??
+        group.sourceId
+      const account = accounts.find((item) => item.id === accountId)
+      if (!account) throw new Error("账号已不存在或已被排除")
+      const sourceIdentity = group.sourceIdentity
+      if (sourceIdentity?.kind === "account-runtime-key") {
+        const runtimeKeys = await fetchDisplayAccountRuntimeKeys(account)
+        const runtimeKey = runtimeKeys.find(
+          (item) => item.id === sourceIdentity.runtimeKeyId,
+        )
+        if (!runtimeKey) throw new Error("运行时密钥不存在或不可用")
+        return (
+          await resolveDisplayAccountRuntimeKeySecret(account, runtimeKey)
+        ).secret
+      }
+      const inventory = tokenInventories[account.id]
+      if (inventory?.status !== "loaded")
+        throw new Error("账号密钥尚未加载完成")
+      if (sourceIdentity?.kind === "account-token") {
+        const token = (tokensByAccount.get(account.id) ?? []).find(
+          (item) => item.id === sourceIdentity.tokenId,
+        )
+        if (!token || !isTokenUsable(token))
+          throw new Error("指定 API 密钥不可用")
+        return (await resolveDisplayAccountTokenForSecret(account, token)).key
+      }
+      const offering =
+        accountOfferings.find(
+          (item) =>
+            item.accountId === account.id &&
+            item.sourceId === group.sourceId &&
+            normalizeModelHubModelName(item.groupName) ===
+              normalizeModelHubModelName(group.groupName),
+        ) ??
+        accountOfferings.find(
+          (item) =>
+            item.accountId === account.id &&
+            normalizeModelHubModelName(item.groupName) ===
+              normalizeModelHubModelName(group.groupName),
+        )
+      if (!offering) throw new Error("当前账号分组暂无模型目录")
+      const tokens = findCompatibleOfferingTokens(
+        tokensByAccount.get(account.id) ?? [],
+        offering,
+      )
+      const selected = selectUsableToken(tokens)
+      if (!selected || !isTokenUsable(selected)) {
+        throw new Error("当前分组没有可用 API 密钥")
+      }
+      return (await resolveDisplayAccountTokenForSecret(account, selected)).key
+    },
+    [accountOfferings, accounts, tokenInventories, tokensByAccount],
+  )
+
+  const checkTestGroup = useCallback(
+    async (group: ModelHubTestGroup, persist = true) => {
+      setConnectivityIds((current) => new Set(current).add(group.id))
+      let checkedGroup: ModelHubTestGroup
+      try {
+        const apiKey = await resolveTestGroupApiKey(group)
+        const result = await runModelHubConnectivityCheck({
+          baseUrl: group.baseUrl,
+          apiKey,
+          expectedModel:
+            group.models.find(
+              (model) => model.normalizedName === group.selectedModel,
+            )?.modelName ?? group.selectedModel,
+        })
+        checkedGroup = {
+          ...group,
+          lastConnectivity: { ...result, checkedAt: Date.now() },
+          updatedAt: Date.now(),
+        }
+      } catch (error) {
+        checkedGroup = {
+          ...group,
+          lastConnectivity: {
+            status: "failed",
+            checkedAt: Date.now(),
+            errorSummary: sanitizeBenchmarkError(error),
+          },
+          updatedAt: Date.now(),
+        }
+      } finally {
+        setConnectivityIds((current) => {
+          const next = new Set(current)
+          next.delete(group.id)
+          return next
+        })
+      }
+      if (persist) {
+        const saved = await updateModelHubTestGroups((current) => ({
+          ...current,
+          [group.id]: {
+            ...(current[group.id] ?? group),
+            ...checkedGroup,
+          },
+        }))
+        setTestGroups(saved)
+      } else {
+        setTestGroups((current) => ({
+          ...current,
+          [group.id]: checkedGroup,
+        }))
+      }
+      return checkedGroup
+    },
+    [resolveTestGroupApiKey],
+  )
+
+  const refreshAllConnectivity = useCallback(async () => {
+    const groups = Object.values(await getModelHubTestGroups())
+    setIsRefreshingConnectivity(true)
+    const results: ModelHubTestGroup[] = []
+    let cursor = 0
+    const worker = async () => {
+      while (cursor < groups.length) {
+        const group = groups[cursor]
+        cursor += 1
+        results.push(await checkTestGroup(group, false))
+      }
+    }
+    try {
+      await Promise.all([
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+        worker(),
+      ])
+      const saved = await updateModelHubTestGroups((current) => {
+        const next = { ...current }
+        for (const result of results) {
+          next[result.id] = {
+            ...(current[result.id] ?? result),
+            lastConnectivity: result.lastConnectivity,
+            updatedAt: result.updatedAt,
+          }
+        }
+        return next
+      })
+      setTestGroups(saved)
+    } finally {
+      setIsRefreshingConnectivity(false)
+    }
+  }, [checkTestGroup])
+
+  const removeTestGroup = async (group: ModelHubTestGroup) => {
+    const next = await updateModelHubTestGroups((current) => {
+      const store = { ...current }
+      delete store[group.id]
+      return store
+    })
+    setTestGroups(next)
+    setBenchmarks(await removeModelHubTestBenchmarkResults([group.id]))
+  }
+
+  const selectTestModel = async (
+    group: ModelHubTestGroup,
+    modelName: string,
+  ) => {
+    const normalized = normalizeModelHubModelName(modelName)
+    const catalogModel = allRows.find(
+      (row) => row.normalizedName === normalized,
+    )
+    const next = await updateModelHubTestGroups((current) => {
+      const existing = current[group.id] ?? group
+      const models = existing.models.some(
+        (item) => item.normalizedName === normalized,
+      )
+        ? existing.models
+        : [
+            ...existing.models,
+            {
+              modelName: catalogModel?.modelName ?? modelName,
+              normalizedName: normalized,
+              type: catalogModel?.type ?? inferModelHubModelType(modelName),
+              enabled: true,
+            },
+          ]
+      const { lastConnectivity: _lastConnectivity, ...withoutConnectivity } =
+        existing
+      return {
+        ...current,
+        [group.id]: {
+          ...withoutConnectivity,
+          models,
+          selectedModel: normalized,
+          updatedAt: Date.now(),
+        },
+      }
+    })
+    setTestGroups(next)
+  }
+
+  const discoverTestModels = async (group: ModelHubTestGroup) => {
+    const apiKey = await resolveTestGroupApiKey(group)
+    const modelIds = await fetchApiCredentialModelIds({
+      apiType: API_TYPES.OPENAI_COMPATIBLE,
+      baseUrl: group.baseUrl,
+      apiKey,
+    })
+    const next = await updateModelHubTestGroups((current) => {
+      const existing = current[group.id] ?? group
+      const models = new Map(
+        existing.models.map((model) => [model.normalizedName, model]),
+      )
+      for (const modelName of modelIds) {
+        const normalizedName = normalizeModelHubModelName(modelName)
+        if (!models.has(normalizedName)) {
+          models.set(normalizedName, {
+            modelName,
+            normalizedName,
+            type: inferModelHubModelType(modelName),
+            enabled: true,
+          })
+        }
+      }
+      return {
+        ...current,
+        [group.id]: {
+          ...existing,
+          models: [...models.values()],
+          updatedAt: Date.now(),
+        },
+      }
+    })
+    setTestGroups(next)
+    toast.success(`已获取 ${modelIds.length} 个模型`)
+  }
+
+  const executeTestBenchmark = async (
+    group: ModelHubTestGroup,
+    modelName: string,
+    persist: boolean,
+  ): Promise<[string, ModelHubBenchmarkResult]> => {
+    const exactModelName =
+      group.models.find(
+        (model) =>
+          model.normalizedName === normalizeModelHubModelName(modelName),
+      )?.modelName ?? modelName
+    const resultId = createModelHubTestResultKey(group.id, modelName)
+    setTestingIds((current) => new Set(current).add(resultId))
+    let result: ModelHubBenchmarkResult
+    try {
+      const apiKey = await resolveTestGroupApiKey(group)
+      const metrics = await runModelHubBenchmark({
+        baseUrl: group.baseUrl,
+        apiKey,
+        model: exactModelName,
+      })
+      result = { status: "success", testedAt: Date.now(), ...metrics }
+    } catch (error) {
+      result = {
+        status: "failed",
+        testedAt: Date.now(),
+        errorSummary: sanitizeBenchmarkError(error),
+      }
+    } finally {
+      setTestingIds((current) => {
+        const next = new Set(current)
+        next.delete(resultId)
+        return next
+      })
+    }
+    if (persist) await saveModelHubBenchmarkResult(resultId, result)
+    setBenchmarks((current) => ({ ...current, [resultId]: result }))
+    return [resultId, result]
+  }
+
+  const benchmarkTestModel = async (
+    group: ModelHubTestGroup,
+    modelName: string,
+  ) => {
+    const exactModelName =
+      group.models.find(
+        (model) =>
+          model.normalizedName === normalizeModelHubModelName(modelName),
+      )?.modelName ?? modelName
+    if (
+      !window.confirm(
+        `将对 ${group.providerName} / ${exactModelName} 发起一次真实请求，可能产生费用。继续吗？`,
+      )
+    )
+      return
+    const [, result] = await executeTestBenchmark(group, modelName, true)
+    if (result.status === "success") toast.success("测速完成")
+    else toast.error(result.errorSummary ?? "测速失败")
+  }
+
+  const benchmarkTestGroups = async (groups: ModelHubTestGroup[]) => {
+    const targets = groups.filter((group) => group.selectedModel)
+    if (!targets.length || testBatchProgress) return
+    if (
+      !window.confirm(
+        `将对选中的 ${targets.length} 个分组各发起一次真实请求，可能产生费用。继续吗？`,
+      )
+    )
+      return
+    cancelTestBatchRef.current = false
+    setTestBatchProgress({ completed: 0, total: targets.length })
+    const completedResults: ModelHubBenchmarkResultStore = {}
+    let cursor = 0
+    const worker = async () => {
+      while (!cancelTestBatchRef.current && cursor < targets.length) {
+        const group = targets[cursor++]
+        const [resultId, result] = await executeTestBenchmark(
+          group,
+          group.selectedModel,
+          false,
+        )
+        completedResults[resultId] = result
+        setTestBatchProgress((current) =>
+          current ? { ...current, completed: current.completed + 1 } : current,
+        )
+      }
+    }
+    try {
+      await Promise.all([worker(), worker()])
+      if (Object.keys(completedResults).length) {
+        await saveModelHubBenchmarkResults(completedResults)
+      }
+      const completed = Object.keys(completedResults).length
+      toast.success(
+        cancelTestBatchRef.current
+          ? `批量测速已停止，已完成 ${completed} 项`
+          : `批量测速完成，共 ${completed} 项`,
+      )
+    } finally {
+      setTestBatchProgress(null)
+    }
   }
 
   const saveExcludedSources = async (next: Set<string>) => {
     const saved = await saveModelHubPreferences({
-      viewMode,
+      viewMode: viewMode === "testing" ? "favorites" : viewMode,
       sortMode: "multiplier-asc",
       favoriteModels: favorites,
       excludedSourceUrls: [...next],
-      selectedTokenIds,
+      selectedTokenIds: {},
     })
     setExcludedSourceUrls(new Set(saved.excludedSourceUrls))
     requestedGroupInfoAccountIds.current.clear()
     setGroupInfoByAccount({})
+    setGroupInfoLoadingAccountIds(new Set())
+    setGroupInfoFailedAccountIds(new Set())
+    setGroupInfoRetryVersion((version) => version + 1)
     setIsSourceManagerOpen(false)
   }
 
-  const selectTokenForOffering = async (
-    offeringId: string,
-    tokenId: number,
-  ) => {
-    const next = { ...selectedTokenIds, [offeringId]: tokenId }
-    setSelectedTokenIds(next)
-    await saveModelHubPreferences({
-      viewMode,
-      sortMode: "multiplier-asc",
-      favoriteModels: favorites,
-      excludedSourceUrls: [...excludedSourceUrls],
-      selectedTokenIds: next,
+  const retryGroupInfoForAccount = (accountId: string) => {
+    requestedGroupInfoAccountIds.current.delete(accountId)
+    setGroupInfoFailedAccountIds((current) => {
+      const next = new Set(current)
+      next.delete(accountId)
+      return next
     })
+    setGroupInfoRetryVersion((version) => version + 1)
   }
 
   const toggleFavorite = (
@@ -700,6 +1322,36 @@ function ModelHub() {
       return
     }
     setFavoriteDraft({ modelName: row.modelName, type: row.type })
+  }
+
+  const removeFavorite = (favorite: FavoriteModel) => {
+    const index = favorites.findIndex(
+      (item) => item.normalizedName === favorite.normalizedName,
+    )
+    if (index < 0) return
+    const next = favorites.filter(
+      (item) => item.normalizedName !== favorite.normalizedName,
+    )
+    if (favorite.normalizedName === selectedFavoriteName) {
+      const fallback = next[index] ?? next[index - 1]
+      setSelectedFavoriteName(fallback?.normalizedName ?? "")
+    }
+    void persistFavorites(next)
+  }
+
+  const reorderFavorite = (fromName: string, toName: string) => {
+    if (fromName === toName) return
+    const fromIndex = favorites.findIndex(
+      (item) => item.normalizedName === fromName,
+    )
+    const toIndex = favorites.findIndex(
+      (item) => item.normalizedName === toName,
+    )
+    if (fromIndex < 0 || toIndex < 0) return
+    const next = [...favorites]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    void persistFavorites(next)
   }
 
   const saveFavoriteDraft = () => {
@@ -1226,10 +1878,71 @@ function ModelHub() {
   }
 
   const handleManualSaved = (saved: ModelHubManualSource) => {
+    const isNewTestGroup = editingManualSource === "new"
     setManualSources((current) => [
       ...current.filter((item) => item.id !== saved.id),
       saved,
     ])
+    void updateModelHubTestGroups((current) => {
+      const next = { ...current }
+      if (isNewTestGroup) {
+        const id = `manual:${saved.id}:${normalizeModelHubModelName(saved.groupName)}`
+        const models = saved.models.map((model) => ({
+          modelName: model.modelName,
+          normalizedName: model.normalizedName,
+          type: model.type,
+          enabled: true,
+        }))
+        const order =
+          Object.values(current).reduce(
+            (maximum, group) => Math.max(maximum, group.order),
+            -1,
+          ) + 1
+        next[id] = {
+          id,
+          sourceType: "manual",
+          sourceId: saved.id,
+          profileId: saved.profileId,
+          providerName: saved.name,
+          baseUrl: saved.normalizedBaseUrl,
+          groupName: saved.groupName,
+          groupRatio: saved.groupRatio ?? null,
+          priceUsd: saved.models[0]?.priceUsd ?? null,
+          balanceUsd: saved.balanceUsd ?? null,
+          models,
+          selectedModel: models[0]?.normalizedName ?? "",
+          order,
+          updatedAt: Date.now(),
+        }
+      }
+      for (const [id, group] of Object.entries(next)) {
+        if (group.sourceType !== "manual" || group.sourceId !== saved.id)
+          continue
+        const selected = group.selectedModel
+        const models = saved.models.map((model) => ({
+          modelName: model.modelName,
+          normalizedName: model.normalizedName,
+          type: model.type,
+          enabled: true,
+        }))
+        next[id] = {
+          ...group,
+          providerName: saved.name,
+          baseUrl: saved.normalizedBaseUrl,
+          groupName: saved.groupName,
+          groupRatio: saved.groupRatio ?? null,
+          balanceUsd: saved.balanceUsd ?? null,
+          models,
+          selectedModel: models.some(
+            (model) => model.normalizedName === selected,
+          )
+            ? selected
+            : models[0]?.normalizedName ?? selected,
+          updatedAt: Date.now(),
+        }
+      }
+      return next
+    }).then(setTestGroups)
     setEditingManualSource(null)
   }
 
@@ -1239,6 +1952,24 @@ function ModelHub() {
     setManualSources((current) =>
       current.filter((source) => source.id !== deletingSource.id),
     )
+    const removedGroupIds: string[] = []
+    const remaining = await updateModelHubTestGroups((current) => {
+      const next = { ...current }
+      for (const [id, group] of Object.entries(next)) {
+        if (
+          group.sourceType === "manual" &&
+          group.sourceId === deletingSource.id
+        ) {
+          removedGroupIds.push(id)
+          delete next[id]
+        }
+      }
+      return next
+    })
+    setTestGroups(remaining)
+    if (removedGroupIds.length) {
+      setBenchmarks(await removeModelHubTestBenchmarkResults(removedGroupIds))
+    }
     setDeletingSource(null)
     toast.success("手动来源已删除，API Credential Profile 已保留")
   }
@@ -1279,6 +2010,16 @@ function ModelHub() {
             >
               全部模型
             </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "testing" ? "default" : "ghost"}
+              onClick={() => setViewMode("testing")}
+            >
+              模型测试{" "}
+              <span className="ml-1 opacity-70">
+                {Object.keys(testGroups).length}
+              </span>
+            </Button>
           </div>
         </div>
       </div>
@@ -1289,7 +2030,54 @@ function ModelHub() {
         </div>
       )}
 
-      {viewMode === "favorites" ? (
+      {viewMode === "testing" ? (
+        <TestWorkspace
+          groups={testGroups}
+          rows={allRows}
+          favorites={favorites}
+          prices={(row) =>
+            row.sourceType === "account"
+              ? accountOfferingById.has(row.id)
+                ? priceForAccount(accountOfferingById.get(row.id)!)
+                : {
+                    primaryText: "",
+                    unitText: "",
+                    usdAmount: null,
+                    status: "unavailable",
+                    billingUnit: "unknown",
+                    billingMode: "token",
+                    isEstimated: false,
+                  }
+              : priceForManual(row)
+          }
+          benchmarks={benchmarks}
+          testingIds={testingIds}
+          connectivityIds={connectivityIds}
+          onCheck={checkTestGroup}
+          onBenchmark={benchmarkTestModel}
+          onBenchmarkMany={benchmarkTestGroups}
+          batchProgress={testBatchProgress}
+          onCancelBatch={() => {
+            cancelTestBatchRef.current = true
+          }}
+          onRemove={removeTestGroup}
+          onSelectModel={selectTestModel}
+          onDiscoverModels={(group) =>
+            void discoverTestModels(group).catch((error) =>
+              toast.error(sanitizeBenchmarkError(error)),
+            )
+          }
+          onRefreshAll={() => void refreshAllConnectivity()}
+          isRefreshingAll={isRefreshingConnectivity}
+          onAddManual={() => setEditingManualSource("new")}
+          onEditManual={(group) => {
+            const source = manualSources.find(
+              (item) => item.id === group.sourceId,
+            )
+            if (source) setEditingManualSource(source)
+          }}
+        />
+      ) : viewMode === "favorites" ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-gray-500">模型类型</span>
@@ -1319,20 +2107,47 @@ function ModelHub() {
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900/40">
               <span className="text-xs text-gray-500">收藏模型</span>
               {visibleFavorites.map((favorite) => (
-                <Button
+                <div
                   key={favorite.normalizedName}
-                  size="sm"
-                  variant={
-                    activeFavorite?.normalizedName === favorite.normalizedName
-                      ? "default"
-                      : "ghost"
-                  }
-                  onClick={() =>
-                    setSelectedFavoriteName(favorite.normalizedName)
-                  }
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move"
+                    event.dataTransfer.setData(
+                      "text/plain",
+                      favorite.normalizedName,
+                    )
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    const fromName = event.dataTransfer.getData("text/plain")
+                    reorderFavorite(fromName, favorite.normalizedName)
+                  }}
+                  className="flex items-center gap-0.5"
                 >
-                  {favorite.modelName}
-                </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      activeFavorite?.normalizedName === favorite.normalizedName
+                        ? "default"
+                        : "ghost"
+                    }
+                    onClick={() =>
+                      setSelectedFavoriteName(favorite.normalizedName)
+                    }
+                  >
+                    {favorite.modelName}
+                  </Button>
+                  <Button
+                    size="icon-xs"
+                    variant="ghost"
+                    title={`取消收藏 ${favorite.modelName}`}
+                    aria-label={`取消收藏 ${favorite.modelName}`}
+                    onClick={() => removeFavorite(favorite)}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
               ))}
             </div>
           )}
@@ -1421,6 +2236,17 @@ function ModelHub() {
                     ["balance", "余额最多"],
                   ]}
                 />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setSelectedOfferingIds(
+                      new Set(sortedActiveFavoriteRows.map((row) => row.id)),
+                    )
+                  }
+                >
+                  全选当前
+                </Button>
               </div>
               {availableFavoriteTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -1499,6 +2325,19 @@ function ModelHub() {
                   >
                     批量测试
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      void addRowsToTest(
+                        actionableFavoriteRows.filter((row) =>
+                          selectedOfferingIds.has(row.id),
+                        ),
+                      )
+                    }}
+                  >
+                    批量加入测试
+                  </Button>
                   <Button size="sm" onClick={() => setBatchTagMode("add")}>
                     添加标签
                   </Button>
@@ -1536,9 +2375,11 @@ function ModelHub() {
                   onTest={benchmarkOffering}
                   onExport={exportOffering}
                   onEdit={editOffering}
-                  onTokenChange={(row, tokenId) =>
-                    void selectTokenForOffering(row.id, tokenId)
-                  }
+                  testGroupIds={testGroupIds}
+                  onAddToTest={addToTestGroup}
+                  groupInfoLoadingAccountIds={groupInfoLoadingAccountIds}
+                  groupInfoFailedAccountIds={groupInfoFailedAccountIds}
+                  onRetryGroupInfo={retryGroupInfoForAccount}
                 />
               )}
             </div>
@@ -1593,6 +2434,17 @@ function ModelHub() {
                     ["updated", "最近更新"],
                   ]}
                 />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setSelectedCatalogIds(
+                      new Set(pagedCatalogRows.map((row) => row.id)),
+                    )
+                  }
+                >
+                  全选本页
+                </Button>
               </>
             ) : (
               <Button
@@ -1651,6 +2503,31 @@ function ModelHub() {
               <Empty>没有符合条件的模型。</Empty>
             ) : (
               <div className="space-y-3">
+                {selectedCatalogIds.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm dark:border-blue-900 dark:bg-blue-950/30">
+                    <span>已选择 {selectedCatalogIds.size} 个模型</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        void addRowsToTest(
+                          catalogRows
+                            .filter((row) => selectedCatalogIds.has(row.id))
+                            .flatMap((row) => row.offerings),
+                        )
+                      }}
+                    >
+                      批量加入测试
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedCatalogIds(new Set())}
+                    >
+                      取消选择
+                    </Button>
+                  </div>
+                )}
                 <CatalogTable
                   rows={pagedCatalogRows}
                   accountRows={accountOfferings}
@@ -1671,6 +2548,10 @@ function ModelHub() {
                     })
                   }
                   onToggleFavorite={toggleFavorite}
+                  selectedIds={selectedCatalogIds}
+                  onSelectionChange={setSelectedCatalogIds}
+                  onAddRows={(rows) => void addRowsToTest(rows)}
+                  isAddedToTest={isRowAddedToTest}
                 />
                 <div className="flex items-center justify-between text-sm text-gray-500">
                   <span>
@@ -1726,6 +2607,8 @@ function ModelHub() {
               onExport={exportManual}
               onEdit={setEditingManualSource}
               onDelete={setDeletingSource}
+              onAddToTest={addToTestGroup}
+              testGroupIds={testGroupIds}
             />
           )}
         </>
@@ -1801,6 +2684,433 @@ function ModelHub() {
           token={ccSwitch.token}
           initialModel={ccSwitch.modelName}
         />
+      )}
+    </div>
+  )
+}
+
+function TestWorkspace({
+  groups,
+  rows,
+  favorites,
+  prices,
+  benchmarks,
+  testingIds,
+  connectivityIds,
+  onCheck,
+  onBenchmark,
+  onBenchmarkMany,
+  batchProgress,
+  onCancelBatch,
+  onRemove,
+  onSelectModel,
+  onDiscoverModels,
+  onRefreshAll,
+  isRefreshingAll,
+  onAddManual,
+  onEditManual,
+}: {
+  groups: ModelHubTestGroupStore
+  rows: AllModelRow[]
+  favorites: FavoriteModel[]
+  prices: (row: AllModelRow) => ModelHubPriceView
+  benchmarks: ModelHubBenchmarkResultStore
+  testingIds: Set<string>
+  connectivityIds: Set<string>
+  onCheck: (group: ModelHubTestGroup) => void | Promise<unknown>
+  onBenchmark: (
+    group: ModelHubTestGroup,
+    modelName: string,
+  ) => void | Promise<void>
+  onBenchmarkMany: (groups: ModelHubTestGroup[]) => void | Promise<void>
+  batchProgress: { completed: number; total: number } | null
+  onCancelBatch: () => void
+  onRemove: (group: ModelHubTestGroup) => void | Promise<void>
+  onSelectModel: (
+    group: ModelHubTestGroup,
+    modelName: string,
+  ) => void | Promise<void>
+  onDiscoverModels: (group: ModelHubTestGroup) => void
+  onRefreshAll: () => void
+  isRefreshingAll: boolean
+  onAddManual: () => void
+  onEditManual: (group: ModelHubTestGroup) => void
+}) {
+  const [search, setSearch] = useState("")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [visibleCount, setVisibleCount] = useState(50)
+  const rowsByGroup = useMemo(() => {
+    const index = new Map<string, AllModelRow[]>()
+    for (const row of rows) {
+      const id = testGroupIdentityForRow(row)
+      const current = index.get(id) ?? []
+      current.push(row)
+      index.set(id, current)
+    }
+    return index
+  }, [rows])
+  const groupList = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return Object.values(groups)
+      .filter(
+        (group) =>
+          !query ||
+          group.providerName.toLowerCase().includes(query) ||
+          group.groupName.toLowerCase().includes(query) ||
+          group.selectedModel.toLowerCase().includes(query),
+      )
+      .sort((a, b) => a.order - b.order)
+  }, [groups, search])
+  const allSelected =
+    groupList.length > 0 &&
+    groupList.every((group) => selectedIds.has(group.id))
+  const selectedGroups = groupList.filter((group) => selectedIds.has(group.id))
+
+  useEffect(() => {
+    const validIds = new Set(Object.keys(groups))
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => validIds.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [groups])
+
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [search])
+
+  const connectivityDisplay = (group: ModelHubTestGroup) => {
+    const result = group.lastConnectivity
+    if (connectivityIds.has(group.id)) {
+      return { color: "bg-blue-500 animate-pulse", label: "正在检查连通性" }
+    }
+    if (!result) {
+      return { color: "bg-gray-400", label: "尚未检查，点击测试连通性" }
+    }
+    if (result.status === "reachable") {
+      return {
+        color: "bg-emerald-500",
+        label: `可连通 · ${formatDate(result.checkedAt)}`,
+      }
+    }
+    if (result.status === "model-missing") {
+      return {
+        color: "bg-amber-500",
+        label: `${result.errorSummary ?? "模型未发现"} · ${formatDate(result.checkedAt)}`,
+      }
+    }
+    return {
+      color: "bg-red-500",
+      label: `${result.errorSummary ?? "不可连通"} · ${formatDate(result.checkedAt)}`,
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="搜索中转站、分组或模型"
+          className="max-w-sm"
+        />
+        <span className="text-sm text-gray-500">
+          {visibleCount < groupList.length
+            ? `显示 ${visibleCount} / ${groupList.length} 个测试分组`
+            : `${groupList.length} 个测试分组`}
+        </span>
+        {selectedGroups.length > 0 && (
+          <span className="text-sm font-medium text-blue-600">
+            已选择 {selectedGroups.length} 项
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="default"
+          disabled={selectedGroups.length === 0 || batchProgress !== null}
+          onClick={() => void onBenchmarkMany(selectedGroups)}
+        >
+          {batchProgress
+            ? `测速中 ${batchProgress.completed}/${batchProgress.total}`
+            : `测试所选${selectedGroups.length ? ` ${selectedGroups.length}` : ""}`}
+        </Button>
+        {batchProgress && (
+          <Button size="sm" variant="outline" onClick={onCancelBatch}>
+            停止
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="secondary"
+          leftIcon={<RefreshCw />}
+          loading={isRefreshingAll}
+          disabled={isRefreshingAll || groupList.length === 0}
+          onClick={onRefreshAll}
+        >
+          全部测试连通性
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          leftIcon={<Plus />}
+          onClick={onAddManual}
+        >
+          手动添加分组
+        </Button>
+      </div>
+      {groupList.length === 0 ? (
+        <Empty>还没有测试分组，请从常用模型或全部模型中加入。</Empty>
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+          <table className="w-full min-w-[1120px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-11" />
+              <col className="w-48" />
+              <col className="w-56" />
+              <col className="w-24" />
+              <col className="w-16" />
+              <col className="w-20" />
+              <col className="w-20" />
+              <col className="w-20" />
+              <col className="w-32" />
+              <col className="w-48" />
+            </colgroup>
+            <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900">
+              <tr>
+                <th className="px-3 py-3 text-center">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={(checked) =>
+                      setSelectedIds(
+                        checked === true
+                          ? new Set(groupList.map((group) => group.id))
+                          : new Set(),
+                      )
+                    }
+                  />
+                </th>
+                {[
+                  "中转站/分组",
+                  "测试模型",
+                  "价格",
+                  "倍率",
+                  "余额",
+                  "首字",
+                  "速度",
+                  "最近测试",
+                ].map((header) => (
+                  <th
+                    key={header}
+                    className="px-2 py-3 text-center font-medium"
+                  >
+                    {header}
+                  </th>
+                ))}
+                <th className="sticky right-0 bg-gray-50 px-2 py-3 text-center font-medium dark:bg-gray-900">
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupList.slice(0, visibleCount).map((group) => {
+                const groupRows = rowsByGroup.get(group.id) ?? []
+                const selectedRow = groupRows.find(
+                  (row) => row.normalizedName === group.selectedModel,
+                )
+                const price = selectedRow ? prices(selectedRow) : null
+                const resultKey = createModelHubTestResultKey(
+                  group.id,
+                  group.selectedModel,
+                )
+                const benchmark =
+                  benchmarks[resultKey] ??
+                  (selectedRow ? benchmarks[selectedRow.id] : undefined)
+                const testingKey = resultKey
+                const modelOptions = new Map(
+                  group.models.map((model) => [
+                    model.normalizedName,
+                    { value: model.normalizedName, label: model.modelName },
+                  ]),
+                )
+                for (const favorite of favorites) {
+                  if (!modelOptions.has(favorite.normalizedName)) {
+                    modelOptions.set(favorite.normalizedName, {
+                      value: favorite.normalizedName,
+                      label: favorite.modelName,
+                    })
+                  }
+                }
+                const connectivity = connectivityDisplay(group)
+                return (
+                  <tr
+                    key={group.id}
+                    className="border-t border-gray-100 dark:border-gray-800"
+                  >
+                    <td className="px-3 py-3 text-center align-middle">
+                      <Checkbox
+                        checked={selectedIds.has(group.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedIds)
+                          if (checked === true) next.add(group.id)
+                          else next.delete(group.id)
+                          setSelectedIds(next)
+                        }}
+                      />
+                    </td>
+                    <td className="px-2 py-3 align-middle">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                          title={connectivity.label}
+                          aria-label={connectivity.label}
+                          disabled={connectivityIds.has(group.id)}
+                          onClick={() => void onCheck(group)}
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${connectivity.color}`}
+                          />
+                        </button>
+                        <span
+                          className="min-w-0 truncate font-medium text-gray-900 dark:text-white"
+                          title={group.providerName}
+                        >
+                          {group.providerName}
+                        </span>
+                      </div>
+                      <div
+                        className="mt-1 truncate pl-7 text-xs text-gray-500"
+                        title={group.groupName}
+                      >
+                        {group.groupName}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 align-middle">
+                      <div className="flex items-center gap-1">
+                        <SearchableSelect
+                          className="h-8 min-w-0 flex-1 px-2 text-xs"
+                          value={group.selectedModel}
+                          options={[...modelOptions.values()]}
+                          allowCustomValue
+                          placeholder="选择或输入模型"
+                          searchPlaceholder="搜索或输入模型 ID"
+                          onChange={(value) => void onSelectModel(group, value)}
+                        />
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          title="从接口刷新模型"
+                          aria-label="从接口刷新模型"
+                          onClick={() => onDiscoverModels(group)}
+                        >
+                          <RefreshCw />
+                        </Button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      <Price
+                        value={
+                          price ?? {
+                            primaryText: "",
+                            unitText: "",
+                            usdAmount: null,
+                            status: "unavailable",
+                            billingUnit: "unknown",
+                            billingMode: "token",
+                            isEstimated: false,
+                          }
+                        }
+                      />
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      {group.groupRatio === null
+                        ? "--"
+                        : `${group.groupRatio}x`}
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      {formatBalance(
+                        selectedRow?.balanceUsd ?? group.balanceUsd,
+                        selectedRow
+                          ? selectedRow.sourceType === "manual" ||
+                              selectedRow.balanceKnown === true
+                          : group.balanceUsd !== null,
+                      )}
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      {benchmark?.firstTokenMs !== undefined
+                        ? `${(benchmark.firstTokenMs / 1000).toFixed(1)} s`
+                        : "--"}
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      {benchmark?.overallTokensPerSecond !== undefined
+                        ? `${Math.round(benchmark.overallTokensPerSecond)} t/s`
+                        : "--"}
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      {benchmark ? (
+                        <span
+                          className={`whitespace-nowrap ${benchmark.status === "success" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+                          title={benchmark.errorSummary}
+                        >
+                          {benchmark.status === "success" ? "成功" : "失败"} ·{" "}
+                          {formatDate(benchmark.testedAt)}
+                        </span>
+                      ) : (
+                        "--"
+                      )}
+                    </td>
+                    <td className="sticky right-0 bg-white px-2 py-3 text-center align-middle dark:bg-gray-950">
+                      <div className="flex justify-center gap-1 whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="shrink-0 whitespace-nowrap"
+                          loading={testingIds.has(testingKey)}
+                          disabled={
+                            testingIds.has(testingKey) || !group.selectedModel
+                          }
+                          onClick={() =>
+                            onBenchmark(group, group.selectedModel)
+                          }
+                        >
+                          测速
+                        </Button>
+                        {group.sourceType === "manual" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="shrink-0 whitespace-nowrap"
+                            onClick={() => onEditManual(group)}
+                          >
+                            编辑
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive shrink-0 whitespace-nowrap"
+                          onClick={() => onRemove(group)}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {visibleCount < groupList.length && (
+            <div className="flex justify-center border-t border-gray-200 py-2 dark:border-gray-700">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setVisibleCount((n) => n + 50)}
+              >
+                显示更多（还有 {groupList.length - visibleCount} 个）
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1939,7 +3249,11 @@ function FavoriteTable({
   onTest,
   onExport,
   onEdit,
-  onTokenChange,
+  testGroupIds,
+  onAddToTest,
+  groupInfoLoadingAccountIds,
+  groupInfoFailedAccountIds,
+  onRetryGroupInfo,
 }: {
   rows: FavoriteOffering[]
   prices: (row: FavoriteOffering) => ModelHubPriceView
@@ -1951,7 +3265,11 @@ function FavoriteTable({
   onTest: (row: FavoriteOffering) => void
   onExport: (row: FavoriteOffering) => void
   onEdit: (row: FavoriteOffering) => void
-  onTokenChange: (row: AccountOffering, tokenId: number) => void
+  testGroupIds: Set<string>
+  onAddToTest: (row: FavoriteOffering) => void
+  groupInfoLoadingAccountIds: Set<string>
+  groupInfoFailedAccountIds: Set<string>
+  onRetryGroupInfo: (accountId: string) => void
 }) {
   const priceHeader =
     rows[0]?.type === "text" ? "输入价格" : rows[0] ? "调用价格" : "价格"
@@ -1959,6 +3277,7 @@ function FavoriteTable({
   return (
     <Table
       tableClassName="table-fixed min-w-[1100px]"
+      centerHeaders
       columnWidths={[
         "44px",
         "170px",
@@ -1987,9 +3306,6 @@ function FavoriteTable({
         const benchmark = benchmarks[row.id]
         const selectedToken =
           row.sourceType === "account" ? row.selectedToken : undefined
-        const compatibleTokens =
-          row.sourceType === "account" ? row.compatibleTokens ?? [] : []
-        const usableTokenCount = compatibleTokens.filter(isTokenUsable).length
         const accountTokenUnavailable =
           row.sourceType === "account" && !row.selectedTokenUsable
         return (
@@ -2077,14 +3393,29 @@ function FavoriteTable({
                     </Badge>
                   ))}
                 </div>
-                {row.groupDescription && (
+                {row.groupDescription ? (
                   <p
                     className="truncate text-xs text-gray-500"
                     title={row.groupDescription}
                   >
                     {row.groupDescription}
                   </p>
-                )}
+                ) : row.sourceType === "account" &&
+                  groupInfoLoadingAccountIds.has(row.accountId) ? (
+                  <p className="truncate text-xs text-gray-400">
+                    分组信息加载中...
+                  </p>
+                ) : row.sourceType === "account" &&
+                  groupInfoFailedAccountIds.has(row.accountId) ? (
+                  <Button
+                    className="h-6 px-1 text-xs text-gray-500"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onRetryGroupInfo(row.accountId)}
+                  >
+                    分组信息暂不可用，重试
+                  </Button>
+                ) : null}
               </div>
             </Cell>
             <Cell>
@@ -2092,40 +3423,13 @@ function FavoriteTable({
                 <div className="max-w-full min-w-0 space-y-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-1.5">
                     <KeyRound className="h-3.5 w-3.5 shrink-0" />
-                    {compatibleTokens.length > 1 ? (
-                      <select
-                        className="h-7 min-w-0 flex-1 truncate rounded border border-gray-300 bg-white px-1.5 text-xs dark:border-gray-700 dark:bg-gray-900"
-                        value={selectedToken?.id ?? ""}
-                        title={selectedToken?.name}
-                        onChange={(event) =>
-                          onTokenChange(row, Number(event.target.value))
-                        }
-                      >
-                        {compatibleTokens.map((token) => (
-                          <option
-                            key={token.id}
-                            value={token.id}
-                            disabled={
-                              usableTokenCount > 0 && !isTokenUsable(token)
-                            }
-                          >
-                            {token.name || `密钥 ${token.id}`} ·{" "}
-                            {formatQuota(
-                              token.remain_quota,
-                              token.unlimited_quota,
-                            )}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span
-                        className="truncate text-sm font-medium"
-                        title={selectedToken?.name}
-                      >
-                        {selectedToken?.name ||
-                          (selectedToken ? `密钥 ${selectedToken.id}` : "--")}
-                      </span>
-                    )}
+                    <span
+                      className="truncate text-sm font-medium"
+                      title={selectedToken?.name}
+                    >
+                      {selectedToken?.name ||
+                        (selectedToken ? `密钥 ${selectedToken.id}` : "--")}
+                    </span>
                   </div>
                   {selectedToken && (
                     <p
@@ -2133,12 +3437,12 @@ function FavoriteTable({
                       title={
                         isTokenExpired(selectedToken)
                           ? "密钥已过期"
-                          : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}${compatibleTokens.length > 1 ? ` · ${usableTokenCount} 个可用密钥` : ""}`
+                          : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}`
                       }
                     >
                       {isTokenExpired(selectedToken)
                         ? "密钥已过期"
-                        : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}${compatibleTokens.length > 1 ? ` · ${usableTokenCount} 个可用` : ""}`}
+                        : `已用 ${formatQuota(selectedToken.used_quota, false)} · ${isTokenQuotaExhausted(selectedToken) ? "额度耗尽" : `剩余 ${formatQuota(selectedToken.remain_quota, selectedToken.unlimited_quota)}`}`}
                     </p>
                   )}
                 </div>
@@ -2169,7 +3473,7 @@ function FavoriteTable({
                 ? `${Math.round(benchmark.overallTokensPerSecond)} t/s`
                 : "--"}
             </Cell>
-            <Cell>
+            <Cell className="text-center">
               <div className="flex gap-0.5 whitespace-nowrap">
                 <Button
                   className="px-2"
@@ -2198,6 +3502,16 @@ function FavoriteTable({
                 >
                   编辑
                 </Button>
+                <Button
+                  className="px-2"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onAddToTest(row)}
+                >
+                  {testGroupIds.has(testGroupIdentityForRow(row))
+                    ? "已加入测试"
+                    : "加入测试"}
+                </Button>
               </div>
             </Cell>
           </tr>
@@ -2216,6 +3530,10 @@ function CatalogTable({
   expandedNames,
   onToggleExpanded,
   onToggleFavorite,
+  selectedIds,
+  onSelectionChange,
+  onAddRows,
+  isAddedToTest,
 }: {
   rows: AggregatedModelCatalogRow[]
   accountRows: AccountOffering[]
@@ -2229,11 +3547,17 @@ function CatalogTable({
   onToggleFavorite: (
     row: Pick<AllModelRow, "modelName" | "normalizedName" | "type">,
   ) => void
+  selectedIds: Set<string>
+  onSelectionChange: (ids: Set<string>) => void
+  onAddRows: (rows: AllModelRow[]) => void
+  isAddedToTest: (row: AllModelRow) => boolean
 }) {
   const accountById = new Map(accountRows.map((row) => [row.id, row]))
   return (
     <Table
+      centerHeaders
       headers={[
+        "选择",
         "收藏",
         "模型",
         "类型",
@@ -2258,6 +3582,17 @@ function CatalogTable({
             key={row.id}
             className="border-t border-gray-100 dark:border-gray-800"
           >
+            <Cell className="text-center">
+              <Checkbox
+                checked={selectedIds.has(row.id)}
+                onCheckedChange={(checked) => {
+                  const next = new Set(selectedIds)
+                  if (checked === true) next.add(row.id)
+                  else next.delete(row.id)
+                  onSelectionChange(next)
+                }}
+              />
+            </Cell>
             <Cell>
               <Button
                 size="icon-xs"
@@ -2287,13 +3622,24 @@ function CatalogTable({
             </Cell>
             <Cell>{row.updatedAt ? formatDate(row.updatedAt) : "--"}</Cell>
             <Cell>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onToggleExpanded(row.normalizedName)}
-              >
-                {expanded ? "收起来源" : `查看来源 ${row.offerings.length}`}
-              </Button>
+              <div className="flex justify-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onAddRows(row.offerings)}
+                >
+                  {row.offerings.every(isAddedToTest)
+                    ? "已加入测试"
+                    : "加入测试"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onToggleExpanded(row.normalizedName)}
+                >
+                  {expanded ? "收起来源" : `查看来源 ${row.offerings.length}`}
+                </Button>
+              </div>
             </Cell>
           </tr>
         )
@@ -2303,7 +3649,7 @@ function CatalogTable({
             key={`${row.id}:details`}
             className="bg-gray-50/70 dark:bg-gray-900/40"
           >
-            <td colSpan={8} className="px-4 py-2">
+            <td colSpan={9} className="px-4 py-2">
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {row.offerings.map((offering) => {
                   const account =
@@ -2321,7 +3667,7 @@ function CatalogTable({
                   return (
                     <div
                       key={offering.id}
-                      className="grid gap-2 py-2 text-xs text-gray-600 sm:grid-cols-[minmax(150px,1fr)_minmax(130px,1fr)_80px_110px_140px] dark:text-gray-300"
+                      className="grid gap-2 py-2 text-xs text-gray-600 sm:grid-cols-[minmax(150px,1fr)_minmax(130px,1fr)_80px_110px_140px_120px] dark:text-gray-300"
                     >
                       <span className="font-medium">
                         {offering.providerName}
@@ -2334,6 +3680,13 @@ function CatalogTable({
                           : "手动 API"}
                       </span>
                       <span>{priceText}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onAddRows([offering])}
+                      >
+                        {isAddedToTest(offering) ? "已加入测试" : "加入测试"}
+                      </Button>
                     </div>
                   )
                 })}
@@ -2360,6 +3713,8 @@ function ManualSourcesTable({
   onExport,
   onEdit,
   onDelete,
+  onAddToTest,
+  testGroupIds,
 }: {
   sources: ModelHubManualSource[]
   rows: Array<Extract<AllModelRow, { sourceType: "manual" }>>
@@ -2377,6 +3732,8 @@ function ManualSourcesTable({
   onExport: (row: Extract<AllModelRow, { sourceType: "manual" }>) => void
   onEdit: (source: ModelHubManualSource) => void
   onDelete: (source: ModelHubManualSource) => void
+  onAddToTest: (row: Extract<AllModelRow, { sourceType: "manual" }>) => void
+  testGroupIds: Set<string>
 }) {
   const rowsBySource = new Map<
     string,
@@ -2445,8 +3802,19 @@ function ManualSourcesTable({
               )}
             </Cell>
             <Cell>{formatDate(source.updatedAt)}</Cell>
-            <Cell>
-              <div className="flex gap-1">
+            <Cell className="text-center">
+              <div className="flex justify-center gap-1">
+                {sourceRows[0] && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onAddToTest(sourceRows[0])}
+                  >
+                    {testGroupIds.has(testGroupIdentityForRow(sourceRows[0]))
+                      ? "已加入测试"
+                      : "加入测试"}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -2527,6 +3895,15 @@ function ManualSourcesTable({
                           onClick={() => onExport(row)}
                         >
                           导入 CCS
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onAddToTest(row)}
+                        >
+                          {testGroupIds.has(testGroupIdentityForRow(row))
+                            ? "已加入测试"
+                            : "加入测试"}
                         </Button>
                       </span>
                     </div>
@@ -2984,7 +4361,15 @@ function ManualSourceDialog({
           type: model.type,
           priceUsd: model.priceUsd?.toString() ?? "",
           billingUnit: model.billingUnit ?? "unknown",
-        })) ?? [],
+        })) ?? [
+          {
+            id: randomId("model"),
+            modelName: "",
+            type: "text",
+            priceUsd: "",
+            billingUnit: "unknown",
+          },
+        ],
       )
       setError(
         profile || !existing
@@ -3080,9 +4465,7 @@ function ManualSourceDialog({
         id: existing?.id ?? randomId("model-hub-source"),
         profileId: savedProfile.id,
         name: name.trim(),
-        normalizedBaseUrl: savedProfile.baseUrl
-          .toLowerCase()
-          .replace(/\/+$/, ""),
+        normalizedBaseUrl: normalizeModelHubSourceUrl(savedProfile.baseUrl),
         groupName: groupName.trim(),
         ...(groupDescription.trim()
           ? { groupDescription: groupDescription.trim() }
@@ -3314,11 +4697,13 @@ function Table({
   children,
   tableClassName,
   columnWidths,
+  centerHeaders,
 }: {
   headers: string[]
   children: ReactNode
   tableClassName?: string
   columnWidths?: string[]
+  centerHeaders?: boolean
 }) {
   return (
     <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
@@ -3335,7 +4720,10 @@ function Table({
         <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900">
           <tr>
             {headers.map((header) => (
-              <th key={header} className="px-3 py-3 font-medium">
+              <th
+                key={header}
+                className={`px-3 py-3 font-medium ${centerHeaders ? "text-center" : ""}`}
+              >
                 {header}
               </th>
             ))}
@@ -3346,9 +4734,17 @@ function Table({
     </div>
   )
 }
-function Cell({ children }: { children: ReactNode }) {
+function Cell({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
   return (
-    <td className="px-3 py-3 align-middle text-gray-700 dark:text-gray-200">
+    <td
+      className={`px-3 py-3 align-middle text-gray-700 dark:text-gray-200 ${className ?? ""}`}
+    >
       {children}
     </td>
   )

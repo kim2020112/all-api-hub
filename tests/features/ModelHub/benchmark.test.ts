@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { calculateBenchmarkMetrics } from "~/features/ModelHub/benchmark"
+import {
+  calculateBenchmarkMetrics,
+  runModelHubConnectivityCheck,
+} from "~/features/ModelHub/benchmark"
+
+afterEach(() => vi.restoreAllMocks())
 
 describe("calculateBenchmarkMetrics", () => {
   it("calculates first-token latency from request start", () => {
@@ -33,5 +38,45 @@ describe("calculateBenchmarkMetrics", () => {
         finishedAt: 4_000,
       }).overallTokensPerSecond,
     ).toBeUndefined()
+  })
+
+  it("marks a configured model missing while keeping the endpoint reachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: "other-model" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    )
+    await expect(
+      runModelHubConnectivityCheck({
+        baseUrl: "https://relay.example.com",
+        apiKey: "secret",
+        expectedModel: "target-model",
+      }),
+    ).resolves.toMatchObject({ status: "model-missing", modelCount: 1 })
+  })
+
+  it("normalizes a v1 base URL without duplicating the path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: "target-model" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    await runModelHubConnectivityCheck({
+      baseUrl: "https://relay.example.com/v1/",
+      apiKey: "secret",
+      expectedModel: "target-model",
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://relay.example.com/v1/models",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer secret" },
+      }),
+    )
   })
 })

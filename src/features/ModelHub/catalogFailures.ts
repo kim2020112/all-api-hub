@@ -1,4 +1,4 @@
-export interface ModelCatalogFailure {
+interface ModelCatalogFailure {
   sourceType: "account" | "profile"
   sourceId: string
   sourceName: string

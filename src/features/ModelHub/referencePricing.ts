@@ -1,6 +1,6 @@
 import type { ProductCanonicalModel } from "~/services/modelList/pricingModel"
 
-export interface TextPriceReferenceCandidate {
+interface TextPriceReferenceCandidate {
   sourceId: string
   normalizedName: string
   groupRatio: number | null
@@ -8,7 +8,7 @@ export interface TextPriceReferenceCandidate {
   resolvedInputUsd: number | null
 }
 
-export interface TextPriceReference {
+interface TextPriceReference {
   inputUsdPerMillionAt1x: number
   outputUsdPerMillionAt1x: number
   sampleCount: number

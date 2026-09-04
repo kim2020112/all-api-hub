@@ -83,7 +83,25 @@ pnpm.cmd run dev
 
 然后在浏览器中加载 `.output/chrome-mv3-dev`，检查扩展版本、选项页、ModelHub、账号/密钥管理和已有核心流程。开发服务器需要保持运行以支持热更新。
 
-### 6. 合入功能开发分支
+### 6. 更新本机已加载的正式版插件（保留数据）
+
+本项目的“正式版”曾经是本地 ZIP 解压后通过 Chrome 开发者模式加载的版本，不是 Chrome Web Store 版本。构建成功后，不能只刷新工作区的 `.output/chrome-mv3`，必须覆盖 Chrome 当前实际加载的解压目录。
+
+先从 Chrome 的 `Secure Preferences` 反查扩展 ID 对应路径：
+
+```powershell
+$p = "C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Default\Secure Preferences"
+$j = Get-Content -Raw -Encoding UTF8 $p | ConvertFrom-Json
+$j.extensions.settings.'<extension-id>' | Select-Object path,location,from_webstore
+```
+
+当 `from_webstore` 为 `false` 且 `path` 指向 `Default\UnpackedExtensions\...` 时，说明它是本机加载的正式版。将新 `.output/chrome-mv3` 内容逐文件覆盖到该 `path`，然后在 `chrome://extensions/` 点击同一扩展 ID 的“重新加载”，并刷新 `options.html` 页面。
+
+不要删除扩展存储目录 `Default\Local Extension Settings\<extension-id>`，不要删除原扩展后再加载新目录；否则会产生新的扩展 ID，原有设置、账号和凭据数据不会自动迁移。覆盖代码文件不会清除这些数据。
+
+如果 `from_webstore` 为 `true`，或者找不到本机解压目录，则不能直接覆盖正式版；必须使用相同签名密钥发布更新，或使用独立的本地开发版进行验证。
+
+### 7. 合入功能开发分支
 
 确认测试和人工检查通过后：
 

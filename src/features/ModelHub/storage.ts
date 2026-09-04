@@ -6,6 +6,10 @@ import {
 } from "~/services/core/storageKeys"
 import { withExtensionStorageWriteLock } from "~/services/core/storageWriteLock"
 
+/* eslint-disable jsdoc/require-jsdoc */
+
+import type { ModelListSourceIdentity } from "../ModelList/modelManagementSources"
+
 export type ModelHubBillingUnit =
   | "token-million"
   | "image"
@@ -54,7 +58,8 @@ export function createEmptyModelHubManualOverride(): Omit<
 }
 
 export type ModelHubViewMode = "favorites" | "all"
-export type ModelHubSortMode =
+export type ModelHubWorkspace = ModelHubViewMode | "testing"
+type ModelHubSortMode =
   | "name"
   | "multiplier-asc"
   | "multiplier-desc"
@@ -69,7 +74,7 @@ export interface FavoriteModel {
   type: ModelHubModelType
 }
 
-export interface ModelHubPreferences {
+interface ModelHubPreferences {
   viewMode: ModelHubViewMode
   sortMode: ModelHubSortMode
   favoriteModels: FavoriteModel[]
@@ -77,6 +82,8 @@ export interface ModelHubPreferences {
   selectedTokenIds: Record<string, number>
   selectedTargetModel?: string
 }
+
+const MODEL_HUB_IDENTITY_VERSION = 3
 
 export interface ModelHubBenchmarkResult {
   status: "success" | "failed"
@@ -93,14 +100,65 @@ export interface ModelHubBenchmarkResult {
   errorSummary?: string
 }
 
+export interface ModelHubTestModel {
+  modelName: string
+  normalizedName: string
+  type: ModelHubModelType
+  enabled: boolean
+}
+
+export interface ModelHubTestGroup {
+  id: string
+  sourceType: "account" | "manual"
+  sourceId: string
+  /** Owning account for account-backed source identities. */
+  accountId?: string
+  sourceIdentity?: ModelListSourceIdentity
+  profileId?: string
+  providerName: string
+  baseUrl: string
+  groupName: string
+  groupRatio: number | null
+  priceUsd: number | null
+  balanceUsd: number | null
+  models: ModelHubTestModel[]
+  selectedModel: string
+  order: number
+  lastConnectivity?: ModelHubConnectivityResult
+  updatedAt: number
+}
+
+export interface ModelHubConnectivityResult {
+  status: "reachable" | "failed" | "model-missing" | "unknown"
+  checkedAt: number
+  modelCount?: number
+  errorSummary?: string
+}
+
+export type ModelHubTestGroupStore = Record<string, ModelHubTestGroup>
+const MODEL_HUB_TEST_GROUPS_STORAGE_KEY = "model_hub_test_groups_v3"
+
+function createModelHubTestResultKeyPrefix(groupId: string) {
+  return `test:${encodeURIComponent(groupId)}:`
+}
+
+export function createModelHubTestResultKey(
+  groupId: string,
+  modelName: string,
+) {
+  return `${createModelHubTestResultKeyPrefix(groupId)}${encodeURIComponent(
+    normalizeModelHubModelName(modelName),
+  )}`
+}
+
 export type ModelHubBenchmarkResultStore = Record<
   string,
   ModelHubBenchmarkResult
 >
 
 const storage = new Storage({ area: "local" })
-export const MODEL_HUB_BENCHMARK_STORAGE_KEY = "model_hub_benchmark_results_v1"
-export const MODEL_HUB_MANUAL_SOURCES_STORAGE_KEY =
+const MODEL_HUB_BENCHMARK_STORAGE_KEY = "model_hub_benchmark_results_v3"
+const MODEL_HUB_MANUAL_SOURCES_STORAGE_KEY =
   "model_hub_manual_sources_v1"
 
 export interface ModelHubManualSourceModel {
@@ -123,7 +181,7 @@ export interface ModelHubManualSource {
   createdAt: number
   updatedAt: number
 }
-export type ModelHubManualSourceStore = Record<string, ModelHubManualSource>
+type ModelHubManualSourceStore = Record<string, ModelHubManualSource>
 
 function normalizeOverride(value: unknown): ModelHubManualOverride | null {
   if (!value || typeof value !== "object") return null
@@ -197,7 +255,10 @@ export function normalizeModelHubModelName(value: string) {
 }
 
 export function normalizeModelHubSourceUrl(value: string) {
-  return value.trim().replace(/\/+$/, "").toLowerCase()
+  const trimmed = value.trim().replace(/\/+$/, "")
+  const match = trimmed.match(/^([a-z][a-z\d+.-]*:\/\/)([^/]+)(.*)$/i)
+  if (!match) return trimmed
+  return `${match[1].toLowerCase()}${match[2].toLowerCase()}${match[3]}`
 }
 
 export function inferModelHubModelType(modelName: string): ModelHubModelType {
@@ -497,7 +558,22 @@ export async function removeModelHubManualOverride(offeringId: string) {
 
 export async function getModelHubPreferences() {
   const raw = await storage.get(MODEL_HUB_STORAGE_KEYS.PREFERENCES)
-  return normalizeModelHubPreferences(raw)
+  const normalized = normalizeModelHubPreferences(raw)
+  const rawVersion =
+    raw &&
+    typeof raw === "object" &&
+    typeof (raw as Record<string, unknown>).identityVersion === "number"
+      ? (raw as Record<string, unknown>).identityVersion
+      : 1
+  if (rawVersion !== MODEL_HUB_IDENTITY_VERSION) {
+    const migrated = { ...normalized, selectedTokenIds: {} }
+    await storage.set(MODEL_HUB_STORAGE_KEYS.PREFERENCES, {
+      ...migrated,
+      identityVersion: MODEL_HUB_IDENTITY_VERSION,
+    })
+    return migrated
+  }
+  return normalized
 }
 
 export async function saveModelHubPreferences(
@@ -505,7 +581,10 @@ export async function saveModelHubPreferences(
 ) {
   return withExtensionStorageWriteLock(STORAGE_LOCKS.MODEL_HUB, async () => {
     const normalized = normalizeModelHubPreferences(preferences)
-    await storage.set(MODEL_HUB_STORAGE_KEYS.PREFERENCES, normalized)
+    await storage.set(MODEL_HUB_STORAGE_KEYS.PREFERENCES, {
+      ...normalized,
+      identityVersion: MODEL_HUB_IDENTITY_VERSION,
+    })
     return normalized
   })
 }
@@ -513,6 +592,164 @@ export async function saveModelHubPreferences(
 export async function getModelHubBenchmarkResults() {
   const raw = await storage.get(MODEL_HUB_BENCHMARK_STORAGE_KEY)
   return normalizeBenchmarkStore(raw)
+}
+
+function normalizeTestModel(value: unknown): ModelHubTestModel | null {
+  if (!value || typeof value !== "object") return null
+  const raw = value as Partial<ModelHubTestModel>
+  if (typeof raw.modelName !== "string" || !raw.modelName.trim()) return null
+  const modelName = raw.modelName.trim()
+  return {
+    modelName,
+    normalizedName: normalizeModelHubModelName(modelName),
+    type:
+      raw.type === "image" || raw.type === "video" || raw.type === "other"
+        ? raw.type
+        : "text",
+    enabled: raw.enabled !== false,
+  }
+}
+
+function normalizeSourceIdentity(
+  value: unknown,
+): ModelListSourceIdentity | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const raw = value as Record<string, unknown>
+  if (typeof raw.kind !== "string" || typeof raw.id !== "string")
+    return undefined
+  if (
+    raw.kind !== "account" &&
+    raw.kind !== "account-token" &&
+    raw.kind !== "account-runtime-key" &&
+    raw.kind !== "personalized-catalog" &&
+    raw.kind !== "provider-catalog"
+  ) {
+    return undefined
+  }
+  return raw as ModelListSourceIdentity
+}
+
+function normalizeConnectivityResult(
+  value: unknown,
+): ModelHubConnectivityResult | null {
+  if (!value || typeof value !== "object") return null
+  const raw = value as Partial<ModelHubConnectivityResult>
+  const status = raw.status
+  if (
+    status !== "reachable" &&
+    status !== "failed" &&
+    status !== "model-missing" &&
+    status !== "unknown"
+  ) {
+    return null
+  }
+  if (typeof raw.checkedAt !== "number" || !Number.isFinite(raw.checkedAt)) {
+    return null
+  }
+  return {
+    status,
+    checkedAt: raw.checkedAt,
+    ...(typeof raw.modelCount === "number" && Number.isFinite(raw.modelCount)
+      ? { modelCount: Math.max(0, Math.floor(raw.modelCount)) }
+      : {}),
+    ...(typeof raw.errorSummary === "string"
+      ? { errorSummary: raw.errorSummary.slice(0, 180) }
+      : {}),
+  }
+}
+
+export function normalizeModelHubTestGroups(
+  value: unknown,
+): ModelHubTestGroupStore {
+  if (!value || typeof value !== "object") return {}
+  const store: ModelHubTestGroupStore = {}
+  for (const [id, candidate] of Object.entries(value)) {
+    if (!candidate || typeof candidate !== "object") continue
+    const raw = candidate as Partial<ModelHubTestGroup>
+    // Legacy migration: 归档概念已移除，历史 archived 分组等同已删除，读取时一次性丢弃。
+    if ((candidate as { archived?: unknown }).archived === true) continue
+    if (
+      typeof raw.providerName !== "string" ||
+      typeof raw.groupName !== "string"
+    )
+      continue
+    const models = Array.isArray(raw.models)
+      ? raw.models.flatMap((item) => {
+          const model = normalizeTestModel(item)
+          return model ? [model] : []
+        })
+      : []
+    const selectedModel =
+      typeof raw.selectedModel === "string" && raw.selectedModel.trim()
+        ? normalizeModelHubModelName(raw.selectedModel)
+        : models.find((model) => model.enabled)?.normalizedName ??
+          models[0]?.normalizedName ??
+          ""
+    store[id] = {
+      id,
+      sourceType: raw.sourceType === "manual" ? "manual" : "account",
+      sourceId: typeof raw.sourceId === "string" ? raw.sourceId : id,
+      ...(typeof raw.accountId === "string"
+        ? { accountId: raw.accountId }
+        : {}),
+      ...(normalizeSourceIdentity(raw.sourceIdentity)
+        ? { sourceIdentity: normalizeSourceIdentity(raw.sourceIdentity) }
+        : {}),
+      ...(typeof raw.profileId === "string"
+        ? { profileId: raw.profileId }
+        : {}),
+      providerName: raw.providerName.trim(),
+      baseUrl:
+        typeof raw.baseUrl === "string"
+          ? normalizeModelHubSourceUrl(raw.baseUrl)
+          : "",
+      groupName: raw.groupName.trim(),
+      groupRatio:
+        typeof raw.groupRatio === "number" && Number.isFinite(raw.groupRatio)
+          ? raw.groupRatio
+          : null,
+      priceUsd:
+        typeof raw.priceUsd === "number" && Number.isFinite(raw.priceUsd)
+          ? raw.priceUsd
+          : null,
+      balanceUsd:
+        typeof raw.balanceUsd === "number" && Number.isFinite(raw.balanceUsd)
+          ? raw.balanceUsd
+          : null,
+      models,
+      selectedModel,
+      order:
+        typeof raw.order === "number" && Number.isFinite(raw.order)
+          ? raw.order
+          : 0,
+      ...(normalizeConnectivityResult(raw.lastConnectivity)
+        ? {
+            lastConnectivity: normalizeConnectivityResult(
+              raw.lastConnectivity,
+            )!,
+          }
+        : {}),
+      updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : Date.now(),
+    }
+  }
+  return store
+}
+
+export async function getModelHubTestGroups() {
+  return normalizeModelHubTestGroups(
+    await storage.get(MODEL_HUB_TEST_GROUPS_STORAGE_KEY),
+  )
+}
+
+export async function updateModelHubTestGroups(
+  updater: (groups: ModelHubTestGroupStore) => ModelHubTestGroupStore,
+) {
+  return withExtensionStorageWriteLock(STORAGE_LOCKS.MODEL_HUB, async () => {
+    const current = await getModelHubTestGroups()
+    const normalized = normalizeModelHubTestGroups(updater(current))
+    await storage.set(MODEL_HUB_TEST_GROUPS_STORAGE_KEY, normalized)
+    return normalized
+  })
 }
 
 export async function saveModelHubBenchmarkResult(
@@ -524,6 +761,34 @@ export async function saveModelHubBenchmarkResult(
     current[offeringKey] = result
     await storage.set(MODEL_HUB_BENCHMARK_STORAGE_KEY, current)
     return result
+  })
+}
+
+export async function saveModelHubBenchmarkResults(
+  results: ModelHubBenchmarkResultStore,
+) {
+  return withExtensionStorageWriteLock(STORAGE_LOCKS.MODEL_HUB, async () => {
+    const current = await getModelHubBenchmarkResults()
+    const next = { ...current, ...results }
+    await storage.set(MODEL_HUB_BENCHMARK_STORAGE_KEY, next)
+    return next
+  })
+}
+
+export async function removeModelHubTestBenchmarkResults(groupIds: string[]) {
+  return withExtensionStorageWriteLock(STORAGE_LOCKS.MODEL_HUB, async () => {
+    const current = await getModelHubBenchmarkResults()
+    if (groupIds.length === 0) return current
+    // 只清理测试分组自己的 `test:<groupId>:<model>` 结果，
+    // 以 offering id 为键的全部模型/常用模型测速记录必须保留。
+    const prefixes = groupIds.map(createModelHubTestResultKeyPrefix)
+    const next: ModelHubBenchmarkResultStore = {}
+    for (const [key, result] of Object.entries(current)) {
+      if (prefixes.some((prefix) => key.startsWith(prefix))) continue
+      next[key] = result
+    }
+    await storage.set(MODEL_HUB_BENCHMARK_STORAGE_KEY, next)
+    return next
   })
 }
 

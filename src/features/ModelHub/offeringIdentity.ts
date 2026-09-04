@@ -1,4 +1,4 @@
-export function normalizeOfferingIdentityPart(value: string) {
+function normalizeOfferingIdentityPart(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ")
 }
 

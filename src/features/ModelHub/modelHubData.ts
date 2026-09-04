@@ -1,3 +1,6 @@
+/* eslint-disable jsdoc/require-jsdoc */
+
+import type { ModelListSourceIdentity } from "../ModelList/modelManagementSources"
 import {
   normalizeModelHubModelName,
   type FavoriteModel,
@@ -11,15 +14,18 @@ export interface AccountOfferingProjection {
   sourceType: "account"
   accountId: string
   sourceId: string
+  sourceIdentity?: ModelListSourceIdentity
   tokenId?: number
   modelName: string
   normalizedName: string
   type: ModelHubModelType
   providerName: string
   groupName: string
+  groupIsFallback?: boolean
   groupDescription?: string
   groupRatio: number | null
   balanceUsd: number | null
+  balanceKnown?: boolean
   updatedAt: number
 }
 

@@ -1,7 +1,7 @@
 import type { ProductCanonicalModel } from "~/services/modelList/pricingModel"
 import { calculateModelPrice } from "~/services/models/utils/modelPricing"
 
-export interface ModelHubAdaptedPrice {
+interface ModelHubAdaptedPrice {
   inputUsd?: number
   outputUsd?: number
   cacheReadUsd?: number

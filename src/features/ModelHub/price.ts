@@ -70,22 +70,11 @@ const MODEL_HUB_UNIT_SUFFIX: Record<ModelHubBillingUnit, string> = {
   unknown: "",
 }
 
-export const MODEL_HUB_DISPLAY_UNITS: ReadonlyArray<{
-  value: ModelHubBillingUnit
-  label: string
-}> = [
-  { value: "token-million", label: "$ / 1M tokens" },
-  { value: "image", label: "$ / 张" },
-  { value: "video-second", label: "$ / 秒" },
-  { value: "video-minute", label: "$ / 分钟" },
-  { value: "request", label: "$ / 次" },
-]
-
-export function formatModelHubUnit(unit: ModelHubBillingUnit): string {
+function formatModelHubUnit(unit: ModelHubBillingUnit): string {
   return MODEL_HUB_UNIT_SUFFIX[unit]
 }
 
-export function isManualOverridden(override?: ModelHubManualOverride | null) {
+function isManualOverridden(override?: ModelHubManualOverride | null) {
   if (!override) return false
   return (
     (typeof override.manualPriceUsd === "number" &&
@@ -104,7 +93,7 @@ export function isManualOverridden(override?: ModelHubManualOverride | null) {
  * 从模型元数据推断 per-call 计价单位。
  * 不确定时回退 request（「每次」），绝不猜「每张」。
  */
-export function inferBillingUnitFromMetadata(
+function inferBillingUnitFromMetadata(
   metadata: ModelMetadata | undefined,
   manualFallback: ModelHubBillingUnit,
 ): ModelHubBillingUnit {
@@ -148,7 +137,7 @@ function resolveManualUsdPrices(
 }
 
 /** 解析手工价格的美元金额；数字或 {input, output} 对象均支持。 */
-export function resolveManualUsdAmount(
+function resolveManualUsdAmount(
   override: ModelHubManualOverride,
   cnyPerUsd: number = UI_CONSTANTS.EXCHANGE_RATE.DEFAULT,
 ): number | null {
@@ -166,7 +155,7 @@ export function resolveManualUsdAmount(
  *   estimated     -> estimated
  *   否则          -> unavailable
  */
-export function getModelHubPriceStatus(params: {
+function getModelHubPriceStatus(params: {
   hasManualOverride: boolean
   priceMetadata?: ModelPriceMetadata
 }): ModelHubPriceStatus {

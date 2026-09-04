@@ -1,4 +1,6 @@
-export interface ModelHubBenchmarkMetrics {
+/* eslint-disable jsdoc/require-jsdoc */
+
+interface ModelHubBenchmarkMetrics {
   responseHeadersMs?: number
   firstEventMs?: number
   firstTokenMs?: number
@@ -80,13 +82,13 @@ export function calculateBenchmarkMetrics(params: {
   }
 }
 
-export interface ParsedBenchmarkSseEvent {
+interface ParsedBenchmarkSseEvent {
   text: string
   isText: boolean
   completionTokens?: number
 }
 
-export function parseBenchmarkSseData(
+function parseBenchmarkSseData(
   data: string,
 ): ParsedBenchmarkSseEvent | null {
   if (!data.trim() || data.trim() === "[DONE]") return null
@@ -119,7 +121,7 @@ export function parseBenchmarkSseData(
 }
 
 /** Limited, protocol-aware fallback for the fixed numeric benchmark response. */
-export function estimateNumericBenchmarkTokens(text: string): number | null {
+function estimateNumericBenchmarkTokens(text: string): number | null {
   const normalized = text.trim()
   if (!/^1(?: \d{1,2}){1,79}$/.test(normalized)) return null
   const values = normalized.split(" ").map(Number)
@@ -235,6 +237,63 @@ export async function runModelHubBenchmark(params: {
             ? "estimated"
             : undefined,
     })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+export async function runModelHubConnectivityCheck(params: {
+  baseUrl: string
+  apiKey: string
+  expectedModel?: string
+  timeoutMs?: number
+}): Promise<{
+  status: "reachable" | "model-missing"
+  modelCount?: number
+  errorSummary?: string
+}> {
+  const controller = new AbortController()
+  const timeout = setTimeout(
+    () => controller.abort(),
+    params.timeoutMs ?? 5_000,
+  )
+  try {
+    const base = params.baseUrl.replace(/\/+$/, "")
+    const modelsEndpoint = /\/v1$/i.test(base)
+      ? `${base}/models`
+      : `${base}/v1/models`
+    const headers = { Authorization: `Bearer ${params.apiKey}` }
+    const request = (endpoint: string) =>
+      fetch(endpoint, { headers, cache: "no-store", signal: controller.signal })
+    const expected = params.expectedModel?.trim()
+    const response = await request(modelsEndpoint)
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const payload = (await response.json()) as { data?: unknown[] }
+    const modelIds = Array.isArray(payload.data)
+      ? payload.data.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const id = (item as { id?: unknown }).id
+          return typeof id === "string" ? [id.toLowerCase()] : []
+        })
+      : []
+    const expectedNormalized = expected?.toLowerCase()
+    if (
+      expectedNormalized &&
+      modelIds.length > 0 &&
+      !modelIds.includes(expectedNormalized)
+    ) {
+      return {
+        status: "model-missing",
+        modelCount: modelIds.length,
+        errorSummary: `模型 ${expected} 不在接口目录中`,
+      }
+    }
+    return {
+      status: "reachable",
+      ...(Array.isArray(payload.data)
+        ? { modelCount: payload.data.length }
+        : {}),
+    }
   } finally {
     clearTimeout(timeout)
   }

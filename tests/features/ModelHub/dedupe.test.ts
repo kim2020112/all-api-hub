@@ -15,9 +15,16 @@ describe("dedupeOfferingsByBusinessKey", () => {
     ...overrides,
   })
 
-  it("merges duplicates for the same account, model, and group", () => {
+  it("keeps different source identities separate", () => {
     const first = createRow({ id: "a" })
     const duplicate = createRow({ id: "b", sourceId: "another-token-id" })
+
+    expect(dedupeOfferingsByBusinessKey([first, duplicate])).toHaveLength(2)
+  })
+
+  it("merges rows from the same source identity", () => {
+    const first = createRow({ id: "a", sourceId: "same-source" })
+    const duplicate = createRow({ id: "b", sourceId: "same-source" })
 
     expect(dedupeOfferingsByBusinessKey([first, duplicate])).toEqual([first])
   })

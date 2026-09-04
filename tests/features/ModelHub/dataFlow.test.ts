@@ -10,14 +10,21 @@ import {
   type AccountOfferingProjection,
 } from "~/features/ModelHub/modelHubData"
 import {
+  createModelHubTestResultKey,
+  getModelHubBenchmarkResults,
   getModelHubManualOverrides,
   getModelHubManualSources,
+  getModelHubTestGroups,
   normalizeManualSource,
   normalizeModelHubPreferences,
   normalizeModelHubSourceUrl,
+  normalizeModelHubTestGroups,
   removeModelHubManualSource,
+  removeModelHubTestBenchmarkResults,
+  saveModelHubBenchmarkResults,
   saveModelHubManualOverride,
   saveModelHubManualSource,
+  updateModelHubTestGroups,
   type ModelHubManualSource,
 } from "~/features/ModelHub/storage"
 
@@ -174,6 +181,98 @@ describe("Model Hub data flow", () => {
         },
       }).selectedTokenIds,
     ).toEqual({ "account:a:default:gpt-5": 12 })
+  })
+
+  it("migrates test groups with a selected model and stable result key", () => {
+    const groups = normalizeModelHubTestGroups({
+      "account:a:vip": {
+        providerName: "Account A",
+        groupName: "VIP",
+        sourceType: "account",
+        sourceId: "a",
+        models: [{ modelName: "GPT-5", enabled: true }],
+      },
+    })
+    expect(groups["account:a:vip"].selectedModel).toBe("gpt-5")
+    expect(createModelHubTestResultKey("account:a:vip", " GPT-5 ")).toBe(
+      "test:account%3Aa%3Avip:gpt-5",
+    )
+  })
+
+  it("drops legacy archived test groups when normalizing", () => {
+    const groups = normalizeModelHubTestGroups({
+      "account:a:vip": {
+        providerName: "Account A",
+        groupName: "VIP",
+        sourceType: "account",
+        sourceId: "a",
+        models: [{ modelName: "GPT-5", enabled: true }],
+      },
+      "account:b:vip": {
+        providerName: "Account B",
+        groupName: "VIP",
+        sourceType: "account",
+        sourceId: "b",
+        models: [{ modelName: "GPT-5", enabled: true }],
+        archived: true,
+      },
+    })
+    expect(Object.keys(groups)).toEqual(["account:a:vip"])
+    expect(groups["account:a:vip"]).not.toHaveProperty("archived")
+  })
+
+  it("persists test group deletion", async () => {
+    await updateModelHubTestGroups(() => ({
+      "account:a:vip": {
+        id: "account:a:vip",
+        sourceType: "account",
+        sourceId: "a",
+        providerName: "Account A",
+        baseUrl: "https://a.example.com",
+        groupName: "VIP",
+        groupRatio: null,
+        priceUsd: null,
+        balanceUsd: null,
+        models: [
+          {
+            modelName: "GPT-5",
+            normalizedName: "gpt-5",
+            type: "text",
+            enabled: true,
+          },
+        ],
+        selectedModel: "gpt-5",
+        order: 0,
+        updatedAt: 1,
+      },
+    }))
+
+    const remaining = await updateModelHubTestGroups((current) => {
+      const next = { ...current }
+      delete next["account:a:vip"]
+      return next
+    })
+
+    expect(remaining).toEqual({})
+    expect(await getModelHubTestGroups()).toEqual({})
+  })
+
+  it("removes only the deleted group's benchmark results", async () => {
+    const result = { status: "success", testedAt: 5 } as const
+    await saveModelHubBenchmarkResults({
+      [createModelHubTestResultKey("account:a:vip", "gpt-5")]: result,
+      [createModelHubTestResultKey("account:a:vip", "claude-4")]: result,
+      [createModelHubTestResultKey("account:b:vip", "gpt-5")]: result,
+      "account:a:vip:gpt-5": result,
+    })
+
+    const next = await removeModelHubTestBenchmarkResults(["account:a:vip"])
+
+    expect(Object.keys(next).sort()).toEqual([
+      "account:a:vip:gpt-5",
+      createModelHubTestResultKey("account:b:vip", "gpt-5"),
+    ])
+    expect(await getModelHubBenchmarkResults()).toEqual(next)
   })
 
   it("preserves multiplier sorting and zero-valued manual multipliers", async () => {

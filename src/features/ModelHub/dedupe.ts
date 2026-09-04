@@ -1,3 +1,5 @@
+/* eslint-disable jsdoc/require-jsdoc */
+
 /** Minimal shape required by business-key dedup. */
 interface DedupeableOffering {
   id: string
@@ -10,6 +12,7 @@ interface DedupeableOffering {
   balanceUsd: number | null
   lastSyncTime?: number
   model?: { model_name: string } | null
+  sourceIdentity?: { kind?: string }
 }
 
 function normalizeForDedup(value: string) {
@@ -17,8 +20,12 @@ function normalizeForDedup(value: string) {
 }
 
 function createBusinessKey(row: DedupeableOffering): string {
+  // sourceId is the complete source identity. Account id is only an owner
+  // lookup hint and must not collapse token/runtime/provider contexts.
   const identity =
-    row.sourceType === "account" ? row.accountId ?? row.sourceId : row.sourceId
+    row.sourceIdentity?.kind === "provider-catalog" && row.accountId
+      ? `${row.sourceId}:account:${row.accountId}`
+      : row.sourceId
   return [
     row.sourceType,
     identity,
@@ -53,9 +60,8 @@ function compareRows(left: DedupeableOffering, right: DedupeableOffering) {
 /**
  * Deduplicates offering rows by business identity.
  *
- * Business key = sourceType + stable account/profile id + normalizedModelName + normalizedGroupName.
- * For accounts with multiple tokens/identities, accountId is the stable account id,
- * while sourceId varies per token — so business key collapses them.
+ * Business key = sourceType + source identity + normalizedModelName + normalizedGroupName.
+ * Different token/runtime/provider contexts therefore remain visible as separate rows.
  *
  * Winner selection: has price model > has multiplier > has balance > newer lastSyncTime > stable id.
  */
